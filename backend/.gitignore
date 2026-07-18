@@ -1,0 +1,54 @@
+# compiled output
+/dist
+/node_modules
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# IDEs
+/.idea
+.vscode
+*.swp
+*.swo
+
+# Tests
+/coverage
+/.nyc_output
+
+# Env files
+.env
+.env.development
+.env.production
+.env.local
+.env.*.local
+
+# Uploads
+/uploads
+/uploads/*
+
+# Prisma
+prisma/migrations/**/migration_lock.toml
+
+# Docker
+docker-compose.override.yml
+
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build
+dist
+
+# Misc
+*.tsbuildinfo
+eslintcache

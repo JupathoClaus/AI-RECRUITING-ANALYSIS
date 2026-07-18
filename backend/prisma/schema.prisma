@@ -1,0 +1,2223 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  DISABLED
+  LOCKED
+  DELETED
+}
+
+enum CompanyStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum RoleScope {
+  PLATFORM
+  COMPANY
+}
+
+enum SessionStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum VerificationTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  COMPANY_INVITATION
+  EMAIL_CHANGE
+}
+
+enum AuditEventType {
+  USER_REGISTERED
+  LOGIN_SUCCEEDED
+  LOGIN_FAILED
+  ACCOUNT_LOCKED
+  LOGOUT
+  LOGOUT_ALL
+  TOKEN_REFRESHED
+  REFRESH_TOKEN_REUSE_DETECTED
+  PASSWORD_CHANGED
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET_COMPLETED
+  EMAIL_VERIFICATION_SENT
+  EMAIL_VERIFIED
+  SESSION_REVOKED
+  ROLE_ASSIGNED
+  PERMISSION_DENIED
+  COMPANY_SELECTED
+}
+
+enum DepartmentStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum LocationType {
+  HEAD_OFFICE
+  BRANCH
+  REMOTE
+  CLIENT_SITE
+  OTHER
+}
+
+enum LocationStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum OrganizationAuditEventType {
+  COMPANY_PROFILE_UPDATED
+  COMPANY_SETTINGS_UPDATED
+  DEPARTMENT_CREATED
+  DEPARTMENT_UPDATED
+  DEPARTMENT_ARCHIVED
+  DEPARTMENT_RESTORED
+  LOCATION_CREATED
+  LOCATION_UPDATED
+  LOCATION_ARCHIVED
+  LOCATION_RESTORED
+  MEMBER_INVITED
+  INVITATION_RESENT
+  INVITATION_REVOKED
+  INVITATION_ACCEPTED
+  MEMBER_ROLE_CHANGED
+  MEMBER_SUSPENDED
+  MEMBER_REACTIVATED
+  MEMBER_REMOVED
+  MEMBER_DEPARTMENT_ASSIGNED
+  MEMBER_DEPARTMENT_REMOVED
+  ONBOARDING_COMPLETED
+  ROLE_CREATED
+  ROLE_UPDATED
+  ROLE_DELETED
+}
+
+model SystemMetadata {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
+model User {
+  id                  String     @id @default(uuid())
+  email               String
+  normalizedEmail     String     @unique
+  passwordHash        String
+  firstName           String
+  lastName            String
+  phone               String?
+  avatarUrl           String?
+  status              UserStatus @default(PENDING_VERIFICATION)
+  emailVerifiedAt     DateTime?
+  lastLoginAt         DateTime?
+  failedLoginAttempts Int        @default(0)
+  lockedUntil         DateTime?
+  passwordChangedAt   DateTime?
+  preferredLocale     String     @default("en")
+  timezone            String     @default("UTC")
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  deletedAt           DateTime?
+
+  memberships        CompanyMembership[]
+  sessions           UserSession[]
+  verificationTokens VerificationToken[]
+  authAuditEvents    AuthAuditEvent[]
+  invitedInvitations CompanyInvitation[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Company {
+  id          String        @id @default(uuid())
+  name        String
+  slug        String        @unique
+  status      CompanyStatus @default(ACTIVE)
+  emailDomain String?
+  logoUrl     String?
+  country     String?
+  timezone    String        @default("UTC")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+
+  legalName             String?
+  registrationNumber    String?
+  taxNumber             String?
+  industry              String?
+  companySize           String?
+  website               String?
+  phone                 String?
+  supportEmail          String?
+  description           String?
+  addressLine1          String?
+  addressLine2          String?
+  city                  String?
+  stateOrProvince       String?
+  postalCode            String?
+  countryCode           String?
+  defaultLanguage       String    @default("en")
+  dateFormat            String    @default("YYYY-MM-DD")
+  timeFormat            String    @default("HH:mm")
+  currencyCode          String?
+  recruitmentEmail      String?
+  logoFileId            String?
+  coverImageFileId      String?
+  onboardingCompletedAt DateTime?
+  createdByUserId       String?
+  updatedByUserId       String?
+
+  memberships       CompanyMembership[]
+  roles             Role[]
+  authAuditEvents   AuthAuditEvent[]
+  invitations       CompanyInvitation[]
+  departments       Department[]
+  locations         CompanyLocation[]
+  settings          CompanySettings?
+  auditEvents       OrganizationAuditEvent[]
+  jobs              Job[]
+  jobTemplates      JobTemplate[]
+  skills            Skill[]
+  jobActivityEvents JobActivityEvent[]
+
+  // Phase 2.2
+  companyCandidates      CompanyCandidate[]
+  candidateTags          CandidateTag[]
+  companyCandidateNotes  CompanyCandidateNote[]
+  applicationCounters    ApplicationCounter[]
+  applications           Application[]
+  applicationNotes       ApplicationNote[]
+  applicationAuditEvents ApplicationAuditEvent[]
+
+  // Phase 2.3
+  interviews Interview[]
+
+  @@index([status])
+  @@index([industry])
+  @@index([createdAt])
+}
+
+model Role {
+  id          String    @id @default(uuid())
+  code        String
+  name        String
+  description String?
+  scope       RoleScope
+  isSystem    Boolean   @default(false)
+  companyId   String?
+  company     Company?  @relation(fields: [companyId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  memberships     CompanyMembership[]
+  rolePermissions RolePermission[]
+  invitations     CompanyInvitation[]
+
+  @@unique([code, scope])
+  @@index([scope])
+  @@index([companyId])
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  description String?
+  resource    String
+  action      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model CompanyMembership {
+  id              String           @id @default(uuid())
+  userId          String
+  companyId       String
+  roleId          String
+  status          MembershipStatus @default(ACTIVE)
+  jobTitle        String?
+  invitedByUserId String?
+  invitedAt       DateTime?
+  joinedAt        DateTime?
+  lastActiveAt    DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id])
+  company Company @relation(fields: [companyId], references: [id])
+  role    Role    @relation(fields: [roleId], references: [id])
+
+  departmentMemberships   DepartmentMembership[]
+  managedDepartments      Department[]
+  invitations             CompanyInvitation[]
+  ownedJobs               Job[]                       @relation("JobOwner")
+  createdJobs             Job[]                       @relation("JobCreatedBy")
+  updatedJobs             Job[]                       @relation("JobUpdatedBy")
+  templateCreations       JobTemplate[]               @relation("TemplateCreatedBy")
+  templateUpdates         JobTemplate[]               @relation("TemplateUpdatedBy")
+  pipelineCreations       JobPipeline[]               @relation("PipelineCreatedBy")
+  pipelineUpdates         JobPipeline[]               @relation("PipelineUpdatedBy")
+  approvalRequests        JobApproval[]               @relation("ApprovalRequestedBy")
+  approvalAssignments     JobApproval[]               @relation("ApprovalAssignedTo")
+  approvalReviews         JobApproval[]               @relation("ApprovalReviewedBy")
+  jobCollaborators        JobCollaborator[]
+  collaboratorAssignments JobCollaborator[]           @relation("CollaboratorAssignedBy")
+  jobPublicationRequests  JobPublication[]
+  screeningConfigUpdates  JobScreeningConfiguration[] @relation("ScreeningConfigUpdatedBy")
+
+  // Phase 2.2
+  ownedCompanyCandidates   CompanyCandidate[]         @relation("CompanyCandidateOwner")
+  createdCompanyCandidates CompanyCandidate[]         @relation("CompanyCandidateCreatedBy")
+  updatedCompanyCandidates CompanyCandidate[]         @relation("CompanyCandidateUpdatedBy")
+  createdCandidateTags     CandidateTag[]             @relation("TagCreatedBy")
+  assignedCandidateTags    CompanyCandidateTag[]      @relation("CandidateTagAssignedBy")
+  authoredCandidateNotes   CompanyCandidateNote[]     @relation("CandidateNoteAuthor")
+  referredApplications     Application[]              @relation("ApplicationReferral")
+  assignedApplicationTags  ApplicationTagAssignment[] @relation("AppTagAssignedBy")
+  applicationAssignments   ApplicationAssignment[]    @relation("ApplicationAssignee")
+  applicationAssigned      ApplicationAssignment[]    @relation("ApplicationAssigner")
+  authoredApplicationNotes ApplicationNote[]          @relation("ApplicationNoteAuthor")
+  resolvedFlags            ApplicationFlag[]          @relation("FlagResolvedBy")
+  createdFlags             ApplicationFlag[]          @relation("FlagCreatedBy")
+  applicationDecisions     ApplicationDecision[]      @relation("DecisionActor")
+
+  // Phase 2.3
+  createdInterviews          Interview[]            @relation("InterviewCreatedBy")
+  updatedInterviews          Interview[]            @relation("InterviewUpdatedBy")
+  participantMemberships     InterviewParticipant[] @relation("InterviewParticipantMembership")
+  addedInterviewParticipants InterviewParticipant[] @relation("InterviewParticipantAddedBy")
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@index([roleId])
+  @@index([status])
+}
+
+model UserSession {
+  id                       String        @id @default(uuid())
+  userId                   String
+  activeCompanyId          String?
+  refreshTokenHash         String
+  refreshTokenFamilyId     String
+  previousRefreshTokenHash String?
+  status                   SessionStatus @default(ACTIVE)
+  ipAddress                String?
+  userAgent                String?
+  deviceName               String?
+  lastUsedAt               DateTime      @default(now())
+  expiresAt                DateTime
+  revokedAt                DateTime?
+  revokeReason             String?
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([refreshTokenFamilyId])
+}
+
+model VerificationToken {
+  id        String                @id @default(uuid())
+  userId    String?
+  email     String
+  type      VerificationTokenType
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int                   @default(0)
+  createdAt DateTime              @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([email])
+  @@index([userId])
+  @@index([type])
+  @@index([expiresAt])
+}
+
+model AuthAuditEvent {
+  id         String         @id @default(uuid())
+  userId     String?
+  companyId  String?
+  sessionId  String?
+  eventType  AuditEventType
+  success    Boolean
+  ipAddress  String?
+  userAgent  String?
+  requestId  String?
+  metadata   Json?
+  occurredAt DateTime       @default(now())
+
+  user    User?    @relation(fields: [userId], references: [id])
+  company Company? @relation(fields: [companyId], references: [id])
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([eventType])
+  @@index([occurredAt])
+}
+
+model Department {
+  id                  String           @id @default(uuid())
+  companyId           String
+  name                String
+  code                String?
+  description         String?
+  parentDepartmentId  String?
+  managerMembershipId String?
+  status              DepartmentStatus @default(ACTIVE)
+  sortOrder           Int              @default(0)
+  createdByUserId     String
+  updatedByUserId     String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  deletedAt           DateTime?
+
+  company               Company                @relation(fields: [companyId], references: [id])
+  parentDepartment      Department?            @relation("DepartmentHierarchy", fields: [parentDepartmentId], references: [id])
+  childDepartments      Department[]           @relation("DepartmentHierarchy")
+  managerMembership     CompanyMembership?     @relation(fields: [managerMembershipId], references: [id])
+  departmentMemberships DepartmentMembership[]
+  invitations           CompanyInvitation[]
+  Job                   Job[]
+  JobTemplate           JobTemplate[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([status])
+  @@index([parentDepartmentId])
+  @@index([managerMembershipId])
+}
+
+model CompanyLocation {
+  id              String         @id @default(uuid())
+  companyId       String
+  name            String
+  type            LocationType   @default(HEAD_OFFICE)
+  addressLine1    String
+  addressLine2    String?
+  city            String
+  stateOrProvince String?
+  postalCode      String?
+  countryCode     String
+  timezone        String         @default("UTC")
+  phone           String?
+  email           String?
+  latitude        Float?
+  longitude       Float?
+  isPrimary       Boolean        @default(false)
+  status          LocationStatus @default(ACTIVE)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+
+  company Company @relation(fields: [companyId], references: [id])
+  Job     Job[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([countryCode])
+  @@index([isPrimary])
+}
+
+model CompanySettings {
+  id                              String        @id @default(uuid())
+  companyId                       String        @unique
+  requireEmailVerification        Boolean       @default(true)
+  allowCustomRoles                Boolean       @default(false)
+  allowCandidateDataExport        Boolean       @default(false)
+  defaultApplicationRetentionDays Int           @default(365)
+  defaultInterviewDurationMinutes Int           @default(60)
+  defaultInterviewTimezone        String        @default("UTC")
+  defaultInterviewLanguage        String        @default("en")
+  aiScreeningEnabled              Boolean       @default(false)
+  aiInterviewEnabled              Boolean       @default(false)
+  recruiterOverrideRequired       Boolean       @default(false)
+  notifyRecruiterOnNewApplication Boolean       @default(true)
+  notifyCandidateOnStatusChange   Boolean       @default(true)
+  emailSenderName                 String?
+  emailReplyTo                    String?
+  brandPrimaryColor               String?
+  brandSecondaryColor             String?
+  dataRetentionEnabled            Boolean       @default(false)
+  candidateDataRetentionDays      Int?
+  interviewRecordingRetentionDays Int?
+  requireJobApproval              Boolean       @default(true)
+  defaultJobApproverRole          String?
+  recruitersCanPublish            Boolean       @default(false)
+  defaultJobVisibility            JobVisibility @default(INTERNAL)
+  defaultApplicationDeadlineDays  Int?
+  defaultCurrency                 String?
+  salaryVisibilityDefault         Boolean       @default(false)
+  allowPublicSalaryRanges         Boolean       @default(false)
+  jobCodePrefix                   String?
+  careersPageEnabled              Boolean       @default(false)
+  externalPostingEnabled          Boolean       @default(false)
+  requireAccessibilityReview      Boolean       @default(false)
+  requireScreeningFairnessReview  Boolean       @default(true)
+  autoArchiveClosedJobsAfterDays  Int?
+  createdAt                       DateTime      @default(now())
+  updatedAt                       DateTime      @updatedAt
+  updatedByUserId                 String?
+
+  company Company @relation(fields: [companyId], references: [id])
+}
+
+model CompanyInvitation {
+  id              String           @id @default(uuid())
+  companyId       String
+  email           String
+  normalizedEmail String
+  roleId          String
+  departmentId    String?
+  jobTitle        String?
+  invitedByUserId String
+  tokenHash       String
+  status          InvitationStatus @default(PENDING)
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  revokedAt       DateTime?
+  lastSentAt      DateTime         @default(now())
+  sendCount       Int              @default(1)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  company      Company            @relation(fields: [companyId], references: [id])
+  role         Role               @relation(fields: [roleId], references: [id])
+  department   Department?        @relation(fields: [departmentId], references: [id])
+  invitedBy    User               @relation(fields: [invitedByUserId], references: [id])
+  membership   CompanyMembership? @relation(fields: [membershipId], references: [id])
+  membershipId String?
+
+  @@index([companyId])
+  @@index([normalizedEmail])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([invitedByUserId])
+}
+
+model DepartmentMembership {
+  id                  String   @id @default(uuid())
+  companyMembershipId String
+  departmentId        String
+  isPrimary           Boolean  @default(false)
+  createdAt           DateTime @default(now())
+
+  membership CompanyMembership @relation(fields: [companyMembershipId], references: [id])
+  department Department        @relation(fields: [departmentId], references: [id])
+
+  @@unique([companyMembershipId, departmentId])
+  @@index([companyMembershipId])
+  @@index([departmentId])
+}
+
+model OrganizationAuditEvent {
+  id                String                     @id @default(uuid())
+  companyId         String
+  actorUserId       String?
+  actorMembershipId String?
+  eventType         OrganizationAuditEventType
+  entityType        String
+  entityId          String?
+  description       String
+  metadata          Json?
+  requestId         String?
+  ipAddress         String?
+  occurredAt        DateTime                   @default(now())
+
+  company Company? @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([eventType])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([occurredAt])
+}
+
+enum JobStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  PAUSED
+  CLOSED
+  FILLED
+  CANCELLED
+  ARCHIVED
+}
+
+enum JobVisibility {
+  INTERNAL
+  PUBLIC
+  PRIVATE
+  UNLISTED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  TEMPORARY
+  INTERNSHIP
+  VOLUNTEER
+  FREELANCE
+  APPRENTICESHIP
+  OTHER
+}
+
+enum WorkplaceType {
+  ON_SITE
+  REMOTE
+  HYBRID
+  FLEXIBLE
+}
+
+enum ExperienceLevel {
+  ENTRY
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+  MANAGER
+  DIRECTOR
+  EXECUTIVE
+  NOT_SPECIFIED
+}
+
+enum EducationLevel {
+  NONE
+  SECONDARY
+  CERTIFICATE
+  DIPLOMA
+  ASSOCIATE
+  BACHELORS
+  MASTERS
+  DOCTORATE
+  PROFESSIONAL
+  OTHER
+}
+
+enum RequirementImportance {
+  REQUIRED
+  PREFERRED
+  OPTIONAL
+}
+
+enum SkillType {
+  TECHNICAL
+  SOFT
+  LANGUAGE
+  CERTIFICATION
+  TOOL
+  DOMAIN
+  OTHER
+}
+
+enum ScreeningQuestionType {
+  SHORT_TEXT
+  LONG_TEXT
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  YES_NO
+  NUMBER
+  DATE
+  FILE
+  VIDEO
+  AUDIO
+  URL
+}
+
+enum JobApprovalStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+enum JobPublicationStatus {
+  NOT_PUBLISHED
+  QUEUED
+  PUBLISHED
+  PARTIALLY_PUBLISHED
+  FAILED
+  UNPUBLISHED
+}
+
+enum JobCollaboratorType {
+  OWNER
+  RECRUITER
+  HIRING_MANAGER
+  INTERVIEWER
+  REVIEWER
+  OBSERVER
+}
+
+enum PipelineStageType {
+  APPLIED
+  SCREENING
+  ASSESSMENT
+  AI_INTERVIEW
+  RECRUITER_INTERVIEW
+  TECHNICAL_INTERVIEW
+  FINAL_INTERVIEW
+  REFERENCE_CHECK
+  OFFER
+  HIRED
+  REJECTED
+  CUSTOM
+}
+
+enum ExternalPostingProvider {
+  COMPANY_CAREERS_PAGE
+  LINKEDIN
+  FACEBOOK
+  X
+  INDEED
+  GLASSDOOR
+  BRIGHTERMONDAY
+  JOBS_UGANDA
+  CUSTOM_WEBHOOK
+  OTHER
+}
+
+enum JobActivityEventType {
+  JOB_CREATED
+  JOB_UPDATED
+  JOB_DUPLICATED
+  JOB_SUBMITTED_FOR_APPROVAL
+  JOB_APPROVED
+  JOB_REJECTED
+  JOB_CHANGES_REQUESTED
+  JOB_SCHEDULED
+  JOB_PUBLISHED
+  JOB_PUBLICATION_FAILED
+  JOB_PAUSED
+  JOB_RESUMED
+  JOB_CLOSED
+  JOB_FILLED
+  JOB_CANCELLED
+  JOB_ARCHIVED
+  JOB_RESTORED
+  COLLABORATOR_ADDED
+  COLLABORATOR_UPDATED
+  COLLABORATOR_REMOVED
+  SCREENING_CONFIG_UPDATED
+  PIPELINE_UPDATED
+  TEMPLATE_CREATED
+  TEMPLATE_UPDATED
+  TEMPLATE_ARCHIVED
+}
+
+model Job {
+  id                        String               @id @default(uuid())
+  companyId                 String
+  jobCode                   String
+  slug                      String
+  title                     String
+  departmentId              String?
+  locationId                String?
+  employmentType            EmploymentType
+  workplaceType             WorkplaceType
+  experienceLevel           ExperienceLevel
+  status                    JobStatus            @default(DRAFT)
+  visibility                JobVisibility        @default(INTERNAL)
+  approvalStatus            JobApprovalStatus    @default(NOT_REQUIRED)
+  publicationStatus         JobPublicationStatus @default(NOT_PUBLISHED)
+  description               String
+  responsibilities          String?
+  qualifications            String?
+  benefits                  String?
+  applicationInstructions   String?
+  internalNotes             String?
+  numberOfOpenings          Int                  @default(1)
+  salaryMin                 Decimal?
+  salaryMax                 Decimal?
+  salaryCurrency            String?
+  salaryPeriod              String?
+  salaryVisible             Boolean              @default(false)
+  remoteCountryRestrictions Json?
+  applicationDeadline       DateTime?
+  expectedStartDate         DateTime?
+  publishedAt               DateTime?
+  scheduledPublishAt        DateTime?
+  closedAt                  DateTime?
+  filledAt                  DateTime?
+  archivedAt                DateTime?
+  createdByMembershipId     String
+  updatedByMembershipId     String?
+  ownerMembershipId         String
+  templateId                String?
+  version                   Int                  @default(1)
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+  deletedAt                 DateTime?
+
+  company         Company            @relation(fields: [companyId], references: [id])
+  department      Department?        @relation(fields: [departmentId], references: [id])
+  location        CompanyLocation?   @relation(fields: [locationId], references: [id])
+  template        JobTemplate?       @relation(fields: [templateId], references: [id])
+  ownerMembership CompanyMembership  @relation("JobOwner", fields: [ownerMembershipId], references: [id])
+  createdBy       CompanyMembership  @relation("JobCreatedBy", fields: [createdByMembershipId], references: [id])
+  updatedBy       CompanyMembership? @relation("JobUpdatedBy", fields: [updatedByMembershipId], references: [id])
+
+  screeningConfig        JobScreeningConfiguration?
+  accessibilityConfig    JobAccessibilityConfiguration?
+  pipeline               JobPipeline?
+  skills                 JobSkill[]
+  educationRequirements  JobEducationRequirement[]
+  experienceRequirements JobExperienceRequirement[]
+  languageRequirements   JobLanguageRequirement[]
+  screeningQuestions     JobScreeningQuestion[]
+  approvals              JobApproval[]
+  collaborators          JobCollaborator[]
+  publications           JobPublication[]
+  activityEvents         JobActivityEvent[]
+
+  // Phase 2.2
+  applications Application[]
+
+  // Phase 2.3
+  interviews Interview[]
+
+  @@unique([companyId, jobCode])
+  @@unique([companyId, slug])
+  @@index([companyId])
+  @@index([status])
+  @@index([departmentId])
+  @@index([locationId])
+  @@index([ownerMembershipId])
+  @@index([employmentType])
+  @@index([workplaceType])
+  @@index([visibility])
+  @@index([publicationStatus])
+  @@index([createdAt])
+  @@index([applicationDeadline])
+}
+
+model JobTemplate {
+  id                        String           @id @default(uuid())
+  companyId                 String
+  name                      String
+  description               String?
+  category                  String?
+  departmentId              String?
+  employmentType            EmploymentType?
+  workplaceType             WorkplaceType?
+  experienceLevel           ExperienceLevel?
+  titleTemplate             String?
+  descriptionTemplate       String
+  responsibilitiesTemplate  String?
+  qualificationsTemplate    String?
+  benefitsTemplate          String?
+  defaultPipelineTemplateId String?
+  isSystem                  Boolean          @default(false)
+  isActive                  Boolean          @default(true)
+  usageCount                Int              @default(0)
+  createdByMembershipId     String
+  updatedByMembershipId     String?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+  deletedAt                 DateTime?
+
+  company    Company            @relation(fields: [companyId], references: [id])
+  department Department?        @relation(fields: [departmentId], references: [id])
+  createdBy  CompanyMembership  @relation("TemplateCreatedBy", fields: [createdByMembershipId], references: [id])
+  updatedBy  CompanyMembership? @relation("TemplateUpdatedBy", fields: [updatedByMembershipId], references: [id])
+
+  jobs Job[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@index([isActive])
+}
+
+model Skill {
+  id             String    @id @default(uuid())
+  normalizedName String
+  displayName    String
+  type           SkillType
+  description    String?
+  aliases        Json?
+  isGlobal       Boolean   @default(false)
+  companyId      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  company        Company?         @relation(fields: [companyId], references: [id])
+  jobSkills      JobSkill[]
+  CandidateSkill CandidateSkill[]
+
+  @@unique([normalizedName, type, companyId])
+  @@index([normalizedName])
+  @@index([type])
+  @@index([companyId])
+}
+
+model JobSkill {
+  id               String                @id @default(uuid())
+  jobId            String
+  skillId          String
+  importance       RequirementImportance
+  minimumYears     Decimal?
+  proficiencyLevel String?
+  weight           Decimal?
+  notes            String?
+  createdAt        DateTime              @default(now())
+
+  job   Job   @relation(fields: [jobId], references: [id])
+  skill Skill @relation(fields: [skillId], references: [id])
+
+  @@unique([jobId, skillId])
+  @@index([jobId])
+  @@index([skillId])
+}
+
+model JobEducationRequirement {
+  id           String                @id @default(uuid())
+  jobId        String
+  level        EducationLevel
+  fieldOfStudy String?
+  importance   RequirementImportance
+  minimumGrade String?
+  notes        String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id])
+
+  @@index([jobId])
+}
+
+model JobExperienceRequirement {
+  id           String                @id @default(uuid())
+  jobId        String
+  title        String?
+  domain       String?
+  minimumYears Decimal
+  maximumYears Decimal?
+  importance   RequirementImportance
+  description  String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id])
+
+  @@index([jobId])
+}
+
+model JobLanguageRequirement {
+  id               String                @id @default(uuid())
+  jobId            String
+  languageCode     String
+  proficiency      String
+  importance       RequirementImportance
+  interviewAllowed Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+
+  job Job @relation(fields: [jobId], references: [id])
+
+  @@unique([jobId, languageCode])
+  @@index([jobId])
+}
+
+model JobScreeningQuestion {
+  id                  String                @id @default(uuid())
+  jobId               String
+  question            String
+  description         String?
+  type                ScreeningQuestionType
+  options             Json?
+  required            Boolean               @default(true)
+  disqualifying       Boolean               @default(false)
+  expectedAnswer      Json?
+  minimumScore        Decimal?
+  maximumScore        Decimal?
+  weight              Decimal?
+  sortOrder           Int
+  aiEvaluationAllowed Boolean               @default(false)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  deletedAt           DateTime?
+
+  job Job @relation(fields: [jobId], references: [id])
+
+  // Phase 2.2
+  screeningAnswers ApplicationScreeningAnswer[]
+
+  @@index([jobId])
+}
+
+model JobScreeningConfiguration {
+  id                                    String   @id @default(uuid())
+  jobId                                 String   @unique
+  enabled                               Boolean  @default(true)
+  minimumOverallScore                   Decimal?
+  automaticShortlistingEnabled          Boolean  @default(false)
+  automaticRejectionEnabled             Boolean  @default(false)
+  requireRecruiterApproval              Boolean  @default(true)
+  cvWeight                              Decimal?
+  screeningQuestionWeight               Decimal?
+  skillsWeight                          Decimal?
+  experienceWeight                      Decimal?
+  educationWeight                       Decimal?
+  assessmentWeight                      Decimal?
+  aiExplanationRequired                 Boolean  @default(true)
+  fairnessReviewRequired                Boolean  @default(true)
+  disabledCandidateAccommodationEnabled Boolean  @default(true)
+  createdAt                             DateTime @default(now())
+  updatedAt                             DateTime @updatedAt
+  updatedByMembershipId                 String?
+
+  job       Job                @relation(fields: [jobId], references: [id])
+  updatedBy CompanyMembership? @relation("ScreeningConfigUpdatedBy", fields: [updatedByMembershipId], references: [id])
+
+  @@index([jobId])
+}
+
+model JobAccessibilityConfiguration {
+  id                                       String   @id @default(uuid())
+  jobId                                    String   @unique
+  accommodationsSupported                  String?
+  physicalRequirements                     String?
+  essentialFunctions                       String?
+  remoteAccommodationAvailable             Boolean  @default(false)
+  signLanguageInterpreterAvailable         Boolean  @default(false)
+  screenReaderCompatibleAssessmentRequired Boolean  @default(false)
+  extendedTimeAvailable                    Boolean  @default(false)
+  alternativeInterviewFormatAvailable      Boolean  @default(false)
+  candidateDisclosureOptional              Boolean  @default(true)
+  disabilityDataRestricted                 Boolean  @default(true)
+  notesVisibleToAuthorizedRecruitersOnly   String?
+  createdAt                                DateTime @default(now())
+  updatedAt                                DateTime @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id])
+}
+
+model JobPipeline {
+  id                    String   @id @default(uuid())
+  jobId                 String   @unique
+  name                  String   @default("Default Pipeline")
+  description           String?
+  isActive              Boolean  @default(true)
+  version               Int      @default(1)
+  createdByMembershipId String
+  updatedByMembershipId String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  job       Job                @relation(fields: [jobId], references: [id])
+  createdBy CompanyMembership  @relation("PipelineCreatedBy", fields: [createdByMembershipId], references: [id])
+  updatedBy CompanyMembership? @relation("PipelineUpdatedBy", fields: [updatedByMembershipId], references: [id])
+
+  stages JobPipelineStage[]
+
+  @@index([jobId])
+}
+
+model JobPipelineStage {
+  id                        String            @id @default(uuid())
+  pipelineId                String
+  name                      String
+  type                      PipelineStageType
+  description               String?
+  sortOrder                 Int
+  required                  Boolean           @default(true)
+  autoAdvanceEnabled        Boolean           @default(false)
+  requiresRecruiterApproval Boolean           @default(false)
+  slaHours                  Int?
+  interviewType             String?
+  assessmentTemplateId      String?
+  configuration             Json?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  deletedAt                 DateTime?
+
+  pipeline JobPipeline @relation(fields: [pipelineId], references: [id])
+
+  // Phase 2.2
+  currentApplications Application[]             @relation("ApplicationCurrentStage")
+  stageHistoryFrom    ApplicationStageHistory[] @relation("HistoryFromStage")
+  stageHistoryTo      ApplicationStageHistory[] @relation("HistoryToStage")
+  Interview           Interview[]
+
+  @@unique([pipelineId, sortOrder])
+  @@index([pipelineId])
+}
+
+model JobApproval {
+  id                           String            @id @default(uuid())
+  jobId                        String
+  requestedByMembershipId      String
+  assignedApproverMembershipId String
+  status                       JobApprovalStatus
+  message                      String?
+  requestedAt                  DateTime          @default(now())
+  reviewedAt                   DateTime?
+  reviewedByMembershipId       String?
+  reviewNotes                  String?
+  createdAt                    DateTime          @default(now())
+  updatedAt                    DateTime          @updatedAt
+
+  job              Job                @relation(fields: [jobId], references: [id])
+  requestedBy      CompanyMembership  @relation("ApprovalRequestedBy", fields: [requestedByMembershipId], references: [id])
+  assignedApprover CompanyMembership  @relation("ApprovalAssignedTo", fields: [assignedApproverMembershipId], references: [id])
+  reviewedBy       CompanyMembership? @relation("ApprovalReviewedBy", fields: [reviewedByMembershipId], references: [id])
+
+  @@index([jobId])
+  @@index([status])
+}
+
+model JobCollaborator {
+  id                     String              @id @default(uuid())
+  jobId                  String
+  companyMembershipId    String
+  type                   JobCollaboratorType
+  canEdit                Boolean             @default(false)
+  canReviewCandidates    Boolean             @default(false)
+  canScheduleInterviews  Boolean             @default(false)
+  canViewSalary          Boolean             @default(false)
+  canPublish             Boolean             @default(false)
+  assignedByMembershipId String
+  assignedAt             DateTime            @default(now())
+  removedAt              DateTime?
+
+  job        Job               @relation(fields: [jobId], references: [id])
+  membership CompanyMembership @relation(fields: [companyMembershipId], references: [id])
+  assignedBy CompanyMembership @relation("CollaboratorAssignedBy", fields: [assignedByMembershipId], references: [id])
+
+  @@unique([jobId, companyMembershipId, type])
+  @@index([jobId])
+  @@index([companyMembershipId])
+}
+
+model JobPublication {
+  id                      String                  @id @default(uuid())
+  jobId                   String
+  provider                ExternalPostingProvider
+  externalAccountId       String?
+  externalPostingId       String?
+  externalUrl             String?
+  status                  JobPublicationStatus
+  publishRequestedAt      DateTime                @default(now())
+  publishedAt             DateTime?
+  lastSyncedAt            DateTime?
+  unpublishedAt           DateTime?
+  failureCode             String?
+  failureMessage          String?
+  retryCount              Int                     @default(0)
+  requestedByMembershipId String
+  metadata                Json?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+
+  job         Job               @relation(fields: [jobId], references: [id])
+  requestedBy CompanyMembership @relation(fields: [requestedByMembershipId], references: [id])
+
+  @@unique([jobId, provider])
+  @@index([jobId])
+  @@index([provider])
+}
+
+model JobActivityEvent {
+  id                String               @id @default(uuid())
+  companyId         String
+  jobId             String
+  actorUserId       String?
+  actorMembershipId String?
+  eventType         JobActivityEventType
+  description       String
+  metadata          Json?
+  requestId         String?
+  occurredAt        DateTime             @default(now())
+
+  company Company? @relation(fields: [companyId], references: [id])
+  job     Job      @relation(fields: [jobId], references: [id])
+
+  @@index([companyId])
+  @@index([jobId])
+  @@index([eventType])
+  @@index([occurredAt])
+}
+
+enum CandidateStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+  MERGED
+  ANONYMIZED
+  DELETED
+}
+
+enum CandidateSource {
+  CAREERS_PAGE
+  RECRUITER_CREATED
+  REFERRAL
+  LINKEDIN
+  FACEBOOK
+  JOB_BOARD
+  AGENCY
+  IMPORT
+  EVENT
+  INTERNAL
+  OTHER
+}
+
+enum CandidateLanguageProficiency {
+  BASIC
+  CONVERSATIONAL
+  PROFESSIONAL
+  FLUENT
+  NATIVE
+}
+
+enum EmploymentRecordType {
+  EMPLOYMENT
+  INTERNSHIP
+  VOLUNTEER
+  FREELANCE
+  CONTRACT
+  APPRENTICESHIP
+  OTHER
+}
+
+enum EducationStatus {
+  COMPLETED
+  IN_PROGRESS
+  INCOMPLETE
+}
+
+enum CandidateConsentType {
+  PRIVACY_POLICY
+  TERMS
+  RECRUITMENT_PROCESSING
+  TALENT_POOL
+  INTERVIEW_RECORDING
+  AI_PROCESSING
+  MARKETING
+  DATA_SHARING
+  BACKGROUND_CHECK
+}
+
+enum ConsentStatus {
+  GRANTED
+  REVOKED
+  EXPIRED
+}
+
+enum DuplicateMatchCategory {
+  EXACT
+  HIGH
+  POSSIBLE
+}
+
+enum CandidateAuditEventType {
+  CANDIDATE_CREATED
+  CANDIDATE_UPDATED
+  CANDIDATE_ARCHIVED
+  CANDIDATE_RESTORED
+  CANDIDATE_BLOCKED
+  CANDIDATE_UNBLOCKED
+  CANDIDATE_MERGE_PREVIEWED
+  CANDIDATE_MERGED
+  CANDIDATE_ANONYMIZED
+  CANDIDATE_SKILL_ADDED
+  CANDIDATE_SKILL_UPDATED
+  CANDIDATE_SKILL_REMOVED
+  CANDIDATE_EMPLOYMENT_ADDED
+  CANDIDATE_EMPLOYMENT_UPDATED
+  CANDIDATE_EMPLOYMENT_REMOVED
+  CANDIDATE_EDUCATION_ADDED
+  CANDIDATE_EDUCATION_UPDATED
+  CANDIDATE_EDUCATION_REMOVED
+  CANDIDATE_CERTIFICATION_ADDED
+  CANDIDATE_CERTIFICATION_UPDATED
+  CANDIDATE_CERTIFICATION_REMOVED
+  CANDIDATE_LANGUAGE_ADDED
+  CANDIDATE_LANGUAGE_UPDATED
+  CANDIDATE_LANGUAGE_REMOVED
+  CONSENT_GRANTED
+  CONSENT_REVOKED
+}
+
+model Candidate {
+  id                    String          @id @default(uuid())
+  firstName             String
+  middleName            String?
+  lastName              String
+  email                 String?
+  normalizedEmail       String?
+  phone                 String?
+  normalizedPhone       String?
+  alternatePhone        String?
+  dateOfBirth           DateTime?
+  city                  String?
+  stateOrProvince       String?
+  countryCode           String?
+  postalCode            String?
+  headline              String?
+  summary               String?
+  currentJobTitle       String?
+  currentEmployer       String?
+  totalExperienceYears  Decimal?
+  preferredLocale       String          @default("en")
+  timezone              String          @default("UTC")
+  status                CandidateStatus @default(ACTIVE)
+  source                CandidateSource
+  sourceDetail          String?
+  linkedInUrl           String?
+  portfolioUrl          String?
+  personalWebsiteUrl    String?
+  willingToRelocate     Boolean?
+  remoteWorkPreference  Boolean?
+  salaryExpectationMin  Decimal?
+  salaryExpectationMax  Decimal?
+  salaryCurrency        String?
+  noticePeriodDays      Int?
+  availableFrom         DateTime?
+  lastProfileUpdatedAt  DateTime?
+  duplicateFingerprint  String?
+  version               Int             @default(1)
+  mergedIntoCandidateId String?
+  mergedIntoCandidate   Candidate?      @relation("CandidateMergeTarget", fields: [mergedIntoCandidateId], references: [id])
+  mergeSources          Candidate[]     @relation("CandidateMergeTarget")
+  anonymizedAt          DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  deletedAt             DateTime?
+
+  skills                CandidateSkill[]
+  employmentRecords     CandidateEmployment[]
+  educationRecords      CandidateEducation[]
+  certifications        CandidateCertification[]
+  languages             CandidateLanguage[]
+  consents              CandidateConsent[]
+  mergeRecordsAsPrimary CandidateMergeRecord[]   @relation("MergePrimary")
+  mergeRecordsAsMerged  CandidateMergeRecord[]   @relation("MergeMerged")
+  auditEvents           CandidateAuditEvent[]
+
+  // Phase 2.2
+  companyCandidates CompanyCandidate[]
+  applications      Application[]
+
+  @@index([normalizedEmail])
+  @@index([normalizedPhone])
+  @@index([status])
+  @@index([source])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([mergedIntoCandidateId])
+  @@index([duplicateFingerprint])
+}
+
+model CandidateSkill {
+  id                 String    @id @default(uuid())
+  candidateId        String
+  skillId            String
+  proficiencyLevel   String?
+  yearsOfExperience  Decimal?
+  lastUsedAt         DateTime?
+  verified           Boolean   @default(false)
+  verificationSource String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  skill     Skill     @relation(fields: [skillId], references: [id])
+
+  @@unique([candidateId, skillId])
+  @@index([candidateId])
+  @@index([skillId])
+  @@index([verified])
+}
+
+model CandidateEmployment {
+  id               String               @id @default(uuid())
+  candidateId      String
+  type             EmploymentRecordType
+  companyName      String
+  jobTitle         String
+  location         String?
+  startDate        DateTime
+  endDate          DateTime?
+  currentlyWorking Boolean              @default(false)
+  description      String?
+  achievements     String?
+  industry         String?
+  sortOrder        Int                  @default(0)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@index([startDate])
+  @@index([currentlyWorking])
+}
+
+model CandidateEducation {
+  id           String          @id @default(uuid())
+  candidateId  String
+  institution  String
+  level        EducationLevel
+  fieldOfStudy String?
+  status       EducationStatus
+  startDate    DateTime?
+  endDate      DateTime?
+  grade        String?
+  description  String?
+  sortOrder    Int             @default(0)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@index([level])
+  @@index([status])
+}
+
+model CandidateCertification {
+  id                  String    @id @default(uuid())
+  candidateId         String
+  name                String
+  issuingOrganization String
+  issuedAt            DateTime?
+  expiresAt           DateTime?
+  credentialId        String?
+  credentialUrl       String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@index([issuingOrganization])
+  @@index([expiresAt])
+}
+
+model CandidateLanguage {
+  id                         String                       @id @default(uuid())
+  candidateId                String
+  languageCode               String
+  proficiency                CandidateLanguageProficiency
+  preferredInterviewLanguage Boolean                      @default(false)
+  createdAt                  DateTime                     @default(now())
+  updatedAt                  DateTime                     @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, languageCode])
+  @@index([candidateId])
+  @@index([languageCode])
+  @@index([preferredInterviewLanguage])
+}
+
+model CandidateConsent {
+  id            String               @id @default(uuid())
+  candidateId   String
+  companyId     String?
+  type          CandidateConsentType
+  status        ConsentStatus
+  policyVersion String
+  grantedAt     DateTime?
+  revokedAt     DateTime?
+  expiresAt     DateTime?
+  sourceIpHash  String?
+  userAgent     String?
+  metadata      Json?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  candidate Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+  @@index([companyId])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model CandidateMergeRecord {
+  id                   String   @id @default(uuid())
+  primaryCandidateId   String
+  mergedCandidateId    String
+  mergedByUserId       String?
+  mergedByMembershipId String?
+  reason               String?
+  fieldResolution      Json?
+  mergedAt             DateTime @default(now())
+
+  primaryCandidate Candidate @relation("MergePrimary", fields: [primaryCandidateId], references: [id])
+  mergedCandidate  Candidate @relation("MergeMerged", fields: [mergedCandidateId], references: [id])
+
+  @@unique([primaryCandidateId, mergedCandidateId])
+  @@index([primaryCandidateId])
+  @@index([mergedCandidateId])
+  @@index([mergedAt])
+}
+
+model CandidateAuditEvent {
+  id                String                  @id @default(uuid())
+  candidateId       String
+  companyId         String?
+  actorUserId       String?
+  actorMembershipId String?
+  eventType         CandidateAuditEventType
+  entityType        String
+  entityId          String?
+  description       String
+  metadata          Json?
+  requestId         String?
+  occurredAt        DateTime                @default(now())
+
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  @@index([candidateId])
+  @@index([companyId])
+  @@index([eventType])
+  @@index([entityType])
+  @@index([occurredAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 2.2 — COMPANYCANDIDATE + APPLICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum CompanyCandidateStatus {
+  ACTIVE
+  ARCHIVED
+  DO_NOT_CONTACT
+  BLOCKED
+}
+
+enum CandidateTagType {
+  GENERAL
+  SKILL
+  PRIORITY
+  SOURCE
+  CUSTOM
+}
+
+enum CandidateNoteVisibility {
+  PRIVATE
+  HIRING_TEAM
+  COMPANY
+}
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  SCREENING
+  SHORTLISTED
+  ASSESSMENT
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+  DISQUALIFIED
+  ON_HOLD
+  ARCHIVED
+}
+
+enum ApplicationActorType {
+  CANDIDATE
+  RECRUITER
+  SYSTEM
+  AI
+  IMPORT
+  API
+}
+
+enum ApplicationAssignmentType {
+  OWNER
+  RECRUITER
+  HIRING_MANAGER
+  REVIEWER
+}
+
+enum ApplicationDecisionType {
+  NONE
+  SHORTLIST
+  REJECT
+  HOLD
+  ADVANCE
+  OFFER
+  HIRE
+  DISQUALIFY
+  WITHDRAW
+}
+
+enum ApplicationFlagType {
+  DUPLICATE
+  MISSING_INFORMATION
+  INCOMPLETE_RESUME
+  SCREENING_CONCERN
+  INTEGRITY_REVIEW
+  ACCOMMODATION_REQUIRED
+  MANUAL_REVIEW
+  FUTURE_AI_FLAG
+  OTHER
+}
+
+enum ApplicationFlagSeverity {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ApplicationAuditEventType {
+  COMPANY_CANDIDATE_CREATED
+  COMPANY_CANDIDATE_UPDATED
+  COMPANY_CANDIDATE_ARCHIVED
+  COMPANY_CANDIDATE_RESTORED
+  COMPANY_CANDIDATE_OWNER_CHANGED
+  COMPANY_CANDIDATE_TAG_ADDED
+  COMPANY_CANDIDATE_TAG_REMOVED
+  COMPANY_CANDIDATE_NOTE_ADDED
+  COMPANY_CANDIDATE_NOTE_UPDATED
+  COMPANY_CANDIDATE_NOTE_DELETED
+  APPLICATION_CREATED
+  APPLICATION_SUBMITTED
+  APPLICATION_UPDATED
+  APPLICATION_STAGE_CHANGED
+  APPLICATION_SHORTLISTED
+  APPLICATION_REJECTED
+  APPLICATION_RESTORED
+  APPLICATION_WITHDRAWN
+  APPLICATION_HIRED
+  APPLICATION_ASSIGNED
+  APPLICATION_OWNER_CHANGED
+  APPLICATION_FLAG_ADDED
+  APPLICATION_FLAG_RESOLVED
+  APPLICATION_DECISION_CREATED
+  APPLICATION_DECISION_OVERRIDDEN
+  APPLICATION_SCREENING_ANSWERS_UPDATED
+  APPLICATION_ARCHIVED
+  APPLICATION_RESTORED_FROM_ARCHIVE
+}
+
+// ─── CompanyCandidate ────────────────────────────────────────────────────────
+
+model CompanyCandidate {
+  id                    String                 @id @default(uuid())
+  companyId             String
+  candidateId           String
+  status                CompanyCandidateStatus @default(ACTIVE)
+  ownerMembershipId     String?
+  source                CandidateSource
+  sourceDetail          String?
+  firstSeenAt           DateTime               @default(now())
+  lastActivityAt        DateTime               @default(now())
+  talentPoolEnabled     Boolean                @default(false)
+  doNotContact          Boolean                @default(false)
+  doNotContactReason    String?
+  rating                Decimal?
+  internalSummary       String?
+  createdByMembershipId String?
+  updatedByMembershipId String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+  version               Int                    @default(1)
+
+  company   Company            @relation(fields: [companyId], references: [id])
+  candidate Candidate          @relation(fields: [candidateId], references: [id])
+  owner     CompanyMembership? @relation("CompanyCandidateOwner", fields: [ownerMembershipId], references: [id])
+  createdBy CompanyMembership? @relation("CompanyCandidateCreatedBy", fields: [createdByMembershipId], references: [id])
+  updatedBy CompanyMembership? @relation("CompanyCandidateUpdatedBy", fields: [updatedByMembershipId], references: [id])
+
+  tags         CompanyCandidateTag[]
+  notes        CompanyCandidateNote[]
+  applications Application[]
+
+  @@unique([companyId, candidateId])
+  @@index([companyId])
+  @@index([candidateId])
+  @@index([status])
+  @@index([ownerMembershipId])
+  @@index([lastActivityAt])
+  @@index([createdAt])
+}
+
+// ─── CandidateTag ─────────────────────────────────────────────────────────────
+
+model CandidateTag {
+  id                    String           @id @default(uuid())
+  companyId             String
+  name                  String
+  normalizedName        String
+  type                  CandidateTagType @default(GENERAL)
+  description           String?
+  color                 String?
+  createdByMembershipId String
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  deletedAt             DateTime?
+
+  company                   Company                    @relation(fields: [companyId], references: [id])
+  createdBy                 CompanyMembership          @relation("TagCreatedBy", fields: [createdByMembershipId], references: [id])
+  assignments               CompanyCandidateTag[]
+  applicationTagAssignments ApplicationTagAssignment[]
+
+  @@unique([companyId, normalizedName])
+  @@index([companyId])
+  @@index([type])
+  @@index([deletedAt])
+}
+
+// ─── CompanyCandidateTag ──────────────────────────────────────────────────────
+
+model CompanyCandidateTag {
+  id                     String   @id @default(uuid())
+  companyCandidateId     String
+  tagId                  String
+  assignedByMembershipId String
+  assignedAt             DateTime @default(now())
+
+  companyCandidate CompanyCandidate  @relation(fields: [companyCandidateId], references: [id], onDelete: Cascade)
+  tag              CandidateTag      @relation(fields: [tagId], references: [id])
+  assignedBy       CompanyMembership @relation("CandidateTagAssignedBy", fields: [assignedByMembershipId], references: [id])
+
+  @@unique([companyCandidateId, tagId])
+  @@index([companyCandidateId])
+  @@index([tagId])
+}
+
+// ─── CompanyCandidateNote ─────────────────────────────────────────────────────
+
+model CompanyCandidateNote {
+  id                 String                  @id @default(uuid())
+  companyId          String
+  companyCandidateId String
+  authorMembershipId String
+  content            String
+  visibility         CandidateNoteVisibility @default(PRIVATE)
+  editedAt           DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  company          Company           @relation(fields: [companyId], references: [id])
+  companyCandidate CompanyCandidate  @relation(fields: [companyCandidateId], references: [id], onDelete: Cascade)
+  author           CompanyMembership @relation("CandidateNoteAuthor", fields: [authorMembershipId], references: [id])
+
+  @@index([companyCandidateId])
+  @@index([companyId])
+  @@index([authorMembershipId])
+  @@index([deletedAt])
+}
+
+// ─── ApplicationCounter ───────────────────────────────────────────────────────
+
+model ApplicationCounter {
+  id        String   @id @default(uuid())
+  companyId String
+  year      Int
+  lastValue Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@unique([companyId, year])
+  @@index([companyId])
+}
+
+// ─── Application ──────────────────────────────────────────────────────────────
+
+model Application {
+  id                     String            @id @default(uuid())
+  companyId              String
+  jobId                  String
+  candidateId            String
+  companyCandidateId     String
+  applicationNumber      String
+  publicReference        String            @unique
+  status                 ApplicationStatus @default(DRAFT)
+  currentStageId         String?
+  source                 CandidateSource
+  sourceDetail           String?
+  submittedAt            DateTime?
+  withdrawnAt            DateTime?
+  withdrawalReason       String?
+  rejectedAt             DateTime?
+  rejectionReasonCode    String?
+  rejectionReasonDetails String?
+  disqualifiedAt         DateTime?
+  hiredAt                DateTime?
+  archivedAt             DateTime?
+  coverLetter            String?
+  expectedSalaryMin      Decimal?
+  expectedSalaryMax      Decimal?
+  salaryCurrency         String?
+  availabilityDate       DateTime?
+  noticePeriodDays       Int?
+  referralMembershipId   String?
+  referralName           String?
+  referralEmail          String?
+  consentConfirmed       Boolean           @default(false)
+  candidateSnapshot      Json?
+  jobSnapshot            Json?
+  screeningSnapshot      Json?
+  version                Int               @default(1)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  deletedAt              DateTime?
+
+  company          Company            @relation(fields: [companyId], references: [id])
+  job              Job                @relation(fields: [jobId], references: [id])
+  candidate        Candidate          @relation(fields: [candidateId], references: [id])
+  companyCandidate CompanyCandidate   @relation(fields: [companyCandidateId], references: [id])
+  currentStage     JobPipelineStage?  @relation("ApplicationCurrentStage", fields: [currentStageId], references: [id])
+  referral         CompanyMembership? @relation("ApplicationReferral", fields: [referralMembershipId], references: [id])
+
+  screeningAnswers ApplicationScreeningAnswer[]
+  stageHistory     ApplicationStageHistory[]
+  assignments      ApplicationAssignment[]
+  notes            ApplicationNote[]
+  flags            ApplicationFlag[]
+  decisions        ApplicationDecision[]
+  tagAssignments   ApplicationTagAssignment[]
+
+  // Phase 2.3
+  interviews Interview[]
+
+  @@unique([companyId, applicationNumber])
+  @@index([companyId])
+  @@index([jobId])
+  @@index([candidateId])
+  @@index([companyCandidateId])
+  @@index([status])
+  @@index([currentStageId])
+  @@index([applicationNumber])
+  @@index([publicReference])
+  @@index([submittedAt])
+  @@index([createdAt])
+}
+
+// ─── ApplicationTagAssignment ─────────────────────────────────────────────────
+
+model ApplicationTagAssignment {
+  id                     String   @id @default(uuid())
+  applicationId          String
+  tagId                  String
+  assignedByMembershipId String
+  assignedAt             DateTime @default(now())
+
+  application Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  tag         CandidateTag      @relation(fields: [tagId], references: [id])
+  assignedBy  CompanyMembership @relation("AppTagAssignedBy", fields: [assignedByMembershipId], references: [id])
+
+  @@unique([applicationId, tagId])
+  @@index([applicationId])
+  @@index([tagId])
+}
+
+// ─── ApplicationScreeningAnswer ───────────────────────────────────────────────
+
+model ApplicationScreeningAnswer {
+  id                   String    @id @default(uuid())
+  applicationId        String
+  questionId           String
+  answer               Json?
+  textAnswer           String?
+  numericAnswer        Decimal?
+  dateAnswer           DateTime?
+  fileId               String?
+  answeredAt           DateTime  @default(now())
+  isComplete           Boolean   @default(false)
+  recruiterReviewed    Boolean   @default(false)
+  recruiterReviewNotes String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  application Application          @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  question    JobScreeningQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([applicationId, questionId])
+  @@index([applicationId])
+  @@index([questionId])
+}
+
+// ─── ApplicationStageHistory ──────────────────────────────────────────────────
+
+model ApplicationStageHistory {
+  id                String               @id @default(uuid())
+  applicationId     String
+  fromStageId       String?
+  toStageId         String
+  fromStatus        ApplicationStatus?
+  toStatus          ApplicationStatus
+  actorType         ApplicationActorType
+  actorUserId       String?
+  actorMembershipId String?
+  reasonCode        String?
+  notes             String?
+  occurredAt        DateTime             @default(now())
+
+  application Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStage   JobPipelineStage? @relation("HistoryFromStage", fields: [fromStageId], references: [id])
+  toStage     JobPipelineStage  @relation("HistoryToStage", fields: [toStageId], references: [id])
+
+  @@index([applicationId])
+  @@index([occurredAt])
+}
+
+// ─── ApplicationAssignment ────────────────────────────────────────────────────
+
+model ApplicationAssignment {
+  id                     String                    @id @default(uuid())
+  applicationId          String
+  membershipId           String
+  type                   ApplicationAssignmentType
+  assignedByMembershipId String
+  assignedAt             DateTime                  @default(now())
+  removedAt              DateTime?
+
+  application Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  membership  CompanyMembership @relation("ApplicationAssignee", fields: [membershipId], references: [id])
+  assignedBy  CompanyMembership @relation("ApplicationAssigner", fields: [assignedByMembershipId], references: [id])
+
+  @@index([applicationId])
+  @@index([membershipId])
+  @@index([type])
+}
+
+// ─── ApplicationNote ──────────────────────────────────────────────────────────
+
+model ApplicationNote {
+  id                 String                  @id @default(uuid())
+  applicationId      String
+  companyId          String
+  authorMembershipId String
+  content            String
+  visibility         CandidateNoteVisibility @default(PRIVATE)
+  editedAt           DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  application Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  company     Company           @relation(fields: [companyId], references: [id])
+  author      CompanyMembership @relation("ApplicationNoteAuthor", fields: [authorMembershipId], references: [id])
+
+  @@index([applicationId])
+  @@index([companyId])
+  @@index([deletedAt])
+}
+
+// ─── ApplicationFlag ──────────────────────────────────────────────────────────
+
+model ApplicationFlag {
+  id                     String                  @id @default(uuid())
+  applicationId          String
+  type                   ApplicationFlagType
+  description            String?
+  severity               ApplicationFlagSeverity @default(MEDIUM)
+  createdByActorType     ApplicationActorType
+  createdByUserId        String?
+  createdByMembershipId  String?
+  resolved               Boolean                 @default(false)
+  resolvedByMembershipId String?
+  resolvedAt             DateTime?
+  resolutionNotes        String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  application Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  resolvedBy  CompanyMembership? @relation("FlagResolvedBy", fields: [resolvedByMembershipId], references: [id])
+  createdBy   CompanyMembership? @relation("FlagCreatedBy", fields: [createdByMembershipId], references: [id])
+
+  @@index([applicationId])
+  @@index([resolved])
+  @@index([type])
+}
+
+// ─── ApplicationDecision ─────────────────────────────────────────────────────
+
+model ApplicationDecision {
+  id                   String                  @id @default(uuid())
+  applicationId        String
+  type                 ApplicationDecisionType
+  actorType            ApplicationActorType
+  actorUserId          String?
+  actorMembershipId    String?
+  reasonCode           String?
+  explanation          String
+  score                Decimal?
+  confidence           Decimal?
+  evidence             Json?
+  aiProvider           String?
+  aiModel              String?
+  overriddenDecisionId String?
+  finalDecision        Boolean                 @default(false)
+  createdAt            DateTime                @default(now())
+
+  application        Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  actorMembership    CompanyMembership?    @relation("DecisionActor", fields: [actorMembershipId], references: [id])
+  overriddenDecision ApplicationDecision?  @relation("DecisionOverride", fields: [overriddenDecisionId], references: [id])
+  overrides          ApplicationDecision[] @relation("DecisionOverride")
+
+  @@index([applicationId])
+  @@index([type])
+  @@index([finalDecision])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 2.3 — INTERVIEW SCHEDULING
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum InterviewType {
+  PHONE
+  VIDEO
+  ONSITE
+  TECHNICAL
+  HR
+  PANEL
+  FINAL
+  AI
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  CONFIRMED
+  RESCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  EXPIRED
+}
+
+enum InterviewResult {
+  PASS
+  FAIL
+  HOLD
+  PENDING
+  NOT_RECORDED
+}
+
+enum InterviewParticipantRole {
+  INTERVIEWER
+  HIRING_MANAGER
+  RECRUITER
+  CANDIDATE
+  PANELIST
+  OBSERVER
+  NOTE_TAKER
+  COORDINATOR
+}
+
+enum InterviewParticipantStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  CANCELLED
+  ATTENDED
+  NO_SHOW
+}
+
+enum InterviewHistoryEventType {
+  INTERVIEW_SCHEDULED
+  INTERVIEW_RESCHEDULED
+  INTERVIEW_CONFIRMED
+  INTERVIEW_CANCELLED
+  INTERVIEW_STARTED
+  INTERVIEW_COMPLETED
+  INTERVIEW_NO_SHOW
+  INTERVIEW_RESULT_RECORDED
+  INTERVIEW_RESULT_CHANGED
+  PARTICIPANT_ADDED
+  PARTICIPANT_REMOVED
+  PARTICIPANT_STATUS_CHANGED
+  INTERVIEW_EXPIRED
+  INTERVIEW_UPDATED
+}
+
+model Interview {
+  id                    String          @id @default(uuid())
+  companyId             String
+  applicationId         String
+  jobId                 String
+  jobPipelineStageId    String?
+  type                  InterviewType
+  status                InterviewStatus @default(SCHEDULED)
+  result                InterviewResult @default(NOT_RECORDED)
+  title                 String
+  description           String?
+  location              String?
+  meetingLink           String?
+  meetingProvider       String?
+  meetingId             String?
+  scheduledAt           DateTime
+  durationMinutes       Int
+  timezone              String          @default("UTC")
+  language              String          @default("en")
+  notes                 String?
+  privateNotes          String?
+  cancelReason          String?
+  completedAt           DateTime?
+  resultNotes           String?
+  resultReasonCode      String?
+  configuration         Json?
+  version               Int             @default(1)
+  createdByMembershipId String
+  updatedByMembershipId String?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  deletedAt             DateTime?
+
+  company     Company            @relation(fields: [companyId], references: [id])
+  application Application        @relation(fields: [applicationId], references: [id])
+  job         Job                @relation(fields: [jobId], references: [id])
+  stage       JobPipelineStage?  @relation(fields: [jobPipelineStageId], references: [id])
+  createdBy   CompanyMembership  @relation("InterviewCreatedBy", fields: [createdByMembershipId], references: [id])
+  updatedBy   CompanyMembership? @relation("InterviewUpdatedBy", fields: [updatedByMembershipId], references: [id])
+
+  participants InterviewParticipant[]
+  history      InterviewHistory[]
+
+  @@index([companyId])
+  @@index([applicationId])
+  @@index([jobId])
+  @@index([jobPipelineStageId])
+  @@index([status])
+  @@index([type])
+  @@index([scheduledAt])
+  @@index([createdByMembershipId])
+  @@index([createdAt])
+}
+
+model InterviewParticipant {
+  id                  String                     @id @default(uuid())
+  interviewId         String
+  membershipId        String?
+  email               String?
+  firstName           String?
+  lastName            String?
+  role                InterviewParticipantRole
+  status              InterviewParticipantStatus @default(PENDING)
+  isRequired          Boolean                    @default(true)
+  sortOrder           Int                        @default(0)
+  notes               String?
+  respondedAt         DateTime?
+  externalCalendarId  String?
+  addedByMembershipId String
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  interview  Interview          @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  membership CompanyMembership? @relation("InterviewParticipantMembership", fields: [membershipId], references: [id])
+  addedBy    CompanyMembership  @relation("InterviewParticipantAddedBy", fields: [addedByMembershipId], references: [id])
+
+  @@unique([interviewId, membershipId])
+  @@index([interviewId])
+  @@index([membershipId])
+  @@index([role])
+  @@index([status])
+}
+
+model InterviewHistory {
+  id                String                    @id @default(uuid())
+  interviewId       String
+  eventType         InterviewHistoryEventType
+  actorUserId       String?
+  actorMembershipId String?
+  description       String
+  metadata          Json?
+  requestId         String?
+  occurredAt        DateTime                  @default(now())
+
+  interview Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@index([interviewId])
+  @@index([eventType])
+  @@index([occurredAt])
+}
+
+// ─── ApplicationAuditEvent ────────────────────────────────────────────────────
+
+model ApplicationAuditEvent {
+  id                 String                    @id @default(uuid())
+  companyId          String
+  applicationId      String?
+  companyCandidateId String?
+  candidateId        String?
+  actorUserId        String?
+  actorMembershipId  String?
+  actorType          ApplicationActorType
+  eventType          ApplicationAuditEventType
+  entityType         String
+  entityId           String?
+  description        String
+  metadata           Json?
+  requestId          String?
+  occurredAt         DateTime                  @default(now())
+
+  company Company @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@index([applicationId])
+  @@index([companyCandidateId])
+  @@index([eventType])
+  @@index([occurredAt])
+}
