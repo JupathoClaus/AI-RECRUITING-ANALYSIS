@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import {
-  Brain,
   Sparkles,
   Users,
   BarChart3,
@@ -84,11 +83,10 @@ export default function LandingPage() {
       {/* Nav */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-sm">
-              <Brain className="h-4.5 w-4.5 text-white" />
+          <Link href="/" className="flex items-center">
+            <div className="flex h-[150px] w-[150px] items-center justify-center rounded-xl overflow-hidden">
+              <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
-            <span className="text-lg font-bold tracking-tight text-foreground">AI Recruiter</span>
           </Link>
           <div className="flex items-center gap-3">
             <Link href="/login">
@@ -196,10 +194,9 @@ export default function LandingPage() {
       <footer className="border-t border-border bg-surface/30">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary">
-              <Brain className="h-3.5 w-3.5 text-white" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-md overflow-hidden">
+              <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
-            <span className="text-sm font-semibold text-foreground">AI Recruiter</span>
           </div>
           <p className="text-sm text-muted">
             &copy; {new Date().getFullYear()} AI Recruiter. All rights reserved.

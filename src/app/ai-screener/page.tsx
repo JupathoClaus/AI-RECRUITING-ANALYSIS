@@ -225,14 +225,14 @@ export default function AIScreenerPage() {
           <CardContent className="p-6">
             <div
               className={cn(
-                "relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-background p-10 text-center transition-all duration-200",
-                "hover:border-primary/40 hover:bg-primary-subtle cursor-pointer"
+                "relative flex flex-col items-center justify-center rounded-xl bg-background p-10 text-center transition-all duration-200",
+                "hover:bg-primary-subtle cursor-pointer"
               )}
             >
               <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary-muted mb-4">
                 <Upload className="h-7 w-7 text-primary" />
               </div>
-              <h3 className="text-base font-semibold text-foreground mb-1">Upload Resumes</h3>
+              <h3 className="text-base font-semibold text-foreground mb-1">UPLOAD RESUMES</h3>
               <p className="text-sm text-muted max-w-md mb-4">
                 Drag and drop resume files here, or click to browse. Supports PDF, DOCX, and TXT formats.
               </p>
@@ -272,10 +272,10 @@ export default function AIScreenerPage() {
                 <div
                   key={criterion.id}
                   className={cn(
-                    "flex flex-col items-center gap-3 rounded-lg border p-4 text-center transition-all duration-200",
+                    "flex flex-col items-center gap-3 rounded-lg p-4 text-center transition-all duration-200",
                     criterion.enabled
-                      ? "border-primary/30 bg-primary-subtle"
-                      : "border-border bg-background opacity-60"
+                      ? "bg-primary-subtle"
+                      : "bg-background opacity-60"
                   )}
                 >
                   <div
@@ -307,7 +307,7 @@ export default function AIScreenerPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-base">Screening in Progress</CardTitle>
-                  <CardDescription>AI is analyzing {screenerCandidates.length} resumes against your criteria</CardDescription>
+                  <CardDescription>AI is analyzing {screenerCandidates.length} candidates resumes against your criteria</CardDescription>
                 </div>
                 <Clock className="h-4 w-4 text-primary animate-pulse" />
               </div>
@@ -335,12 +335,12 @@ export default function AIScreenerPage() {
                       <div
                         key={candidate.id}
                         className={cn(
-                          "flex items-center gap-3 rounded-lg border p-3 transition-all duration-200",
+                          "flex items-center gap-3 rounded-lg p-3 transition-all duration-200",
                           candidateProgress >= 100
-                            ? "border-success/30 bg-success-muted"
+                            ? "bg-success-muted"
                             : candidateProgress > 0
-                            ? "border-primary/30 bg-primary-subtle"
-                            : "border-border bg-surface"
+                            ? "bg-primary-subtle"
+                            : "bg-surface"
                         )}
                       >
                         <div className="h-9 w-9 rounded-full bg-surface-elevated flex items-center justify-center text-xs font-medium text-foreground shrink-0">
@@ -359,9 +359,9 @@ export default function AIScreenerPage() {
                             )}
                           />
                           <p className="text-[10px] text-muted text-right mt-1">
-                            {candidateProgress >= 100 ? "Done" : `${candidateProgress}%`}
+                            {candidateProgress >= 100 ? "Done" : `{candidateProgress}%`}
                           </p>
-                        </div>
+                        </div> 
                       </div>
                     )
                   })}
@@ -531,7 +531,7 @@ export default function AIScreenerPage() {
             {screenerCandidates.map((candidate) => (
               <Card
                 key={candidate.id}
-                className="group hover:border-primary/30 transition-all duration-200"
+                className="group transition-all duration-200"
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">

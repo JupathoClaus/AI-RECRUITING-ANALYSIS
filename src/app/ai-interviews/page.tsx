@@ -13,11 +13,11 @@ import {
   Dialog,
   DialogTrigger,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import {
   Select,
   SelectTrigger,
@@ -207,9 +207,9 @@ const stats = [
 ]
 
 const statusConfig: Record<InterviewStatus, { color: string; dotColor: string }> = {
-  Scheduled: { color: "border-border bg-surface", dotColor: "bg-warning" },
-  "In Progress": { color: "border-primary/30 bg-primary-subtle", dotColor: "bg-primary" },
-  Completed: { color: "border-border bg-surface", dotColor: "bg-success" },
+  Scheduled: { color: "bg-surface", dotColor: "bg-warning" },
+  "In Progress": { color: "bg-primary-subtle", dotColor: "bg-primary" },
+  Completed: { color: "bg-surface", dotColor: "bg-success" },
 }
 
 const typeBadgeVariant: Record<InterviewType, "default" | "info" | "secondary"> = {
@@ -245,7 +245,7 @@ export default function AIInterviewsPage() {
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[560px]">
-            <DialogHeader>
+            <ModalHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
                 Create AI Interview
@@ -253,7 +253,7 @@ export default function AIInterviewsPage() {
               <DialogDescription>
                 Configure an AI-powered interview session for a candidate.
               </DialogDescription>
-            </DialogHeader>
+            </ModalHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Candidate</label>
@@ -376,7 +376,7 @@ export default function AIInterviewsPage() {
       {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {stats.map((s) => (
-          <Card key={s.label} className={cn("border-l-4 transition-all duration-200 hover:shadow-xl", s.accent)}>
+          <Card key={s.label} className={cn("border-l-4 transition-all duration-200", s.accent)}>
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div>
@@ -405,7 +405,7 @@ export default function AIInterviewsPage() {
             return (
               <Card
                 key={interview.id}
-                className={cn("border transition-all duration-200 hover:border-primary/30", st.color)}
+                className={cn("transition-all duration-200", st.color)}
               >
                 <CardContent className="p-5">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -522,10 +522,10 @@ export default function AIInterviewsPage() {
 
       {/* Detail Dialog */}
       <Dialog open={!!detailInterview} onOpenChange={(open) => !open && setDetailInterview(null)}>
-        <DialogContent className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-[640px] max-h-[85vh] overflow-y-auto">
           {detailInterview && (
             <>
-              <DialogHeader>
+              <ModalHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5 text-primary" />
                   AI Interview Report
@@ -533,7 +533,7 @@ export default function AIInterviewsPage() {
                 <DialogDescription>
                   {detailInterview.candidateName} — {detailInterview.jobTitle}
                 </DialogDescription>
-              </DialogHeader>
+              </ModalHeader>
 
               <div className="space-y-6 py-2">
                 {/* Overall Score */}

@@ -10,7 +10,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -170,10 +171,10 @@ export default function JobsPage() {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-xl">
-            <DialogHeader>
+            <ModalHeader>
               <DialogTitle>Create New Job</DialogTitle>
               <DialogDescription>Add a new job opening to start recruiting.</DialogDescription>
-            </DialogHeader>
+            </ModalHeader>
             <div className="grid gap-4 py-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -520,7 +521,7 @@ export default function JobsPage() {
         <DialogContent className="max-w-xl">
           {detailsJob && (
             <>
-              <DialogHeader>
+              <ModalHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <DialogTitle>{detailsJob.title}</DialogTitle>
@@ -530,7 +531,7 @@ export default function JobsPage() {
                     {statusConfig[detailsJob.status].label}
                   </Badge>
                 </div>
-              </DialogHeader>
+              </ModalHeader>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="rounded-lg border border-border bg-background p-3">

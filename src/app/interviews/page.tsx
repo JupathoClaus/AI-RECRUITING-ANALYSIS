@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -195,10 +196,10 @@ export default function InterviewsPage() {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-xl">
-            <DialogHeader>
+            <ModalHeader>
               <DialogTitle>Schedule Interview</DialogTitle>
               <DialogDescription>Set up a new interview with a candidate.</DialogDescription>
-            </DialogHeader>
+            </ModalHeader>
             <div className="grid gap-4 py-2">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Candidate *</label>
@@ -503,7 +504,7 @@ export default function InterviewsPage() {
         <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
           {detailsInterview && (
             <>
-              <DialogHeader>
+              <ModalHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12 shrink-0" fallback={getInitials(detailsInterview.candidateName)}>
@@ -524,7 +525,7 @@ export default function InterviewsPage() {
                     {statusConfig[detailsInterview.status].label}
                   </Badge>
                 </div>
-              </DialogHeader>
+              </ModalHeader>
 
               <div className="space-y-5">
                 {/* Quick Info Grid */}

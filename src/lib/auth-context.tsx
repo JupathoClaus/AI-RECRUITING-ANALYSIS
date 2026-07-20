@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
 
 export interface User {
   id: string
@@ -84,9 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     seedDefaultUsers()
     const session = getStoredSession()
-    if (session) {
-      setUser(session)
-    }
+    setUser(session) // eslint-disable-line react-hooks/set-state-in-effect
     setLoading(false)
   }, [])
 

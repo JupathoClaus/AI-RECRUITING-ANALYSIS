@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import { Separator } from "@/components/ui/separator"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
@@ -352,7 +353,7 @@ export default function PipelinePage() {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {selectedCandidate && (
             <>
-              <DialogHeader>
+              <ModalHeader>
                 <div className="flex items-start gap-4">
                   <Avatar className="h-14 w-14 shrink-0" fallback={getInitials(selectedCandidate.name)}>
                     {selectedCandidate.avatar && <AvatarImage src={selectedCandidate.avatar} alt={selectedCandidate.name} />}
@@ -376,7 +377,7 @@ export default function PipelinePage() {
                     {selectedCandidate.status}
                   </Badge>
                 </div>
-              </DialogHeader>
+              </ModalHeader>
 
               <div className="space-y-5">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

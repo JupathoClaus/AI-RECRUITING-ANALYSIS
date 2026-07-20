@@ -17,10 +17,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     const stored = localStorage.getItem("ai-recruiter-theme") as "light" | "dark" | null
-    if (stored) {
-      setTheme(stored)
-      document.documentElement.classList.toggle("dark", stored === "dark")
-    }
+    const prefersDark = matchMedia("(prefers-color-scheme:dark)").matches
+    const resolved = stored === "dark" || (!stored && prefersDark) ? "dark" : "light"
+    setTheme(resolved) // eslint-disable-line react-hooks/set-state-in-effect -- hydration from localStorage
+    document.documentElement.classList.toggle("dark", resolved === "dark")
   }, [])
 
   const toggleTheme = React.useCallback(() => {

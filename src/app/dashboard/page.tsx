@@ -250,7 +250,6 @@ export default function DashboardPage() {
       up: true,
       icon: <Briefcase className="h-5 w-5" />,
       color: "text-primary",
-      accent: "border-l-primary",
     },
     {
       label: "Total Candidates",
@@ -260,7 +259,6 @@ export default function DashboardPage() {
       up: true,
       icon: <Users className="h-5 w-5" />,
       color: "text-info",
-      accent: "border-l-info",
     },
     {
       label: "Interviews This Week",
@@ -270,7 +268,6 @@ export default function DashboardPage() {
       up: true,
       icon: <CalendarClock className="h-5 w-5" />,
       color: "text-warning",
-      accent: "border-l-warning",
     },
     {
       label: "Avg AI Score",
@@ -280,7 +277,6 @@ export default function DashboardPage() {
       up: true,
       icon: <Sparkles className="h-5 w-5" />,
       color: "text-success",
-      accent: "border-l-success",
     },
   ];
 
@@ -295,12 +291,12 @@ export default function DashboardPage() {
           {kpiCards.map((card) => (
             <Card
               key={card.label}
-              className={cn("group relative overflow-hidden transition-all duration-200 hover:shadow-xl border-l-4", card.accent)}
+              className="relative overflow-hidden border border-border"
             >
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div className="space-y-2">
-                    <p className="text-sm text-muted font-semibold uppercase tracking-wide">
+                    <p className="text-sm text-black font-bold uppercase tracking-wide">
                       {card.label}
                     </p>
                     <p className="text-3xl font-bold tracking-tight text-foreground">
@@ -325,7 +321,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
-                  <div className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110", card.color)}>
+                  <div className={cn("shrink-0", card.color)}>
                     {card.icon}
                   </div>
                 </div>

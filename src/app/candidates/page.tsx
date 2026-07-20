@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -173,10 +174,10 @@ export default function CandidatesPage() {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
+            <ModalHeader>
               <DialogTitle>Add New Candidate</DialogTitle>
               <DialogDescription>Add a candidate to your talent pool.</DialogDescription>
-            </DialogHeader>
+            </ModalHeader>
             <div className="grid gap-4 py-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -462,7 +463,7 @@ export default function CandidatesPage() {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {detailsCandidate && (
             <>
-              <DialogHeader>
+              <ModalHeader>
                 <div className="flex items-start gap-4">
                   <Avatar className="h-14 w-14 shrink-0" fallback={getInitials(detailsCandidate.name)}>
                     {detailsCandidate.avatar && <AvatarImage src={detailsCandidate.avatar} alt={detailsCandidate.name} />}
@@ -486,7 +487,7 @@ export default function CandidatesPage() {
                     {statusConfig[detailsCandidate.status].label}
                   </Badge>
                 </div>
-              </DialogHeader>
+              </ModalHeader>
 
               <div className="space-y-5">
                 {/* Quick Stats */}

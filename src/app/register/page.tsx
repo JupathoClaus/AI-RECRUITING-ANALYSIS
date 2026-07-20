@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Brain, Eye, EyeOff, ArrowLeft } from "lucide-react"
+import { Eye, EyeOff, ArrowLeft } from "lucide-react"
 
 export default function RegisterPage() {
   const { user, register } = useAuth()
@@ -50,11 +50,10 @@ export default function RegisterPage() {
       <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5" />
         <div className="relative flex flex-col justify-between p-12 w-full">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary shadow-sm">
-              <Brain className="h-5 w-5 text-white" />
+          <Link href="/" className="flex items-center">
+            <div className="flex h-[150px] w-[150px] items-center justify-center rounded-xl overflow-hidden">
+              <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-foreground">AI Recruiter</span>
           </Link>
           <div>
             <h2 className="text-4xl font-bold tracking-tight text-foreground leading-tight">

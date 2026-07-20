@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import { cn, timeAgo } from "@/lib/utils"
 import {
   FileText,
@@ -316,7 +317,7 @@ export default function ReportsPage() {
         <DialogContent className="max-w-xl">
           {selectedTemplate && (
             <>
-              <DialogHeader>
+              <ModalHeader>
                 <div className="flex items-start gap-3">
                   <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", selectedTemplate.bgColor, selectedTemplate.color)}>
                     {selectedTemplate.icon}
@@ -326,7 +327,7 @@ export default function ReportsPage() {
                     <DialogDescription className="mt-1">{selectedTemplate.description}</DialogDescription>
                   </div>
                 </div>
-              </DialogHeader>
+              </ModalHeader>
               <div className="grid gap-4 py-2">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-foreground">Department</label>
