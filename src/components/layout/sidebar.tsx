@@ -9,31 +9,30 @@ import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
-  LayoutDashboard,
+  Category,
   Briefcase,
-  Users,
-  GitBranch,
+  People,
+  Routing,
   Calendar,
-  BarChart3,
-  Settings,
-  Bell,
-
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  LogOut,
-  Sparkles,
-  FileText,
+  Chart2,
+  Setting,
+  Notification,
+  SearchNormal,
+  ArrowLeft2,
+  ArrowRight2,
+  Logout,
+  MagicStar,
+  Document,
   MessageSquare,
-  Building2,
+  Buildings,
   Menu,
-  X,
-} from "lucide-react"
+  CloseSquare,
+} from "iconsax-react"
 
 interface NavItem {
   label: string
   href: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: React.ComponentType<{ className?: string; size?: number }>
   badge?: number
 }
 
@@ -46,33 +45,33 @@ const navSections: NavSection[] = [
   {
     title: "Overview",
     items: [
-      { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      { label: "Analytics", href: "/analytics", icon: BarChart3 },
+      { label: "Dashboard", href: "/dashboard", icon: Category },
+      { label: "Analytics", href: "/analytics", icon: Chart2 },
     ],
   },
   {
     title: "Recruitment",
     items: [
       { label: "Jobs", href: "/jobs", icon: Briefcase, badge: 12 },
-      { label: "Candidates", href: "/candidates", icon: Users, badge: 48 },
-      { label: "Pipeline", href: "/pipeline", icon: GitBranch },
+      { label: "Candidates", href: "/candidates", icon: People, badge: 48 },
+      { label: "Pipeline", href: "/pipeline", icon: Routing },
       { label: "Interviews", href: "/interviews", icon: Calendar, badge: 5 },
     ],
   },
   {
     title: "AI Tools",
     items: [
-      { label: "AI Screener", href: "/ai-screener", icon: Sparkles },
+      { label: "AI Screener", href: "/ai-screener", icon: MagicStar },
       { label: "AI Interviews", href: "/ai-interviews", icon: MessageSquare },
-      { label: "Reports", href: "/reports", icon: FileText },
+      { label: "Reports", href: "/reports", icon: Document },
     ],
   },
   {
     title: "Organization",
     items: [
-      { label: "Company", href: "/company", icon: Building2 },
-      { label: "Notifications", href: "/notifications", icon: Bell, badge: 3 },
-      { label: "Settings", href: "/settings", icon: Settings },
+      { label: "Company", href: "/company", icon: Buildings },
+      { label: "Notifications", href: "/notifications", icon: Notification, badge: 3 },
+      { label: "Settings", href: "/settings", icon: Setting },
     ],
   },
 ]
@@ -121,7 +120,7 @@ export function Sidebar() {
         aria-label="Open navigation"
         aria-expanded={mobileOpen}
       >
-        <Menu className="h-5 w-5 text-foreground" />
+        <Menu className="text-foreground" size={20} />
       </button>
 
       {/* Mobile overlay */}
@@ -142,20 +141,20 @@ export function Sidebar() {
         )}
         aria-label="Main navigation"
       >
-        {/* Logo */}
-        <div className={cn("flex h-16 items-center border-b border-border shrink-0", collapsed ? "justify-center px-2" : "px-5")}>
-          <Link href="/dashboard" className="flex items-center" onClick={() => setMobileOpen(false)}>
-            <div className="flex h-[150px] w-[150px] items-center justify-center rounded-xl overflow-hidden">
+        {/* Logo Header */}
+        <div className={cn("flex items-center justify-center shrink-0 border-b border-border relative", collapsed ? "px-2 py-3" : "px-5 py-6")}>
+          <Link href="/dashboard" className="flex items-center justify-center" onClick={() => setMobileOpen(false)}>
+            <div className="flex h-[150px] w-[150px] items-center justify-center overflow-hidden">
               <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
           </Link>
           {/* Mobile close */}
           <button
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-hover lg:hidden transition-colors duration-150"
+            className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-hover lg:hidden transition-colors duration-150"
             onClick={() => setMobileOpen(false)}
             aria-label="Close navigation"
           >
-            <X className="h-4 w-4 text-muted" />
+            <CloseSquare className="text-muted" size={16} />
           </button>
         </div>
 
@@ -163,7 +162,7 @@ export function Sidebar() {
         {!collapsed && (
           <div className="px-3 py-3 hidden lg:block">
             <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted cursor-pointer hover:border-primary/30 transition-all duration-150">
-              <Search className="h-4 w-4" />
+              <SearchNormal size={16} />
               <span>Search...</span>
               <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded-md border border-border bg-surface px-1.5 font-mono text-[10px] font-medium text-muted">
                 ⌘K
@@ -202,7 +201,7 @@ export function Sidebar() {
                       {isActive && (
                         <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-primary" />
                       )}
-                      <item.icon className={cn("h-5 w-5 shrink-0", isActive ? "text-primary" : "text-black group-hover:text-black")} />
+                      <item.icon className={cn("shrink-0", isActive ? "text-primary" : "text-black group-hover:text-black")} size={22} />
                       {!collapsed && (
                         <>
                           <span className="flex-1">{item.label}</span>
@@ -231,7 +230,7 @@ export function Sidebar() {
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!collapsed}
           >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            {collapsed ? <ArrowRight2 size={16} /> : <ArrowLeft2 size={16} />}
           </Button>
         </div>
 
@@ -249,7 +248,7 @@ export function Sidebar() {
             )}
             {!collapsed && (
               <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleLogout} title="Sign out">
-                <LogOut className="h-4 w-4 text-muted" />
+                <Logout className="text-muted" size={16} />
               </Button>
             )}
           </div>

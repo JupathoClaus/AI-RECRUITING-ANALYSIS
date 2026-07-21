@@ -6,26 +6,26 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import {
-  Sparkles,
-  Users,
-  BarChart3,
+  MagicStar,
+  People,
+  Chart2,
   Calendar,
   Shield,
   ArrowRight,
-  CheckCircle2,
-  Zap,
-  GitBranch,
-  FileText,
-} from "lucide-react"
+  TickCircle,
+  Flash,
+  Routing,
+  Document,
+} from "iconsax-react"
 
 const features = [
   {
-    icon: Sparkles,
+    icon: MagicStar,
     title: "AI-Powered Screening",
     description: "Automatically rank and filter candidates with intelligent resume analysis and skill matching.",
   },
   {
-    icon: Users,
+    icon: People,
     title: "Candidate Pipeline",
     description: "Visual Kanban board to track candidates through every stage of your hiring workflow.",
   },
@@ -35,7 +35,7 @@ const features = [
     description: "AI-driven interview scheduling that finds the best times for interviewers and candidates.",
   },
   {
-    icon: BarChart3,
+    icon: Chart2,
     title: "Analytics & Insights",
     description: "Real-time dashboards with hiring metrics, pipeline health, and source effectiveness.",
   },
@@ -45,7 +45,7 @@ const features = [
     description: "Role-based access control, audit logs, and SOC 2 compliant data handling.",
   },
   {
-    icon: Zap,
+    icon: Flash,
     title: "Automated Workflows",
     description: "Eliminate repetitive tasks with automated notifications, scoring, and report generation.",
   },
@@ -82,9 +82,9 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background">
       {/* Nav */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+        <div className="mx-auto flex h-[160px] max-w-6xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center">
-            <div className="flex h-[150px] w-[150px] items-center justify-center rounded-xl overflow-hidden">
+            <div className="flex h-[135px] w-[135px] items-center justify-center overflow-hidden">
               <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
           </Link>
@@ -104,7 +104,7 @@ export default function LandingPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/5" />
         <div className="relative mx-auto max-w-6xl px-4 sm:px-6 py-24 sm:py-32 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5 text-sm font-medium text-primary mb-8">
-            <Sparkles className="h-3.5 w-3.5" />
+            <MagicStar className="h-3.5 w-3.5" />
             AI-Powered Recruitment Platform
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-foreground leading-[1.1]">

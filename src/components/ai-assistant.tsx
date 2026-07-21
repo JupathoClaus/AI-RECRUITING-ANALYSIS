@@ -4,7 +4,7 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
-import { Bot, X, Minus, Maximize2, Send, Sparkles } from "lucide-react"
+import { Cpu, CloseSquare, Minus, Maximize, Send2, MagicStar } from "iconsax-react"
 
 interface Message {
   id: string
@@ -128,7 +128,7 @@ export function FloatingAIAssistant() {
           )}
           aria-label="Open AI Assistant"
         >
-          <Bot className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
+          <Cpu className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
           <span className="absolute -right-1 -top-1 flex h-4 w-4">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500 border-2 border-white dark:border-surface" />
@@ -187,7 +187,7 @@ export function FloatingAIAssistant() {
                 className="h-8 w-8 rounded-lg hidden sm:inline-flex"
                 title={isExpanded ? "Restore" : "Expand"}
               >
-                <Maximize2 className="h-4 w-4" />
+                <Maximize className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
@@ -199,7 +199,7 @@ export function FloatingAIAssistant() {
                 className="h-8 w-8 rounded-lg"
                 title="Close"
               >
-                <X className="h-4 w-4" />
+                <CloseSquare className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -218,7 +218,7 @@ export function FloatingAIAssistant() {
                   >
                     {msg.role === "assistant" && (
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                        <Sparkles className="h-4 w-4 text-primary" />
+                        <MagicStar className="h-4 w-4 text-primary" />
                       </div>
                     )}
                     <div
@@ -237,7 +237,7 @@ export function FloatingAIAssistant() {
                 {isTyping && (
                   <div className="flex gap-3 animate-fade-in">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                      <Sparkles className="h-4 w-4 text-primary" />
+                      <MagicStar className="h-4 w-4 text-primary" />
                     </div>
                     <div className="bg-surface-elevated border border-border rounded-2xl rounded-bl-md px-4 py-3">
                       <div className="flex gap-1.5">
@@ -300,7 +300,7 @@ export function FloatingAIAssistant() {
                     size="icon"
                     className="h-10 w-10 rounded-xl shrink-0"
                   >
-                    <Send className="h-4 w-4" />
+                    <Send2 className="h-4 w-4" />
                   </Button>
                 </div>
                 <p className="text-[10px] text-muted text-center mt-2">

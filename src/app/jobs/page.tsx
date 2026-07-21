@@ -17,24 +17,24 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn, formatCurrency, formatNumber, timeAgo } from "@/lib/utils"
 import {
-  Search,
-  Plus,
-  LayoutGrid,
-  List,
+  SearchNormal,
+  Add,
+  Grid5,
+  Menu,
   Briefcase,
-  MapPin,
-  DollarSign,
-  Users,
+  Location,
+  DollarSquare,
+  People,
   Calendar,
-  Building2,
-  MoreHorizontal,
-  Pause,
+  Buildings,
+  More,
+  PauseCircle,
   Play,
-  X,
+  CloseSquare,
   Eye,
-  Edit,
-  Trash2,
-} from "lucide-react"
+  Edit2,
+  Trash,
+} from "iconsax-react"
 
 const statusConfig: Record<JobStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" }> = {
   Active: { label: "Active", variant: "success" },
@@ -166,7 +166,7 @@ export default function JobsPage() {
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
-              <Plus className="h-4 w-4" />
+              <Add className="h-4 w-4" />
               Create Job
             </Button>
           </DialogTrigger>
@@ -260,7 +260,7 @@ export default function JobsPage() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleCreateJob} disabled={!newJob.title || !newJob.department || !newJob.location || !newJob.salaryMin || !newJob.salaryMax}>
-                <Plus className="h-4 w-4" />
+                <Add className="h-4 w-4" />
                 Create Job
               </Button>
             </DialogFooter>
@@ -272,7 +272,7 @@ export default function JobsPage() {
       <div className="flex flex-col gap-4 mb-6 animate-fade-in">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+            <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
             <Input
               placeholder="Search jobs by title, department, or location..."
               className="pl-9"
@@ -323,11 +323,11 @@ export default function JobsPage() {
         <div className="flex items-center justify-between mb-4">
           <TabsList>
             <TabsTrigger value="grid" className="gap-1.5">
-              <LayoutGrid className="h-4 w-4" />
+              <Grid5 className="h-4 w-4" />
               Grid
             </TabsTrigger>
             <TabsTrigger value="table" className="gap-1.5">
-              <List className="h-4 w-4" />
+              <Menu className="h-4 w-4" />
               Table
             </TabsTrigger>
           </TabsList>
@@ -357,7 +357,7 @@ export default function JobsPage() {
                   </Button>
                 ) : (
                   <Button onClick={() => setCreateDialogOpen(true)}>
-                    <Plus className="h-4 w-4" />
+                    <Add className="h-4 w-4" />
                     Create Job
                   </Button>
                 )
@@ -376,7 +376,7 @@ export default function JobsPage() {
                       <div className="min-w-0 flex-1">
                         <CardTitle className="text-base truncate">{job.title}</CardTitle>
                         <CardDescription className="flex items-center gap-1.5 mt-1">
-                          <Building2 className="h-3 w-3 shrink-0" />
+                          <Buildings className="h-3 w-3 shrink-0" />
                           {job.department}
                         </CardDescription>
                       </div>
@@ -388,11 +388,11 @@ export default function JobsPage() {
                   <CardContent className="pb-3">
                     <div className="space-y-2 text-sm">
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                        <Location className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{job.location}</span>
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                        <DollarSquare className="h-3.5 w-3.5 shrink-0" />
                         <span>{formatCurrency(job.salaryMin)} – {formatCurrency(job.salaryMax)}</span>
                       </div>
                       <div className="flex items-center gap-2 text-muted-foreground">
@@ -406,7 +406,7 @@ export default function JobsPage() {
                       {typeConfig[job.type].label}
                     </Badge>
                     <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                      <Users className="h-3.5 w-3.5" />
+                      <People className="h-3.5 w-3.5" />
                       <span>{job.applicants}</span>
                     </div>
                   </CardFooter>
@@ -437,7 +437,7 @@ export default function JobsPage() {
                   </Button>
                 ) : (
                   <Button onClick={() => setCreateDialogOpen(true)}>
-                    <Plus className="h-4 w-4" />
+                    <Add className="h-4 w-4" />
                     Create Job
                   </Button>
                 )
@@ -500,7 +500,7 @@ export default function JobsPage() {
                           }}
                         >
                           {job.status === "Active" ? (
-                            <Pause className="h-4 w-4 text-muted-foreground" />
+                            <PauseCircle className="h-4 w-4 text-muted-foreground" />
                           ) : (
                             <Play className="h-4 w-4 text-muted-foreground" />
                           )}
@@ -566,14 +566,14 @@ export default function JobsPage() {
                       size="sm"
                       onClick={() => { updateJobStatus(detailsJob.id, "Closed"); setDetailsJob(null) }}
                     >
-                      <X className="h-4 w-4" />
+                      <CloseSquare className="h-4 w-4" />
                       Close Position
                     </Button>
                   )}
                   <div className="flex-1" />
                   {detailsJob.status === "Active" ? (
                     <Button variant="outline" size="sm" onClick={() => updateJobStatus(detailsJob.id, "Paused")}>
-                      <Pause className="h-4 w-4" />
+                      <PauseCircle className="h-4 w-4" />
                       Pause
                     </Button>
                   ) : detailsJob.status === "Paused" ? (

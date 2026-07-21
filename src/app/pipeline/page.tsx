@@ -15,20 +15,20 @@ import { Separator } from "@/components/ui/separator"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
 import {
-  Search,
-  Users,
+  SearchNormal,
+  People,
   Briefcase,
-  Brain,
-  Star,
-  Mail,
-  Phone,
-  FileText,
+  MagicStar,
+  Star1,
+  Message,
+  Call,
+  Document,
   ArrowLeft,
   ArrowRight,
-  X,
+  CloseSquare,
   Calendar,
   MessageSquare,
-} from "lucide-react"
+} from "iconsax-react"
 
 interface PipelineStage {
   id: CandidateStatus
@@ -253,7 +253,7 @@ export default function PipelinePage() {
       <div className="flex flex-col gap-4 mb-6 animate-fade-in">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+            <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
             <Input
               placeholder="Search candidates by name, email, or position..."
               className="pl-9"
@@ -278,7 +278,7 @@ export default function PipelinePage() {
       <div className="animate-fade-in">
         {totalCandidates === 0 ? (
           <EmptyState
-            icon={<Users className="h-8 w-8 text-muted" />}
+            icon={<People className="h-8 w-8 text-muted" />}
             title="No candidates in pipeline"
             description={
               searchQuery || jobFilter !== "all"
@@ -326,7 +326,7 @@ export default function PipelinePage() {
                     {stageCands.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-8 text-center">
                         <div className="h-10 w-10 rounded-full bg-surface-hover flex items-center justify-center mb-2">
-                          <Users className="h-4 w-4 text-muted" />
+                          <People className="h-4 w-4 text-muted" />
                         </div>
                         <p className="text-xs text-muted">No candidates</p>
                       </div>
@@ -362,12 +362,12 @@ export default function PipelinePage() {
                     <DialogTitle className="text-xl">{selectedCandidate.name}</DialogTitle>
                     <DialogDescription className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
+                        <Message className="h-3 w-3" />
                         {selectedCandidate.email}
                       </span>
                       {selectedCandidate.phone && (
                         <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
+                          <Call className="h-3 w-3" />
                           {selectedCandidate.phone}
                         </span>
                       )}
@@ -398,7 +398,7 @@ export default function PipelinePage() {
                     <p className="text-xs text-muted mb-1">Rating</p>
                     <div className="flex justify-center mt-1 gap-0.5">
                       {Array.from({ length: 5 }).map((_, i) => (
-                        <Star
+                        <Star1
                           key={i}
                           className={cn(
                             "h-3.5 w-3.5",
@@ -427,7 +427,7 @@ export default function PipelinePage() {
                 {selectedCandidate.skills.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <Brain className="h-4 w-4 text-muted" />
+                      <MagicStar className="h-4 w-4 text-muted" />
                       <h4 className="text-sm font-medium text-foreground">Skills</h4>
                     </div>
                     <div className="flex flex-wrap gap-2 ml-6">
@@ -441,7 +441,7 @@ export default function PipelinePage() {
                 {selectedCandidate.aiScore > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <Brain className="h-4 w-4 text-muted" />
+                      <MagicStar className="h-4 w-4 text-muted" />
                       <h4 className="text-sm font-medium text-foreground">AI Assessment</h4>
                     </div>
                     <div className="ml-6">
@@ -459,7 +459,7 @@ export default function PipelinePage() {
                 {selectedCandidate.notes && (
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <FileText className="h-4 w-4 text-muted" />
+                      <Document className="h-4 w-4 text-muted" />
                       <h4 className="text-sm font-medium text-foreground">Notes</h4>
                     </div>
                     <p className="text-sm text-muted-foreground leading-relaxed ml-6 whitespace-pre-wrap">
@@ -481,7 +481,7 @@ export default function PipelinePage() {
                           setSelectedCandidate(null)
                         }}
                       >
-                        <X className="h-4 w-4" />
+                        <CloseSquare className="h-4 w-4" />
                         Reject
                       </Button>
                       {selectedCandidate.status === "Applied" && (
@@ -492,7 +492,7 @@ export default function PipelinePage() {
                             setSelectedCandidate(null)
                           }}
                         >
-                          <Search className="h-4 w-4" />
+                          <SearchNormal className="h-4 w-4" />
                           Start Screening
                         </Button>
                       )}
@@ -530,7 +530,7 @@ export default function PipelinePage() {
                         setSelectedCandidate(null)
                       }}
                     >
-                      <Users className="h-4 w-4" />
+                      <People className="h-4 w-4" />
                       Mark as Hired
                     </Button>
                   )}

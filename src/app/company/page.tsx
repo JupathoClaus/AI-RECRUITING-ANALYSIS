@@ -9,22 +9,22 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { cn, getInitials } from "@/lib/utils"
 import {
-  Building2,
-  Edit,
-  Users,
+  Buildings,
+  Edit2,
+  People,
   Briefcase,
-  MapPin,
-  Globe,
+  Location,
+  Global,
   Calendar,
-  Mail,
-  Phone,
-  ExternalLink,
-  Plus,
-  TrendingUp,
-  Landmark,
-  Layers,
-  BarChart3,
-} from "lucide-react"
+  Message,
+  Call,
+  Export,
+  Add,
+  TrendUp,
+  Bank,
+  Layer,
+  Chart2,
+} from "iconsax-react"
 
 interface TeamMember {
   id: string
@@ -67,10 +67,10 @@ const departments: Department[] = [
 ]
 
 const companyMetrics = [
-  { label: "Total Employees", value: "342", icon: Users, color: "text-primary", accent: "border-l-primary" },
+  { label: "Total Employees", value: "342", icon: People, color: "text-primary", accent: "border-l-primary" },
   { label: "Open Positions", value: "12", icon: Briefcase, color: "text-success", accent: "border-l-success" },
-  { label: "Departments", value: "8", icon: Layers, color: "text-warning", accent: "border-l-warning" },
-  { label: "Office Locations", value: "3", icon: MapPin, color: "text-info", accent: "border-l-info" },
+  { label: "Departments", value: "8", icon: Layer, color: "text-warning", accent: "border-l-warning" },
+  { label: "Office Locations", value: "3", icon: Location, color: "text-info", accent: "border-l-info" },
 ]
 
 export default function CompanyPage() {
@@ -85,7 +85,7 @@ export default function CompanyPage() {
       description="Manage your organization's profile and team."
       actions={
         <Button size="sm" variant={isEditing ? "default" : "outline"} onClick={() => setIsEditing(!isEditing)}>
-          <Edit className="h-4 w-4" />
+          <Edit2 className="h-4 w-4" />
           {isEditing ? "Save Changes" : "Edit Profile"}
         </Button>
       }
@@ -120,7 +120,7 @@ export default function CompanyPage() {
               {/* Company Logo */}
               <div className="shrink-0">
                 <div className="h-20 w-20 rounded-xl bg-primary-muted flex items-center justify-center">
-                  <Building2 className="h-10 w-10 text-primary" />
+                  <Buildings className="h-10 w-10 text-primary" />
                 </div>
               </div>
 
@@ -144,12 +144,12 @@ export default function CompanyPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="flex items-center gap-2 text-sm">
-                    <Layers className="h-4 w-4 text-muted shrink-0" />
+                    <Layer className="h-4 w-4 text-muted shrink-0" />
                     <span className="text-muted">Industry:</span>
                     <span className="text-foreground font-medium">Technology</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <Users className="h-4 w-4 text-muted shrink-0" />
+                    <People className="h-4 w-4 text-muted shrink-0" />
                     <span className="text-muted">Company Size:</span>
                     <span className="text-foreground font-medium">200-500</span>
                   </div>
@@ -159,17 +159,17 @@ export default function CompanyPage() {
                     <span className="text-foreground font-medium">2021</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <MapPin className="h-4 w-4 text-muted shrink-0" />
+                    <Location className="h-4 w-4 text-muted shrink-0" />
                     <span className="text-muted">HQ:</span>
                     <span className="text-foreground font-medium">San Francisco, CA</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <Globe className="h-4 w-4 text-muted shrink-0" />
+                    <Global className="h-4 w-4 text-muted shrink-0" />
                     <span className="text-muted">Website:</span>
                     <span className="text-foreground font-medium">airecruiter.com</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
-                    <Mail className="h-4 w-4 text-muted shrink-0" />
+                    <Message className="h-4 w-4 text-muted shrink-0" />
                     <span className="text-muted">Email:</span>
                     <span className="text-foreground font-medium">hello@airecruiter.com</span>
                   </div>
@@ -187,7 +187,7 @@ export default function CompanyPage() {
               <p className="text-sm text-muted">{teamMembers.length} members across {departments.length} departments</p>
             </div>
             <Button size="sm" variant="outline">
-              <Plus className="h-4 w-4" />
+              <Add className="h-4 w-4" />
               Add Member
             </Button>
           </div>
@@ -210,11 +210,11 @@ export default function CompanyPage() {
 
                     <div className="space-y-2 w-full text-left">
                       <div className="flex items-center gap-2 text-xs text-muted">
-                        <Mail className="h-3 w-3 shrink-0" />
+                        <Message className="h-3 w-3 shrink-0" />
                         <span className="truncate">{member.email}</span>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted">
-                        <MapPin className="h-3 w-3 shrink-0" />
+                        <Location className="h-3 w-3 shrink-0" />
                         <span className="truncate">{member.location}</span>
                       </div>
                     </div>
@@ -233,7 +233,7 @@ export default function CompanyPage() {
               <p className="text-sm text-muted">{departments.length} departments · {totalOpenPositions} open positions</p>
             </div>
             <Button size="sm" variant="outline">
-              <Plus className="h-4 w-4" />
+              <Add className="h-4 w-4" />
               Add Department
             </Button>
           </div>
@@ -250,7 +250,7 @@ export default function CompanyPage() {
                       <CardDescription className="text-xs mt-1">Led by {dept.head}</CardDescription>
                     </div>
                     <div className="h-8 w-8 rounded-lg bg-surface-elevated flex items-center justify-center shrink-0">
-                      <Building2 className="h-4 w-4 text-muted" />
+                      <Buildings className="h-4 w-4 text-muted" />
                     </div>
                   </div>
                 </CardHeader>
@@ -259,7 +259,7 @@ export default function CompanyPage() {
                   <Separator className="bg-border" />
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs text-muted">
-                      <Users className="h-3.5 w-3.5" />
+                      <People className="h-3.5 w-3.5" />
                       <span>{dept.headcount} people</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs">
@@ -286,7 +286,7 @@ export default function CompanyPage() {
                 <CardTitle className="text-base">Office Locations</CardTitle>
                 <CardDescription>3 offices across the United States</CardDescription>
               </div>
-              <MapPin className="h-4 w-4 text-muted" />
+              <Location className="h-4 w-4 text-muted" />
             </div>
           </CardHeader>
           <CardContent>
@@ -306,12 +306,12 @@ export default function CompanyPage() {
                       <Badge variant="outline" className="text-[10px] mt-1">{office.type}</Badge>
                     </div>
                     <div className="h-8 w-8 rounded-lg bg-surface-elevated flex items-center justify-center">
-                      <MapPin className="h-4 w-4 text-primary" />
+                      <Location className="h-4 w-4 text-primary" />
                     </div>
                   </div>
                   <p className="text-xs text-muted">{office.address}</p>
                   <div className="flex items-center gap-1.5 text-xs text-muted">
-                    <Users className="h-3.5 w-3.5" />
+                    <People className="h-3.5 w-3.5" />
                     <span>{office.employees} employees</span>
                   </div>
                 </div>

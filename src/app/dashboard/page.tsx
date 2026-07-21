@@ -4,25 +4,25 @@ import { useMemo } from "react";
 import Link from "next/link";
 import {
   Briefcase,
-  Users,
-  CalendarClock,
-  Sparkles,
-  TrendingUp,
-  TrendingDown,
+  People,
+  Calendar,
+  MagicStar,
+  TrendUp,
+  TrendDown,
   ArrowRight,
-  FileText,
+  Document,
   Video,
-  Phone,
-  MapPin,
-  CheckCircle2,
-  XCircle,
-  Send,
-  Handshake,
+  Call,
+  Location,
+  TickCircle,
+  CloseCircle,
+  Send2,
+  MedalStar,
   Eye,
-  MoreHorizontal,
-  CalendarDays,
-  Bot,
-} from "lucide-react";
+  More,
+  Calendar2,
+  Cpu,
+} from "iconsax-react";
 import {
   AreaChart,
   Area,
@@ -111,17 +111,17 @@ function getStatusLabel(status: string): string {
 function getActivityIcon(type: string) {
   switch (type) {
     case "application":
-      return <FileText className="h-4 w-4 text-info" />;
+      return <Document className="h-4 w-4 text-info" />;
     case "interview":
       return <Video className="h-4 w-4 text-primary" />;
     case "offer":
-      return <Send className="h-4 w-4 text-warning" />;
+      return <Send2 className="h-4 w-4 text-warning" />;
     case "hire":
-      return <Handshake className="h-4 w-4 text-success" />;
+      return <MedalStar className="h-4 w-4 text-success" />;
     case "rejection":
-      return <XCircle className="h-4 w-4 text-error" />;
+      return <CloseCircle className="h-4 w-4 text-error" />;
     default:
-      return <FileText className="h-4 w-4 text-muted" />;
+      return <Document className="h-4 w-4 text-muted" />;
   }
 }
 
@@ -130,15 +130,15 @@ function getInterviewTypeIcon(type: string) {
     case "Video":
       return <Video className="h-3.5 w-3.5" />;
     case "Phone":
-      return <Phone className="h-3.5 w-3.5" />;
+      return <Call className="h-3.5 w-3.5" />;
     case "On-site":
-      return <MapPin className="h-3.5 w-3.5" />;
+      return <Location className="h-3.5 w-3.5" />;
     case "AI":
-      return <Bot className="h-3.5 w-3.5" />;
+      return <Cpu className="h-3.5 w-3.5" />;
     case "Technical":
-      return <CheckCircle2 className="h-3.5 w-3.5" />;
+      return <TickCircle className="h-3.5 w-3.5" />;
     default:
-      return <CalendarDays className="h-3.5 w-3.5" />;
+      return <Calendar2 className="h-3.5 w-3.5" />;
   }
 }
 
@@ -257,7 +257,7 @@ export default function DashboardPage() {
       trend: "+18%",
       trendLabel: "from last month",
       up: true,
-      icon: <Users className="h-5 w-5" />,
+      icon: <People className="h-5 w-5" />,
       color: "text-info",
     },
     {
@@ -266,7 +266,7 @@ export default function DashboardPage() {
       trend: "+4",
       trendLabel: "vs last week",
       up: true,
-      icon: <CalendarClock className="h-5 w-5" />,
+      icon: <Calendar className="h-5 w-5" />,
       color: "text-warning",
     },
     {
@@ -275,7 +275,7 @@ export default function DashboardPage() {
       trend: "+3.2",
       trendLabel: "from last month",
       up: true,
-      icon: <Sparkles className="h-5 w-5" />,
+      icon: <MagicStar className="h-5 w-5" />,
       color: "text-success",
     },
   ];
@@ -304,9 +304,9 @@ export default function DashboardPage() {
                     </p>
                     <div className="flex items-center gap-1">
                       {card.up ? (
-                        <TrendingUp className="h-3.5 w-3.5 text-success" />
+                        <TrendUp className="h-3.5 w-3.5 text-success" />
                       ) : (
-                        <TrendingDown className="h-3.5 w-3.5 text-error" />
+                        <TrendDown className="h-3.5 w-3.5 text-error" />
                       )}
                       <span
                         className={cn(
@@ -345,7 +345,7 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <Badge variant="secondary" className="text-xs">
-                  <TrendingUp className="h-3 w-3 mr-1" />
+                  <TrendUp className="h-3 w-3 mr-1" />
                   +23% trend
                 </Badge>
               </div>
@@ -576,7 +576,7 @@ export default function DashboardPage() {
                           {interview.jobTitle}
                         </p>
                         <div className="flex items-center gap-1.5 mt-1">
-                          <CalendarDays className="h-3 w-3 text-muted" />
+                          <Calendar2 className="h-3 w-3 text-muted" />
                           <p className="text-xs text-muted-foreground">
                             {interview.scheduledAt.toLocaleDateString("en-US", {
                               weekday: "short",
@@ -704,7 +704,7 @@ export default function DashboardPage() {
                           className="h-8 w-8"
                           title="More options"
                         >
-                          <MoreHorizontal className="h-4 w-4" />
+                          <More className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>

@@ -14,24 +14,24 @@ import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, D
 import { ModalHeader } from "@/components/ui/modal-header"
 import { cn, timeAgo } from "@/lib/utils"
 import {
-  FileText,
-  BarChart3,
-  Users,
+  Document,
+  Chart2,
+  People,
   Clock,
-  Download,
+  DocumentDownload,
   Eye,
-  Share2,
-  Plus,
+  Share,
+  Add,
   Calendar,
-  Sparkles,
-  Target,
-  TrendingUp,
-  PieChart,
+  MagicStar,
+  Flag,
+  TrendUp,
+  Chart,
   Filter,
-  Loader2,
-  CheckCircle2,
+  RefreshCircle,
+  TickCircle,
   ArrowRight,
-} from "lucide-react"
+} from "iconsax-react"
 
 interface ReportTemplate {
   id: string
@@ -57,7 +57,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl1",
     title: "Candidate Evaluation Report",
     description: "Comprehensive assessment of individual candidates including AI scores, interview feedback, and hiring recommendations.",
-    icon: <Users className="h-5 w-5" />,
+    icon: <People className="h-5 w-5" />,
     color: "text-primary",
     bgColor: "bg-primary-muted",
     category: "Candidates",
@@ -66,7 +66,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl2",
     title: "Interview Summary Report",
     description: "Aggregated interview results with scoring breakdowns, interviewer feedback, and comparison analysis.",
-    icon: <BarChart3 className="h-5 w-5" />,
+    icon: <Chart2 className="h-5 w-5" />,
     color: "text-success",
     bgColor: "bg-success-muted",
     category: "Interviews",
@@ -75,7 +75,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl3",
     title: "Pipeline Analytics Report",
     description: "End-to-end pipeline metrics including conversion rates, stage durations, and bottleneck identification.",
-    icon: <TrendingUp className="h-5 w-5" />,
+    icon: <TrendUp className="h-5 w-5" />,
     color: "text-warning",
     bgColor: "bg-warning-muted",
     category: "Analytics",
@@ -84,7 +84,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl4",
     title: "Diversity & Inclusion Report",
     description: "Demographic breakdown of applicant pool, interview candidates, and hired candidates with DEI metrics.",
-    icon: <PieChart className="h-5 w-5" />,
+    icon: <Chart className="h-5 w-5" />,
     color: "text-primary",
     bgColor: "bg-primary-muted",
     category: "Compliance",
@@ -102,7 +102,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl6",
     title: "Source Effectiveness Report",
     description: "ROI analysis of recruitment channels with cost-per-hire, quality metrics, and channel recommendations.",
-    icon: <Target className="h-5 w-5" />,
+    icon: <Flag className="h-5 w-5" />,
     color: "text-error",
     bgColor: "bg-error-muted",
     category: "Sourcing",
@@ -121,8 +121,8 @@ const recentReports: RecentReport[] = [
 ]
 
 const statusConfig: Record<"Ready" | "Generating", { variant: "success" | "warning"; icon: React.ReactNode }> = {
-  Ready: { variant: "success", icon: <CheckCircle2 className="h-3 w-3" /> },
-  Generating: { variant: "warning", icon: <Loader2 className="h-3 w-3 animate-spin" /> },
+  Ready: { variant: "success", icon: <TickCircle className="h-3 w-3" /> },
+  Generating: { variant: "warning", icon: <RefreshCircle className="h-3 w-3 animate-spin" /> },
 }
 
 export default function ReportsPage() {
@@ -150,7 +150,7 @@ export default function ReportsPage() {
       description="Generate and manage AI-powered recruitment reports."
       actions={
         <Button size="sm">
-          <Plus className="h-4 w-4" />
+          <Add className="h-4 w-4" />
           Generate Report
         </Button>
       }
@@ -165,7 +165,7 @@ export default function ReportsPage() {
                   <p className="text-sm text-muted font-semibold uppercase tracking-wide">Total Reports</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{recentReports.length}</p>
                 </div>
-                <FileText className="h-5 w-5 text-primary" />
+                <Document className="h-5 w-5 text-primary" />
               </div>
             </CardContent>
           </Card>
@@ -176,7 +176,7 @@ export default function ReportsPage() {
                   <p className="text-sm text-muted font-semibold uppercase tracking-wide">Ready</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{recentReports.filter((r) => r.status === "Ready").length}</p>
                 </div>
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                <TickCircle className="h-5 w-5 text-success" />
               </div>
             </CardContent>
           </Card>
@@ -187,7 +187,7 @@ export default function ReportsPage() {
                   <p className="text-sm text-muted font-semibold uppercase tracking-wide">Generating</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{recentReports.filter((r) => r.status === "Generating").length}</p>
                 </div>
-                <Loader2 className="h-5 w-5 text-warning animate-spin" />
+                <RefreshCircle className="h-5 w-5 text-warning animate-spin" />
               </div>
             </CardContent>
           </Card>
@@ -230,7 +230,7 @@ export default function ReportsPage() {
                         handleGenerate(template)
                       }}
                     >
-                      <Sparkles className="h-3 w-3" />
+                      <MagicStar className="h-3 w-3" />
                       Generate
                     </Button>
                   </div>
@@ -270,7 +270,7 @@ export default function ReportsPage() {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-lg bg-surface-elevated flex items-center justify-center shrink-0">
-                          <FileText className="h-4 w-4 text-muted" />
+                          <Document className="h-4 w-4 text-muted" />
                         </div>
                         <p className="font-medium text-foreground truncate max-w-[240px]">{report.title}</p>
                       </div>
@@ -296,10 +296,10 @@ export default function ReportsPage() {
                           <Eye className="h-4 w-4 text-muted" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8" disabled={report.status === "Generating"}>
-                          <Download className="h-4 w-4 text-muted" />
+                          <DocumentDownload className="h-4 w-4 text-muted" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8" disabled={report.status === "Generating"}>
-                          <Share2 className="h-4 w-4 text-muted" />
+                          <Share className="h-4 w-4 text-muted" />
                         </Button>
                       </div>
                     </TableCell>
@@ -385,7 +385,7 @@ export default function ReportsPage() {
 
                 <div className="rounded-lg border border-border bg-background p-4 space-y-3">
                   <div className="flex items-center gap-2 text-sm text-foreground">
-                    <Sparkles className="h-4 w-4 text-primary" />
+                    <MagicStar className="h-4 w-4 text-primary" />
                     <span className="font-medium">Report Preview</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
@@ -412,7 +412,7 @@ export default function ReportsPage() {
                   Cancel
                 </Button>
                 <Button onClick={() => setGenerateDialogOpen(false)}>
-                  <Sparkles className="h-4 w-4" />
+                  <MagicStar className="h-4 w-4" />
                   Generate Report
                 </Button>
               </DialogFooter>

@@ -27,25 +27,24 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import {
-  Sparkles,
+  MagicStar,
   Play,
-  FileBarChart,
+  DocumentText,
   Clock,
-  Download,
-  Share2,
-  TrendingUp,
-  CheckCircle2,
+  DocumentDownload,
+  Share,
+  TrendUp,
+  TickCircle,
   Calendar,
-  BarChart3,
-  Zap,
-  ChevronRight,
-  Brain,
+  Chart2,
+  Flash,
+  ArrowRight2,
   MessageCircle,
-  Target,
-  Users,
-  Globe,
-  Gauge,
-} from "lucide-react"
+  Flag,
+  People,
+  Global,
+  Speedometer,
+} from "iconsax-react"
 
 type InterviewStatus = "Scheduled" | "In Progress" | "Completed"
 type InterviewType = "AI Screen" | "AI Technical" | "AI Behavioral"
@@ -200,9 +199,9 @@ const aiInterviews: AIInterview[] = [
 ]
 
 const stats = [
-  { label: "Total AI Interviews", value: "47", icon: Brain, change: "+12 this week", color: "text-primary", accent: "border-l-primary" },
-  { label: "Average Score", value: "86", icon: BarChart3, change: "+3 from last month", color: "text-success", accent: "border-l-success" },
-  { label: "Completion Rate", value: "96%", icon: CheckCircle2, change: "Consistent", color: "text-info", accent: "border-l-info" },
+  { label: "Total AI Interviews", value: "47", icon: MagicStar, change: "+12 this week", color: "text-primary", accent: "border-l-primary" },
+  { label: "Average Score", value: "86", icon: Chart2, change: "+3 from last month", color: "text-success", accent: "border-l-success" },
+  { label: "Completion Rate", value: "96%", icon: TickCircle, change: "Consistent", color: "text-info", accent: "border-l-info" },
   { label: "Avg Duration", value: "28 min", icon: Clock, change: "-2 min optimized", color: "text-warning", accent: "border-l-warning" },
 ]
 
@@ -240,14 +239,14 @@ export default function AIInterviewsPage() {
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
-              <Sparkles className="h-4 w-4 mr-2" />
+              <MagicStar className="h-4 w-4 mr-2" />
               Create AI Interview
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[560px]">
             <ModalHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
+                <MagicStar className="h-5 w-5 text-primary" />
                 Create AI Interview
               </DialogTitle>
               <DialogDescription>
@@ -339,10 +338,10 @@ export default function AIInterviewsPage() {
                 <label className="text-sm font-medium text-muted-foreground">Question Templates</label>
                 <div className="grid grid-cols-1 gap-2">
                   {[
-                    { icon: Target, label: "Role-specific technical questions" },
+                    { icon: Flag, label: "Role-specific technical questions" },
                     { icon: MessageCircle, label: "Behavioral & situational questions" },
-                    { icon: Brain, label: "Problem-solving & critical thinking" },
-                    { icon: Users, label: "Team collaboration scenarios" },
+                    { icon: MagicStar, label: "Problem-solving & critical thinking" },
+                    { icon: People, label: "Team collaboration scenarios" },
                   ].map((t) => (
                     <label
                       key={t.label}
@@ -365,7 +364,7 @@ export default function AIInterviewsPage() {
                 Cancel
               </Button>
               <Button onClick={() => setCreateOpen(false)}>
-                <Sparkles className="h-4 w-4 mr-2" />
+                <MagicStar className="h-4 w-4 mr-2" />
                 Create Interview
               </Button>
             </DialogFooter>
@@ -383,7 +382,7 @@ export default function AIInterviewsPage() {
                   <p className="text-xs text-muted font-semibold uppercase tracking-wide mb-1">{s.label}</p>
                   <p className="text-2xl font-bold text-foreground">{s.value}</p>
                   <p className="text-xs text-muted mt-1 flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3 text-success" />
+                    <TrendUp className="h-3 w-3 text-success" />
                     {s.change}
                   </p>
                 </div>
@@ -413,7 +412,7 @@ export default function AIInterviewsPage() {
                     <div className="relative shrink-0">
                       <Avatar className="h-12 w-12">
                         <div className="h-full w-full flex items-center justify-center bg-primary-muted rounded-full">
-                          <Sparkles className="h-6 w-6 text-primary" />
+                          <MagicStar className="h-6 w-6 text-primary" />
                         </div>
                       </Avatar>
                     </div>
@@ -482,13 +481,13 @@ export default function AIInterviewsPage() {
                             className="h-8"
                             onClick={() => setDetailInterview(interview)}
                           >
-                            <FileBarChart className="h-3.5 w-3.5 mr-1.5" />
+                            <DocumentText className="h-3.5 w-3.5 mr-1.5" />
                             View Report
                           </Button>
                         )}
                         {interview.status === "In Progress" && (
                           <Button size="sm" variant="outline" className="h-8 border-primary/30 text-primary">
-                            <Gauge className="h-3.5 w-3.5 mr-1.5" />
+                            <Speedometer className="h-3.5 w-3.5 mr-1.5" />
                             Monitoring
                           </Button>
                         )}
@@ -527,7 +526,7 @@ export default function AIInterviewsPage() {
             <>
               <ModalHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-primary" />
+                  <MagicStar className="h-5 w-5 text-primary" />
                   AI Interview Report
                 </DialogTitle>
                 <DialogDescription>
@@ -642,11 +641,11 @@ export default function AIInterviewsPage() {
 
               <DialogFooter className="gap-2 sm:gap-0">
                 <Button variant="outline" className="sm:mr-auto">
-                  <Share2 className="h-4 w-4 mr-2" />
+                  <Share className="h-4 w-4 mr-2" />
                   Share with Team
                 </Button>
                 <Button>
-                  <Download className="h-4 w-4 mr-2" />
+                  <DocumentDownload className="h-4 w-4 mr-2" />
                   Download Report
                 </Button>
               </DialogFooter>

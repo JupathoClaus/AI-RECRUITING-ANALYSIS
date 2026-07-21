@@ -7,18 +7,18 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import {
-  Bell,
-  CheckCheck,
-  FileText,
+  Notification,
+  TickCircle,
+  Document,
   Calendar,
   Gift,
-  UserPlus,
-  UserX,
-  Bot,
+  UserAdd,
+  UserRemove,
+  Cpu,
   MessageSquare,
-  Settings,
-  Circle,
-} from "lucide-react"
+  Setting,
+  MoreCircle,
+} from "iconsax-react"
 import { cn, timeAgo } from "@/lib/utils"
 
 type NotificationType = "application" | "interview" | "offer" | "hire" | "rejection" | "ai" | "note"
@@ -51,13 +51,13 @@ const notifications: Notification[] = [
   { id: "n15", type: "ai", candidateName: "David Park", jobTitle: "ML Engineer", message: "AI behavioral analysis completed for", timestamp: new Date("2026-07-06T05:00:00"), read: true },
 ]
 
-const typeIconMap: Record<NotificationType, typeof Bell> = {
-  application: FileText,
+const typeIconMap: Record<NotificationType, typeof Notification> = {
+  application: Document,
   interview: Calendar,
   offer: Gift,
-  hire: UserPlus,
-  rejection: UserX,
-  ai: Bot,
+  hire: UserAdd,
+  rejection: UserRemove,
+  ai: Cpu,
   note: MessageSquare,
 }
 
@@ -132,11 +132,11 @@ export default function NotificationsPage() {
       actions={
         <div className="flex items-center gap-1 sm:gap-3">
           <Button variant="ghost" size="sm" className="text-muted hover:text-foreground hidden sm:inline-flex">
-            <Settings className="h-4 w-4 mr-2" />
+            <Setting className="h-4 w-4 mr-2" />
             Preferences
           </Button>
           <Button variant="outline" size="sm" onClick={markAllRead} disabled={unreadCount === 0}>
-            <CheckCheck className="h-4 w-4 sm:mr-2" />
+            <TickCircle className="h-4 w-4 sm:mr-2" />
             <span className="hidden sm:inline">Mark all as read</span>
           </Button>
         </div>
@@ -191,7 +191,7 @@ function NotificationGroups({
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <div className="h-16 w-16 rounded-full bg-surface-hover flex items-center justify-center mb-4">
-          <Bell className="h-8 w-8 text-muted" />
+          <Notification className="h-8 w-8 text-muted" />
         </div>
         <h3 className="text-lg font-semibold text-foreground mb-1">All caught up</h3>
         <p className="text-sm text-muted max-w-sm">
@@ -241,7 +241,7 @@ function NotificationGroups({
                   </div>
                   {!read && (
                     <div className="mt-2 flex shrink-0">
-                      <Circle className="h-2.5 w-2.5 fill-primary text-primary" />
+                      <MoreCircle className="h-2.5 w-2.5 fill-primary text-primary" />
                     </div>
                   )}
                 </div>

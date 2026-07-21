@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Bell, ChevronDown, Moon, Sun, HelpCircle, User, Settings, LogOut } from "lucide-react"
+import { Notification, ArrowDown2, Moon, Sun, Information, User, Setting, Logout } from "iconsax-react"
 import { useTheme } from "@/lib/theme-context"
 import Link from "next/link"
 
@@ -75,7 +75,7 @@ export function TopNav({ title, description, actions }: TopNavProps) {
           className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-surface-hover hover:text-foreground transition-colors duration-150"
           aria-label="Notifications"
         >
-          <Bell className="h-4 w-4" />
+          <Notification className="h-4 w-4" />
         </Link>
 
         <DropdownMenu>
@@ -85,7 +85,7 @@ export function TopNav({ title, description, actions }: TopNavProps) {
                 <AvatarImage src="/avatars/sarah.jpg" alt={user?.name || "User"} />
               </Avatar>
               <span className="text-sm font-medium hidden sm:inline">{user?.name?.split(" ")[0] || "User"}</span>
-              <ChevronDown className="h-3.5 w-3.5 text-muted hidden sm:block" />
+              <ArrowDown2 className="h-3.5 w-3.5 text-muted hidden sm:block" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -101,16 +101,16 @@ export function TopNav({ title, description, actions }: TopNavProps) {
               Profile
             </DropdownMenuItem>
             <DropdownMenuItem>
-              <Settings className="mr-2 h-4 w-4" />
+              <Setting className="mr-2 h-4 w-4" />
               Settings
             </DropdownMenuItem>
             <DropdownMenuItem>
-              <HelpCircle className="mr-2 h-4 w-4" />
+              <Information className="mr-2 h-4 w-4" />
               Help & Support
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-error" onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
+              <Logout className="mr-2 h-4 w-4" />
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>

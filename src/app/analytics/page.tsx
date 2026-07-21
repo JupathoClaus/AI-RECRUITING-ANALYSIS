@@ -2,23 +2,22 @@
 
 import { useMemo, useState } from "react"
 import {
-  BarChart as BarChartIcon,
-  PieChart as PieChartIcon,
-  TrendingUp,
-  TrendingDown,
+  Chart2 as BarChartIcon,
+  Chart as PieChartIcon,
+  TrendUp,
+  TrendDown,
   Clock,
-  CheckCircle2,
-  Target,
-  Brain,
-  Users,
-  Building2,
-  ArrowUpRight,
-  Lightbulb,
-  AlertTriangle,
-  Sparkles,
-  CalendarClock,
+  TickCircle,
+  Flag,
+  MagicStar,
+  People,
+  Buildings,
+  ArrowUp2,
+  Flash,
+  Warning2,
+  Calendar,
   Briefcase,
-} from "lucide-react"
+} from "iconsax-react"
 import {
   PieChart,
   Pie,
@@ -96,13 +95,14 @@ const aiInsights = [
     type: "warning",
   },
   {
-    icon: Target,
+    icon: Flag,
     title: "Referrals yield the highest-quality candidates",
     description: "Referred candidates score an average of 89 on AI assessments versus 76 from job boards. Increasing the referral bonus could improve quality further.",
     type: "success",
   },
   {
-    icon: Brain,
+        icon: MagicStar,
+
     title: "AI screening accuracy improved 6% this quarter",
     description: "Model v2.3 shows 94% correlation with final hiring decisions. The NLP update has reduced false positives in engineering screenings by 12%.",
     type: "info",
@@ -155,7 +155,7 @@ export default function AnalyticsPage() {
         trend: "+18.5%",
         trendLabel: "vs last quarter",
         up: true,
-        icon: Users,
+        icon: People,
         color: "text-primary",
         accent: "border-l-primary",
       },
@@ -175,7 +175,7 @@ export default function AnalyticsPage() {
         trend: "+5.3%",
         trendLabel: "vs last quarter",
         up: true,
-        icon: CheckCircle2,
+        icon: TickCircle,
         color: "text-success",
         accent: "border-l-success",
       },
@@ -185,7 +185,7 @@ export default function AnalyticsPage() {
         trend: "+6%",
         trendLabel: "this quarter",
         up: true,
-        icon: Brain,
+    icon: MagicStar,
         color: "text-warning",
         accent: "border-l-warning",
       },
@@ -228,9 +228,9 @@ export default function AnalyticsPage() {
                     <p className="text-3xl font-bold tracking-tight text-foreground">{metric.value}</p>
                     <div className="flex items-center gap-1">
                       {metric.up ? (
-                        <TrendingUp className="h-3.5 w-3.5 text-success" />
+                        <TrendUp className="h-3.5 w-3.5 text-success" />
                       ) : (
-                        <TrendingDown className="h-3.5 w-3.5 text-error" />
+                        <TrendDown className="h-3.5 w-3.5 text-error" />
                       )}
                       <span className={cn("text-xs font-semibold", metric.up ? "text-success" : "text-error")}>
                         {metric.trend}
@@ -356,7 +356,7 @@ export default function AnalyticsPage() {
                   <CardTitle className="text-base">Time to Hire Trend</CardTitle>
                   <CardDescription>Average days to fill (6 months)</CardDescription>
                 </div>
-                <TrendingDown className="h-4 w-4 text-success" />
+                <TrendDown className="h-4 w-4 text-success" />
               </div>
             </CardHeader>
             <CardContent>
@@ -410,7 +410,7 @@ export default function AnalyticsPage() {
                   <CardTitle className="text-base">Source Breakdown</CardTitle>
                   <CardDescription>Candidates by source channel</CardDescription>
                 </div>
-                <Users className="h-4 w-4 text-muted" />
+                <People className="h-4 w-4 text-muted" />
               </div>
             </CardHeader>
             <CardContent>
@@ -455,7 +455,7 @@ export default function AnalyticsPage() {
                 <CardTitle className="text-base">Department Performance</CardTitle>
                 <CardDescription>Key hiring metrics by department</CardDescription>
               </div>
-              <Building2 className="h-4 w-4 text-muted" />
+              <Buildings className="h-4 w-4 text-muted" />
             </div>
           </CardHeader>
           <CardContent>
@@ -541,7 +541,7 @@ export default function AnalyticsPage() {
                 <CardTitle className="text-base">AI Insights</CardTitle>
                 <CardDescription>Intelligence-driven recruitment recommendations</CardDescription>
               </div>
-              <Sparkles className="h-4 w-4 text-warning" />
+              <MagicStar className="h-4 w-4 text-warning" />
             </div>
           </CardHeader>
           <CardContent>
