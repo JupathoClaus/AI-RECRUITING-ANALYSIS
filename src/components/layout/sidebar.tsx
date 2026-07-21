@@ -142,9 +142,9 @@ export function Sidebar() {
         aria-label="Main navigation"
       >
         {/* Logo Header */}
-        <div className={cn("flex items-center justify-center shrink-0 border-b border-border relative", collapsed ? "px-2 py-3" : "px-5 py-6")}>
+        <div className={cn("flex items-center justify-center shrink-0 border-b border-border relative", collapsed ? "px-2 py-2" : "px-4 py-3")}>
           <Link href="/dashboard" className="flex items-center justify-center" onClick={() => setMobileOpen(false)}>
-            <div className="flex h-[150px] w-[150px] items-center justify-center overflow-hidden">
+            <div className="flex h-[100px] w-[100px] items-center justify-center overflow-hidden">
               <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
           </Link>
@@ -176,7 +176,7 @@ export function Sidebar() {
           {navSections.map((section) => (
             <div key={section.title}>
               {!collapsed && (
-                <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-widest text-black">
+                <p className="mb-3 px-3 text-[11px] font-normal uppercase tracking-widest text-black">
                   {section.title}
                 </p>
               )}
@@ -189,7 +189,7 @@ export function Sidebar() {
                       href={item.href}
                       onClick={() => setMobileOpen(false)}
                       className={cn(
-                        "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-semibold transition-all duration-150",
+                        "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-normal transition-all duration-150",
                         isActive
                           ? "bg-primary/10 text-primary shadow-sm"
                           : "text-black hover:bg-surface-hover hover:text-black",
@@ -206,7 +206,7 @@ export function Sidebar() {
                         <>
                           <span className="flex-1">{item.label}</span>
                           {item.badge && (
-                            <Badge variant={isActive ? "default" : "secondary"} className="h-5 px-1.5 text-[10px] font-semibold">
+                            <Badge variant={isActive ? "default" : "secondary"} className="h-5 px-1.5 text-[10px] font-normal">
                               {item.badge}
                             </Badge>
                           )}
@@ -242,7 +242,7 @@ export function Sidebar() {
             </Avatar>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{user?.name || "User"}</p>
+                <p className="text-sm font-normal text-foreground truncate">{user?.name || "User"}</p>
                 <p className="text-xs text-muted truncate">{user?.role || "Member"}</p>
               </div>
             )}
