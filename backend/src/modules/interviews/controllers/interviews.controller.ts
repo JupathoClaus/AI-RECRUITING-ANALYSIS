@@ -33,6 +33,7 @@ import {
   RescheduleInterviewDto,
   CancelInterviewDto,
   CompleteInterviewDto,
+  StartInterviewDto,
 } from '../dto/update-interview.dto';
 import { InterviewQueryDto } from '../dto/interview-query.dto';
 import {
@@ -257,6 +258,25 @@ export class InterviewsController {
     return this.interviewsService.confirm(
       id,
       dto.expectedVersion,
+      user.activeCompanyId!,
+      user.userId,
+      user.membershipId!,
+    );
+  }
+
+  // CONFIRMED → IN_PROGRESS
+  @Post(':interviewId/start')
+  @RequirePermissions('interviews.update')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Start interview (transition CONFIRMED → IN_PROGRESS)' })
+  async start(
+    @Param('interviewId') id: string,
+    @Body() dto: StartInterviewDto,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    return this.interviewsService.start(
+      id,
+      dto,
       user.activeCompanyId!,
       user.userId,
       user.membershipId!,

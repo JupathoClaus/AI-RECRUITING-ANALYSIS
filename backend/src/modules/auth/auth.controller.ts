@@ -74,11 +74,12 @@ export class AuthController {
     const result = await this.authService.registerCompany(dto, ip, userAgent, requestId);
 
     return {
+      success: true,
+      message: 'Registration successful. Please check your email to verify your account.',
       userId: result.userId,
       companyId: result.companyId,
       membershipId: result.membershipId,
       verificationRequired: true,
-      ...(result.verificationToken && { verificationToken: result.verificationToken }),
     };
   }
 
@@ -293,6 +294,31 @@ export class AuthController {
     await this.authService.verifyEmail(dto.token, ip, userAgent, requestId);
 
     return { message: 'Email verified successfully' };
+  }
+
+  @Get('verify-email')
+  @Public()
+  @ApiOperation({ summary: 'Verify email via link click (redirects)' })
+  @ApiResponse({ status: HttpStatus.FOUND, description: 'Redirects to frontend verification page' })
+  async verifyEmailViaLink(@Req() req: Request, @Res() res: Response) {
+    const token = req.query.token as string;
+
+    if (!token) {
+      const frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
+      return res.redirect(`${frontendUrl}/auth/verify-email?error=invalid`);
+    }
+
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const requestId = (req as unknown as RequestWithId)?.requestId || '';
+    const frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
+
+    try {
+      await this.authService.verifyEmail(token, ip, userAgent, requestId);
+      return res.redirect(`${frontendUrl}/auth/verify-email?success=true`);
+    } catch {
+      return res.redirect(`${frontendUrl}/auth/verify-email?error=expired`);
+    }
   }
 
   @Post('resend-verification')

@@ -19,6 +19,7 @@ import {
   RescheduleInterviewDto,
   CancelInterviewDto,
   CompleteInterviewDto,
+  StartInterviewDto,
 } from '../dto/update-interview.dto';
 import { InterviewQueryDto } from '../dto/interview-query.dto';
 
@@ -550,6 +551,49 @@ export class InterviewsService {
         },
       });
       return { completed: true, applicationId: interview.applicationId };
+    });
+  }
+
+  async start(
+    id: string,
+    dto: StartInterviewDto,
+    companyId: string,
+    userId: string,
+    membershipId: string,
+  ) {
+    const interview = await this.prisma.interview.findFirst({
+      where: { id, companyId, deletedAt: null },
+    });
+    if (!interview)
+      throw new NotFoundException({ code: 'INTERVIEW_NOT_FOUND', message: 'Interview not found' });
+    this.validateTransition(interview.status, InterviewStatus.IN_PROGRESS);
+    if (interview.version !== dto.expectedVersion) {
+      throw new ConflictException({
+        code: 'INTERVIEW_STALE_VERSION',
+        message: 'Stale version',
+        currentVersion: interview.version,
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.interview.update({
+        where: { id },
+        data: {
+          status: InterviewStatus.IN_PROGRESS,
+          updatedByMembershipId: membershipId,
+          version: interview.version + 1,
+        },
+      });
+      await tx.interviewHistory.create({
+        data: {
+          interviewId: id,
+          eventType: InterviewHistoryEventType.INTERVIEW_STARTED,
+          actorUserId: userId,
+          actorMembershipId: membershipId,
+          description: 'Interview started',
+        },
+      });
+      return { started: true };
     });
   }
 

@@ -5,6 +5,7 @@ import jwtConfig from './loaders/jwt.config';
 import securityConfig from './loaders/security.config';
 import swaggerConfig from './loaders/swagger.config';
 import authConfig from './loaders/auth.config';
+import emailConfig from './loaders/email.config';
 
 export default [
   appConfig,
@@ -14,6 +15,7 @@ export default [
   securityConfig,
   swaggerConfig,
   authConfig,
+  emailConfig,
 ];
 
 export {
@@ -24,4 +26,5 @@ export {
   securityConfig,
   swaggerConfig,
   authConfig,
+  emailConfig,
 };

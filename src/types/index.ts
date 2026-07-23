@@ -1,6 +1,31 @@
 export type JobStatus = "Active" | "Paused" | "Closed" | "Draft"
 export type JobType = "full-time" | "part-time" | "contract" | "internship"
-export type CandidateStatus = "Applied" | "Screening" | "Interview" | "Offer" | "Hired" | "Rejected"
+
+export type CandidateStatus = "ACTIVE" | "INACTIVE" | "BLOCKED"
+
+export type ApplicationStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "UNDER_REVIEW"
+  | "SCREENING"
+  | "SHORTLISTED"
+  | "ASSESSMENT"
+  | "INTERVIEW"
+  | "OFFER"
+  | "HIRED"
+  | "REJECTED"
+  | "WITHDRAWN"
+  | "DISQUALIFIED"
+  | "ON_HOLD"
+  | "ARCHIVED"
+
+export type DisplayApplicationStatus =
+  | "Applied"
+  | "Screening"
+  | "Interview"
+  | "Offer"
+  | "Hired"
+  | "Rejected"
 
 export interface Job {
   id: string
@@ -16,22 +41,63 @@ export interface Job {
   createdAt: Date
 }
 
+export interface CandidateSkill {
+  id: string
+  skillId?: string
+  name: string
+  proficiencyLevel?: string | null
+}
+
+export interface CandidateCompanyProfile {
+  companyCandidateId?: string
+  rating: number
+  tags?: string[]
+  ownerId?: string
+  internalSummary?: string
+}
+
+export interface CandidateApplicationSummary {
+  id: string
+  candidateId: string
+  jobId: string
+  jobTitle: string
+  status: ApplicationStatus
+  displayStatus: DisplayApplicationStatus
+  stageId?: string
+  stageName?: string
+  version: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface CandidateApplicationInfo {
+  total: number
+  active: number
+  latest?: CandidateApplicationSummary
+  current?: CandidateApplicationSummary
+}
+
 export interface Candidate {
   id: string
-  name: string
+  firstName: string
+  lastName: string
+  displayName: string
   email: string
   phone: string
   avatar?: string
-  jobId: string
-  jobTitle: string
-  experience: number
-  skills: string[]
+  headline?: string
+  currentJobTitle?: string
+  currentEmployer?: string
+  totalExperienceYears: number
+  skills: CandidateSkill[]
   aiScore: number
-  rating: number
   status: CandidateStatus
-  stage: CandidateStatus
-  notes: string
-  appliedAt: Date
+  source?: string
+  createdAt: Date
+  updatedAt: Date
+
+  companyProfile?: CandidateCompanyProfile
+  applicationSummary?: CandidateApplicationInfo
 }
 
 export interface Interview {
@@ -44,8 +110,11 @@ export interface Interview {
   scheduledAt: Date
   duration: number
   status: "Scheduled" | "Completed" | "Cancelled"
+  backendStatus: "SCHEDULED" | "CONFIRMED" | "RESCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW" | "EXPIRED"
   type: "Video" | "Phone" | "On-site" | "AI" | "Technical"
   score?: number
+  version: number
+  applicationId?: string
 }
 
 export interface Activity {

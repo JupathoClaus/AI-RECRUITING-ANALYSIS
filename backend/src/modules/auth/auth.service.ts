@@ -45,7 +45,6 @@ export interface RegistrationResult {
   userId: string;
   companyId: string;
   membershipId: string;
-  verificationToken?: string;
 }
 
 @Injectable()
@@ -218,11 +217,18 @@ export class AuthService {
 
     this.logger.log(`Company registered: ${result.company.id}, User: ${result.user.id}`);
 
+    await this.queueService.addEmailJob('auth.email-verification', {
+      email: normalizedEmail,
+      userId: result.user.id,
+      token: verificationToken.rawToken,
+      firstName: dto.firstName,
+      type: 'email-verification',
+    });
+
     return {
       userId: result.user.id,
       companyId: result.company.id,
       membershipId: result.membership.id,
-      ...(this.isDevOrTest && { verificationToken: verificationToken.rawToken }),
     };
   }
 
@@ -814,6 +820,7 @@ export class AuthService {
       email: normalizedEmail,
       userId: user.id,
       token: rawToken,
+      firstName: user.firstName,
       type: 'email-verification',
     });
 

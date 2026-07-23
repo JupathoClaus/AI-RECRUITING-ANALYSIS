@@ -136,6 +136,14 @@ export class CancelInterviewDto {
   expectedVersion: number;
 }
 
+export class StartInterviewDto {
+  @ApiProperty({ description: 'Optimistic concurrency version' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  expectedVersion: number;
+}
+
 export class CompleteInterviewDto {
   @ApiPropertyOptional({ description: 'Result notes' })
   @IsOptional()

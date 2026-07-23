@@ -3,19 +3,21 @@
 import * as React from "react"
 import { useStore } from "@/store/useStore"
 import type { Interview } from "@/types"
+import type { FrontendInterviewType } from "@/lib/api/interviews.api"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { EmptyState } from "@/components/ui/empty-state"
-import { cn, getInitials, formatNumber, timeAgo } from "@/lib/utils"
+import { cn, getInitials, timeAgo } from "@/lib/utils"
 import {
   Search,
   Plus,
@@ -29,7 +31,6 @@ import {
   CheckCircle2,
   Timer,
   X,
-  FileText,
   TrendingUp,
   Sparkles,
   Building2,
@@ -93,8 +94,11 @@ function isCompleted(interview: Interview): boolean {
 }
 
 export default function InterviewsPage() {
-  const { interviews, candidates, jobs } = useStore()
+  const { interviews, candidates, jobs, interviewsLoading, interviewsError, fetchInterviews: loadInterviews, scheduleInterview, cancelInterviewById, completeInterviewById } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
+  React.useEffect(() => {
+    loadInterviews()
+  }, [loadInterviews])
   const [typeFilter, setTypeFilter] = React.useState<string>("all")
   const [activeTab, setActiveTab] = React.useState("upcoming")
   const [scheduleDialogOpen, setScheduleDialogOpen] = React.useState(false)
@@ -152,31 +156,28 @@ export default function InterviewsPage() {
     return filteredInterviews
   }, [activeTab, upcomingInterviews, completedInterviews, filteredInterviews])
 
-  const handleScheduleInterview = () => {
+  const handleScheduleInterview = async () => {
     if (!newInterview.candidateId || !newInterview.jobId || !newInterview.date || !newInterview.time) return
 
     const candidate = candidates.find((c) => c.id === newInterview.candidateId)
     const job = jobs.find((j) => j.id === newInterview.jobId)
     if (!candidate || !job) return
 
-    const dateTime = new Date(`${newInterview.date}T${newInterview.time}:00`)
+    const applicationId = candidate.applicationSummary?.current?.id
+    if (!applicationId) return
 
-    const interview: Interview = {
-      id: `i${Date.now()}`,
-      candidateId: newInterview.candidateId,
-      candidateName: candidate.name,
+    const dateTime = `${newInterview.date}T${newInterview.time}:00`
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+
+    await scheduleInterview({
+      applicationId,
       jobId: newInterview.jobId,
-      jobTitle: job.title,
+      type: newInterview.type as FrontendInterviewType,
+      title: `Interview: ${candidate.displayName} - ${job.title}`,
       scheduledAt: dateTime,
-      date: dateTime,
-      duration: Number(newInterview.duration) || 60,
-      status: "Scheduled",
-      type: newInterview.type,
-    }
-
-    useStore.setState((state) => ({
-      interviews: [interview, ...state.interviews],
-    }))
+      durationMinutes: Number(newInterview.duration) || 60,
+      timezone,
+    })
 
     setScheduleDialogOpen(false)
     setNewInterview({ candidateId: "", jobId: "", type: "Video", date: "", time: "", duration: "60" })
@@ -195,10 +196,10 @@ export default function InterviewsPage() {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-xl">
-            <DialogHeader>
+            <ModalHeader>
               <DialogTitle>Schedule Interview</DialogTitle>
               <DialogDescription>Set up a new interview with a candidate.</DialogDescription>
-            </DialogHeader>
+            </ModalHeader>
             <div className="grid gap-4 py-2">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Candidate *</label>
@@ -208,7 +209,7 @@ export default function InterviewsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {candidates.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name} — {c.jobTitle}</SelectItem>
+                      <SelectItem key={c.id} value={c.id}>{c.displayName} — {c.applicationSummary?.current?.jobTitle || c.currentJobTitle || ""}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -289,6 +290,20 @@ export default function InterviewsPage() {
         </Dialog>
       }
     >
+      {/* Error Banner */}
+      {interviewsError && (
+        <div className="mb-4 rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error">
+          {interviewsError}
+        </div>
+      )}
+
+      {/* Loading State */}
+      {interviewsLoading && interviews.length === 0 && (
+        <div className="flex items-center justify-center py-12 animate-fade-in">
+          <p className="text-sm text-muted">Loading interviews...</p>
+        </div>
+      )}
+
       {/* Stats Row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 animate-fade-in">
         <Card>
@@ -503,7 +518,7 @@ export default function InterviewsPage() {
         <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
           {detailsInterview && (
             <>
-              <DialogHeader>
+              <ModalHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-12 w-12 shrink-0" fallback={getInitials(detailsInterview.candidateName)}>
@@ -524,7 +539,7 @@ export default function InterviewsPage() {
                     {statusConfig[detailsInterview.status].label}
                   </Badge>
                 </div>
-              </DialogHeader>
+              </ModalHeader>
 
               <div className="space-y-5">
                 {/* Quick Info Grid */}
@@ -694,12 +709,8 @@ export default function InterviewsPage() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => {
-                        useStore.setState((state) => ({
-                          interviews: state.interviews.map((i) =>
-                            i.id === detailsInterview.id ? { ...i, status: "Cancelled" as const } : i
-                          ),
-                        }))
+                      onClick={async () => {
+                        await cancelInterviewById(detailsInterview.id)
                         setDetailsInterview(null)
                       }}
                     >
@@ -709,12 +720,8 @@ export default function InterviewsPage() {
                     <div className="flex-1" />
                     <Button
                       size="sm"
-                      onClick={() => {
-                        useStore.setState((state) => ({
-                          interviews: state.interviews.map((i) =>
-                            i.id === detailsInterview.id ? { ...i, status: "Completed" as const, score: Math.floor(Math.random() * 30) + 70 } : i
-                          ),
-                        }))
+                      onClick={async () => {
+                        await completeInterviewById(detailsInterview.id)
                         setDetailsInterview(null)
                       }}
                     >

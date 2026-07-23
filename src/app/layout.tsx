@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme-context";
 import { AuthProvider } from "@/lib/auth-context";
+import { FloatingAIAssistant } from "@/components/ai-assistant";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -17,6 +19,9 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "AI Recruiter - AI Recruitment Operating System",
   description: "Enterprise-grade AI-powered recruitment platform",
+  icons: {
+    icon: "/ai-recruiter-logo.png",
+  },
 };
 
 export default function RootLayout({
@@ -25,18 +30,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
-      <head>
-        <script
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning data-scroll-behavior="smooth">
+      <body className="min-h-screen bg-background text-foreground antialiased">
+        <Script
+          id="theme-script"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `try{var t=localStorage.getItem("ai-recruiter-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark")}catch(e){}`,
           }}
-          suppressHydrationWarning
         />
-      </head>
-      <body className="min-h-screen bg-background text-foreground antialiased">
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            {children}
+            <FloatingAIAssistant />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

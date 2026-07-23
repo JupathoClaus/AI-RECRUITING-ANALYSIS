@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Brain, Eye, EyeOff, ArrowLeft } from "lucide-react"
+import { Eye, EyeOff, ArrowLeft } from "lucide-react"
+import { resendVerification } from "@/lib/api/auth.api"
 
 export default function LoginPage() {
   const { user, login } = useAuth()
@@ -16,6 +17,9 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = React.useState(false)
   const [error, setError] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
+  const [emailNotVerified, setEmailNotVerified] = React.useState(false)
+  const [resending, setResending] = React.useState(false)
+  const [resent, setResent] = React.useState(false)
 
   React.useEffect(() => {
     if (user) router.replace("/dashboard")
@@ -24,14 +28,34 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setEmailNotVerified(false)
+    setResent(false)
     setSubmitting(true)
 
     const result = await login(email, password)
     if (result.error) {
-      setError(result.error)
+      if (result.error.includes("verify your email")) {
+        setEmailNotVerified(true)
+        setError("")
+      } else {
+        setError(result.error)
+      }
       setSubmitting(false)
     } else {
       router.replace("/dashboard")
+    }
+  }
+
+  const handleResend = async () => {
+    if (!email.trim()) return
+    setResending(true)
+    try {
+      await resendVerification(email.trim())
+      setResent(true)
+    } catch {
+      setResent(true)
+    } finally {
+      setResending(false)
     }
   }
 
@@ -41,11 +65,10 @@ export default function LoginPage() {
       <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-primary/10 via-primary/5 to-transparent">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5" />
         <div className="relative flex flex-col justify-between p-12 w-full">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary shadow-sm">
-              <Brain className="h-5 w-5 text-white" />
+          <Link href="/" className="flex items-center">
+            <div className="flex h-[150px] w-[150px] items-center justify-center rounded-xl overflow-hidden">
+              <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-foreground">AI Recruiter</span>
           </Link>
           <div>
             <h2 className="text-4xl font-bold tracking-tight text-foreground leading-tight">
@@ -98,6 +121,28 @@ export default function LoginPage() {
               </div>
             )}
 
+            {emailNotVerified && (
+              <div className="rounded-lg border border-warning/20 bg-warning/5 px-4 py-3 text-sm">
+                <p className="text-warning-foreground font-medium mb-2">
+                  Please verify your email address before signing in.
+                </p>
+                {resent ? (
+                  <p className="text-success-foreground">
+                    If the email exists and requires verification, a new link has been sent.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={resending || !email.trim()}
+                    className="text-primary hover:text-primary/80 font-medium underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {resending ? "Sending..." : "Resend verification email"}
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Email</label>
               <Input
@@ -146,13 +191,6 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <div className="mt-8 rounded-lg border border-border bg-surface/50 p-4">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Demo credentials</p>
-            <div className="space-y-1 text-xs text-muted font-mono">
-              <p>Email: sarah@airecruiter.com</p>
-              <p>Password: admin123</p>
-            </div>
-          </div>
         </div>
       </div>
     </div>

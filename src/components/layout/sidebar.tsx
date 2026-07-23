@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
-import { Avatar, AvatarImage } from "@/components/ui/avatar"
+import { Avatar } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,7 +17,7 @@ import {
   BarChart3,
   Settings,
   Bell,
-  Brain,
+
   Search,
   ChevronLeft,
   ChevronRight,
@@ -143,16 +143,11 @@ export function Sidebar() {
         aria-label="Main navigation"
       >
         {/* Logo */}
-        <div className={cn("flex h-14 items-center border-b border-border shrink-0", collapsed ? "justify-center px-2" : "px-5")}>
-          <Link href="/dashboard" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}>
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shadow-sm">
-              <Brain className="h-4.5 w-4.5 text-white" />
+        <div className={cn("flex h-16 items-center border-b border-border shrink-0", collapsed ? "justify-center px-2" : "px-5")}>
+          <Link href="/dashboard" className="flex items-center" onClick={() => setMobileOpen(false)}>
+            <div className="flex h-[150px] w-[150px] items-center justify-center rounded-xl overflow-hidden">
+              <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
-            {!collapsed && (
-              <span className="text-base font-bold tracking-tight text-foreground">
-                AI Recruiter
-              </span>
-            )}
           </Link>
           {/* Mobile close */}
           <button
@@ -182,7 +177,7 @@ export function Sidebar() {
           {navSections.map((section) => (
             <div key={section.title}>
               {!collapsed && (
-                <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-widest text-foreground/50">
+                <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-widest text-black">
                   {section.title}
                 </p>
               )}
@@ -198,7 +193,7 @@ export function Sidebar() {
                         "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-semibold transition-all duration-150",
                         isActive
                           ? "bg-primary/10 text-primary shadow-sm"
-                          : "text-foreground/60 hover:bg-surface-hover hover:text-foreground",
+                          : "text-black hover:bg-surface-hover hover:text-black",
                         collapsed && "justify-center px-2"
                       )}
                       title={collapsed ? item.label : undefined}
@@ -207,7 +202,7 @@ export function Sidebar() {
                       {isActive && (
                         <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-primary" />
                       )}
-                      <item.icon className={cn("h-5 w-5 shrink-0", isActive ? "text-primary" : "text-foreground/40 group-hover:text-foreground/70")} />
+                      <item.icon className={cn("h-5 w-5 shrink-0", isActive ? "text-primary" : "text-black group-hover:text-black")} />
                       {!collapsed && (
                         <>
                           <span className="flex-1">{item.label}</span>
@@ -243,9 +238,7 @@ export function Sidebar() {
         {/* User section */}
         <div className={cn("border-t border-border p-3 shrink-0", collapsed && "px-2")}>
           <div className={cn("flex items-center gap-3 rounded-lg p-2 hover:bg-surface-hover transition-colors duration-150", collapsed && "justify-center")}>
-            <Avatar className="h-8 w-8" fallback={userInitials}>
-              <AvatarImage src="/avatars/sarah.jpg" alt={user?.name || "User"} />
-            </Avatar>
+            <Avatar className="h-8 w-8" fallback={userInitials} />
             {!collapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">{user?.name || "User"}</p>

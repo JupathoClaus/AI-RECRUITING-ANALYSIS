@@ -1,17 +1,18 @@
 "use client"
 
 import * as React from "react"
-import { useStore } from "@/store/useStore"
-import type { Candidate, CandidateStatus, Job } from "@/types"
+import { useStore, type AddCandidateResult } from "@/store/useStore"
+import type { Candidate, DisplayApplicationStatus } from "@/types"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -39,10 +40,9 @@ import {
   Briefcase,
   Brain,
   MessageSquare,
-  FileText,
 } from "lucide-react"
 
-const statusConfig: Record<CandidateStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" | "info" }> = {
+const statusConfig: Record<DisplayApplicationStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" | "info" }> = {
   Applied: { label: "Applied", variant: "info" },
   Screening: { label: "Screening", variant: "warning" },
   Interview: { label: "Interview", variant: "default" },
@@ -51,7 +51,27 @@ const statusConfig: Record<CandidateStatus, { label: string; variant: "default" 
   Rejected: { label: "Rejected", variant: "error" },
 }
 
-const candidateStatuses: CandidateStatus[] = ["Applied", "Screening", "Interview", "Offer", "Hired", "Rejected"]
+const displayStatuses: DisplayApplicationStatus[] = ["Applied", "Screening", "Interview", "Offer", "Hired", "Rejected"]
+
+function getDisplayStatus(candidate: Candidate): DisplayApplicationStatus | undefined {
+  return candidate.applicationSummary?.current?.displayStatus
+}
+
+function getJobTitle(candidate: Candidate): string {
+  return candidate.applicationSummary?.current?.jobTitle || candidate.currentJobTitle || ""
+}
+
+function getAppliedAt(candidate: Candidate): Date | undefined {
+  return candidate.applicationSummary?.current?.createdAt
+}
+
+function getRating(candidate: Candidate): number {
+  return candidate.companyProfile?.rating ?? 0
+}
+
+function getSkillNames(candidate: Candidate): string[] {
+  return candidate.skills.map((s) => s.name)
+}
 
 function StarRating({ rating, onChange }: { rating: number; onChange?: (r: number) => void }) {
   return (
@@ -93,14 +113,16 @@ function TableSkeleton() {
 }
 
 export default function CandidatesPage() {
-  const { candidates, jobs, addCandidate, updateCandidateStatus } = useStore()
-  const [isLoading, setIsLoading] = React.useState(true)
+  const { candidates, jobs, addCandidateApplication, rejectCandidateApplication, advanceCandidateApplication, fetchCandidates, candidatesLoading, candidatesError } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
   const [jobFilter, setJobFilter] = React.useState<string>("all")
   const [ratingFilter, setRatingFilter] = React.useState<string>("all")
   const [addDialogOpen, setAddDialogOpen] = React.useState(false)
   const [detailsCandidate, setDetailsCandidate] = React.useState<Candidate | null>(null)
+  const [actionInProgress, setActionInProgress] = React.useState(false)
+  const [addFeedback, setAddFeedback] = React.useState<{ type: "error"; message: string } | null>(null)
+  const [pageFeedback, setPageFeedback] = React.useState<{ type: "success" | "warning"; message: string } | null>(null)
 
   const [newCandidate, setNewCandidate] = React.useState({
     name: "",
@@ -114,58 +136,82 @@ export default function CandidatesPage() {
   })
 
   React.useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 600)
-    return () => clearTimeout(timer)
-  }, [])
+    fetchCandidates()
+  }, [fetchCandidates])
 
   const filteredCandidates = React.useMemo(() => {
     return candidates.filter((candidate) => {
+      const status = getDisplayStatus(candidate)
+      const jobTitle = getJobTitle(candidate)
+      const rating = getRating(candidate)
       const matchesSearch =
         searchQuery === "" ||
-        candidate.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        candidate.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         candidate.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        candidate.jobTitle.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesStatus = statusFilter === "all" || candidate.status === statusFilter
-      const matchesJob = jobFilter === "all" || candidate.jobId === jobFilter
+        jobTitle.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesStatus = statusFilter === "all" || status === statusFilter
+      const matchesJob = jobFilter === "all" || candidate.applicationSummary?.current?.jobId === jobFilter
       const matchesRating =
         ratingFilter === "all" ||
-        (ratingFilter === "5" && candidate.rating === 5) ||
-        (ratingFilter === "4+" && candidate.rating >= 4) ||
-        (ratingFilter === "3+" && candidate.rating >= 3) ||
-        (ratingFilter === "unrated" && candidate.rating === 0)
+        (ratingFilter === "5" && rating === 5) ||
+        (ratingFilter === "4+" && rating >= 4) ||
+        (ratingFilter === "3+" && rating >= 3) ||
+        (ratingFilter === "unrated" && rating === 0)
       return matchesSearch && matchesStatus && matchesJob && matchesRating
     })
   }, [candidates, searchQuery, statusFilter, jobFilter, ratingFilter])
 
-  const handleAddCandidate = () => {
-    if (!newCandidate.name || !newCandidate.email || !newCandidate.jobId) return
+  const handleAddCandidate = async () => {
+    if (!newCandidate.name || !newCandidate.email) return
+    setActionInProgress(true)
+    setAddFeedback(null)
+    setPageFeedback(null)
     const job = jobs.find((j) => j.id === newCandidate.jobId)
-    addCandidate({
-      name: newCandidate.name,
-      email: newCandidate.email,
-      phone: newCandidate.phone,
-      jobId: newCandidate.jobId,
-      jobTitle: job?.title || "",
-      experience: Number(newCandidate.experience) || 0,
-      skills: newCandidate.skills
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      aiScore: 0,
-      rating: newCandidate.rating,
-      status: "Applied",
-      notes: newCandidate.notes,
-    })
-    setAddDialogOpen(false)
-    setNewCandidate({ name: "", email: "", phone: "", jobId: "", experience: "", skills: "", rating: 0, notes: "" })
+    try {
+      const result: AddCandidateResult = await addCandidateApplication({
+        name: newCandidate.name,
+        email: newCandidate.email,
+        phone: newCandidate.phone,
+        jobId: newCandidate.jobId,
+        jobTitle: job?.title || "",
+        experience: Number(newCandidate.experience) || 0,
+        skills: newCandidate.skills
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        aiScore: 0,
+        rating: newCandidate.rating,
+        notes: newCandidate.notes,
+      })
+      setNewCandidate({ name: "", email: "", phone: "", jobId: "", experience: "", skills: "", rating: 0, notes: "" })
+      if (result.status === "candidate-created-application-failed") {
+        setPageFeedback({ type: "warning", message: `Candidate was created, but the application could not be created.${result.error ? ` (${result.error})` : ""}` })
+        setAddDialogOpen(false)
+      } else if (result.status === "candidate-creation-failed") {
+        setAddFeedback({ type: "error", message: result.error || "Failed to create candidate" })
+      } else if (result.status === "candidate-and-application-created") {
+        setPageFeedback({ type: "success", message: "Candidate and application created successfully." })
+        setAddDialogOpen(false)
+      } else {
+        setPageFeedback({ type: "success", message: "Candidate created successfully." })
+        setAddDialogOpen(false)
+      }
+    } catch {
+      setAddFeedback({ type: "error", message: "Failed to create candidate. Please try again." })
+    } finally {
+      setActionInProgress(false)
+    }
   }
+
+  const newCount = candidates.filter((c) => getDisplayStatus(c) === "Applied").length
+  const pipelineCount = candidates.filter((c) => getDisplayStatus(c) === "Interview").length
 
   return (
     <AppLayout
       title="Candidates"
-      description={`${filteredCandidates.length} candidates · ${candidates.filter((c) => c.status === "Applied").length} new · ${candidates.filter((c) => c.status === "Interview").length} in pipeline`}
+      description={`${filteredCandidates.length} candidates${newCount > 0 ? ` · ${newCount} new` : ""}${pipelineCount > 0 ? ` · ${pipelineCount} in pipeline` : ""}`}
       actions={
-        <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <Dialog open={addDialogOpen} onOpenChange={(open) => { setAddDialogOpen(open); if (open) setAddFeedback(null) }}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Plus className="h-4 w-4" />
@@ -173,10 +219,15 @@ export default function CandidatesPage() {
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
+            <ModalHeader>
               <DialogTitle>Add New Candidate</DialogTitle>
-              <DialogDescription>Add a candidate to your talent pool.</DialogDescription>
-            </DialogHeader>
+              <DialogDescription>Add a candidate to your talent pool. Optionally apply them to a job.</DialogDescription>
+            </ModalHeader>
+            {addFeedback && (
+              <div className="rounded-lg border border-error/30 bg-error/5 text-error-foreground px-4 py-3 text-sm">
+                {addFeedback.message}
+              </div>
+            )}
             <div className="grid gap-4 py-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
@@ -191,6 +242,8 @@ export default function CandidatesPage() {
                   <label className="text-sm font-medium text-foreground">Email *</label>
                   <Input
                     type="email"
+                    name="new-candidate-email"
+                    autoComplete="off"
                     placeholder="john@example.com"
                     value={newCandidate.email}
                     onChange={(e) => setNewCandidate((p) => ({ ...p, email: e.target.value }))}
@@ -219,7 +272,7 @@ export default function CandidatesPage() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Applying For *</label>
+                <label className="text-sm font-medium text-foreground">Applying For (optional)</label>
                 <Select value={newCandidate.jobId} onValueChange={(v) => setNewCandidate((p) => ({ ...p, jobId: v }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a position" />
@@ -260,7 +313,7 @@ export default function CandidatesPage() {
               <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
               <Button
                 onClick={handleAddCandidate}
-                disabled={!newCandidate.name || !newCandidate.email || !newCandidate.jobId}
+                disabled={!newCandidate.name || !newCandidate.email}
               >
                 <Plus className="h-4 w-4" />
                 Add Candidate
@@ -270,12 +323,24 @@ export default function CandidatesPage() {
         </Dialog>
       }
     >
+      {pageFeedback && (
+        <div className={cn(
+          "rounded-lg border px-4 py-3 text-sm mb-4",
+          pageFeedback.type === "success" && "border-success/30 bg-success/5 text-success-foreground",
+          pageFeedback.type === "warning" && "border-warning/30 bg-warning/5 text-warning-foreground",
+        )}>
+          {pageFeedback.message}
+        </div>
+      )}
       {/* Filters */}
       <div className="flex flex-col gap-4 mb-6 animate-fade-in">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
             <Input
+              type="search"
+              name="candidate-search"
+              autoComplete="off"
               placeholder="Search candidates by name, email, or position..."
               className="pl-9"
               value={searchQuery}
@@ -289,7 +354,7 @@ export default function CandidatesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                {candidateStatuses.map((s) => (
+                {displayStatuses.map((s) => (
                   <SelectItem key={s} value={s}>{statusConfig[s].label}</SelectItem>
                 ))}
               </SelectContent>
@@ -323,10 +388,17 @@ export default function CandidatesPage() {
 
       {/* Candidates Table */}
       <div className="animate-fade-in">
-        {isLoading ? (
+        {candidatesLoading ? (
           <Card>
             <TableSkeleton />
           </Card>
+        ) : candidatesError ? (
+          <EmptyState
+            icon={<Users className="h-8 w-8 text-muted" />}
+            title="Failed to load candidates"
+            description={candidatesError}
+            action={<Button variant="outline" onClick={() => fetchCandidates()}>Retry</Button>}
+          />
         ) : filteredCandidates.length === 0 ? (
           <EmptyState
             icon={<Users className="h-8 w-8 text-muted" />}
@@ -365,91 +437,106 @@ export default function CandidatesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCandidates.map((candidate) => (
-                    <TableRow
-                      key={candidate.id}
-                      className="cursor-pointer"
-                      onClick={() => setDetailsCandidate(candidate)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9" fallback={getInitials(candidate.name)}>
-                            {candidate.avatar && <AvatarImage src={candidate.avatar} alt={candidate.name} />}
-                          </Avatar>
-                          <div className="min-w-0">
-                            <p className="font-medium text-foreground truncate">{candidate.name}</p>
-                            <p className="text-xs text-muted truncate">{candidate.email}</p>
+                  {filteredCandidates.map((candidate) => {
+                    const displayStatus = getDisplayStatus(candidate)
+                    const jobTitle = getJobTitle(candidate)
+                    const rating = getRating(candidate)
+                    return (
+                      <TableRow
+                        key={candidate.id}
+                        className="cursor-pointer"
+                        onClick={() => setDetailsCandidate(candidate)}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-9 w-9" fallback={getInitials(candidate.displayName)}>
+                              {candidate.avatar && <AvatarImage src={candidate.avatar} alt={candidate.displayName} />}
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground truncate">{candidate.displayName}</p>
+                              <p className="text-xs text-muted truncate">{candidate.email}</p>
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground truncate max-w-[200px]">
-                        {candidate.jobTitle}
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-muted-foreground">
-                        {candidate.experience} yr{candidate.experience !== 1 ? "s" : ""}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2 min-w-[100px]">
-                          <Progress
-                            value={candidate.aiScore}
-                            className="h-1.5 flex-1"
-                            indicatorClassName={cn(
-                              candidate.aiScore >= 80 ? "bg-success" :
-                              candidate.aiScore >= 60 ? "bg-warning" :
-                              candidate.aiScore > 0 ? "bg-error" : ""
-                            )}
-                          />
-                          <span className="text-xs font-medium text-muted-foreground w-8 text-right">
-                            {candidate.aiScore || "—"}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={statusConfig[candidate.status].variant} className="text-xs">
-                          {statusConfig[candidate.status].label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        <StarRating rating={candidate.rating} />
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDetailsCandidate(candidate) }}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                              <Calendar className="h-4 w-4 mr-2" />
-                              Schedule Interview
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-error"
-                              onClick={(e) => { e.stopPropagation(); updateCandidateStatus(candidate.id, "Rejected") }}
-                            >
-                              <X className="h-4 w-4 mr-2" />
-                              Reject
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-muted-foreground truncate max-w-[200px]">
+                          {jobTitle || candidate.currentJobTitle || "—"}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell text-muted-foreground">
+                          {candidate.totalExperienceYears} yr{candidate.totalExperienceYears !== 1 ? "s" : ""}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2 min-w-[100px]">
+                            <Progress
+                              value={candidate.aiScore}
+                              className="h-1.5 flex-1"
+                              indicatorClassName={cn(
+                                candidate.aiScore >= 80 ? "bg-success" :
+                                candidate.aiScore >= 60 ? "bg-warning" :
+                                candidate.aiScore > 0 ? "bg-error" : ""
+                              )}
+                            />
+                            <span className="text-xs font-medium text-muted-foreground w-8 text-right">
+                              {candidate.aiScore || "—"}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {displayStatus ? (
+                            <Badge variant={statusConfig[displayStatus].variant} className="text-xs">
+                              {statusConfig[displayStatus].label}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-muted">
+                              No application
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          <StarRating rating={rating} />
+                        </TableCell>
+                        <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDetailsCandidate(candidate) }}>
+                                <Eye className="h-4 w-4 mr-2" />
+                                View Profile
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                                <Calendar className="h-4 w-4 mr-2" />
+                                Schedule Interview
+                              </DropdownMenuItem>
+                              {displayStatus && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-error"
+                                    onClick={async (e) => { e.stopPropagation(); await rejectCandidateApplication(candidate.id) }}
+                                  >
+                                    <X className="h-4 w-4 mr-2" />
+                                    Reject
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -460,189 +547,222 @@ export default function CandidatesPage() {
       {/* Candidate Details Dialog */}
       <Dialog open={!!detailsCandidate} onOpenChange={(open) => !open && setDetailsCandidate(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          {detailsCandidate && (
-            <>
-              <DialogHeader>
-                <div className="flex items-start gap-4">
-                  <Avatar className="h-14 w-14 shrink-0" fallback={getInitials(detailsCandidate.name)}>
-                    {detailsCandidate.avatar && <AvatarImage src={detailsCandidate.avatar} alt={detailsCandidate.name} />}
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <DialogTitle className="text-xl">{detailsCandidate.name}</DialogTitle>
-                    <DialogDescription className="flex items-center gap-3 mt-1 flex-wrap">
-                      <span className="flex items-center gap-1">
-                        <Mail className="h-3 w-3" />
-                        {detailsCandidate.email}
-                      </span>
-                      {detailsCandidate.phone && (
+          {detailsCandidate && (() => {
+            const displayStatus = getDisplayStatus(detailsCandidate)
+            const jobTitle = getJobTitle(detailsCandidate)
+            const appliedAt = getAppliedAt(detailsCandidate)
+            const rating = getRating(detailsCandidate)
+            const skillNames = getSkillNames(detailsCandidate)
+            return (
+              <>
+                <ModalHeader>
+                  <div className="flex items-start gap-4">
+                    <Avatar className="h-14 w-14 shrink-0" fallback={getInitials(detailsCandidate.displayName)}>
+                      {detailsCandidate.avatar && <AvatarImage src={detailsCandidate.avatar} alt={detailsCandidate.displayName} />}
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <DialogTitle className="text-xl">{detailsCandidate.displayName}</DialogTitle>
+                      <DialogDescription className="flex items-center gap-3 mt-1 flex-wrap">
                         <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {detailsCandidate.phone}
+                          <Mail className="h-3 w-3" />
+                          {detailsCandidate.email}
                         </span>
-                      )}
-                    </DialogDescription>
-                  </div>
-                  <Badge variant={statusConfig[detailsCandidate.status].variant} className="shrink-0">
-                    {statusConfig[detailsCandidate.status].label}
-                  </Badge>
-                </div>
-              </DialogHeader>
-
-              <div className="space-y-5">
-                {/* Quick Stats */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-lg border border-border bg-background p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Experience</p>
-                    <p className="text-lg font-semibold text-foreground">{detailsCandidate.experience}<span className="text-sm font-normal text-muted ml-0.5">yr</span></p>
-                  </div>
-                  <div className="rounded-lg border border-border bg-background p-3 text-center">
-                    <p className="text-xs text-muted mb-1">AI Score</p>
-                    <p className={cn(
-                      "text-lg font-semibold",
-                      detailsCandidate.aiScore >= 80 ? "text-success" :
-                      detailsCandidate.aiScore >= 60 ? "text-warning" :
-                      "text-foreground"
-                    )}>
-                      {detailsCandidate.aiScore || "—"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border bg-background p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Rating</p>
-                    <div className="flex justify-center mt-1">
-                      <StarRating rating={detailsCandidate.rating} />
+                        {detailsCandidate.phone && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {detailsCandidate.phone}
+                          </span>
+                        )}
+                      </DialogDescription>
                     </div>
+                    {displayStatus ? (
+                      <Badge variant={statusConfig[displayStatus].variant} className="shrink-0">
+                        {statusConfig[displayStatus].label}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="shrink-0 text-muted">
+                        Pool
+                      </Badge>
+                    )}
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Applied</p>
-                    <p className="text-sm font-medium text-foreground">{timeAgo(detailsCandidate.appliedAt)}</p>
-                  </div>
-                </div>
+                </ModalHeader>
 
-                {/* Position */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Briefcase className="h-4 w-4 text-muted" />
-                    <h4 className="text-sm font-medium text-foreground">Position</h4>
-                  </div>
-                  <p className="text-sm text-muted-foreground ml-6">{detailsCandidate.jobTitle}</p>
-                </div>
-
-                <Separator />
-
-                {/* Skills */}
-                {detailsCandidate.skills.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Brain className="h-4 w-4 text-muted" />
-                      <h4 className="text-sm font-medium text-foreground">Skills</h4>
+                <div className="space-y-5">
+                  {/* Quick Stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="rounded-lg border border-border bg-background p-3 text-center">
+                      <p className="text-xs text-muted mb-1">Experience</p>
+                      <p className="text-lg font-semibold text-foreground">{detailsCandidate.totalExperienceYears}<span className="text-sm font-normal text-muted ml-0.5">yr</span></p>
                     </div>
-                    <div className="flex flex-wrap gap-2 ml-6">
-                      {detailsCandidate.skills.map((skill) => (
-                        <Badge key={skill} variant="outline">{skill}</Badge>
-                      ))}
+                    <div className="rounded-lg border border-border bg-background p-3 text-center">
+                      <p className="text-xs text-muted mb-1">AI Score</p>
+                      <p className={cn(
+                        "text-lg font-semibold",
+                        detailsCandidate.aiScore >= 80 ? "text-success" :
+                        detailsCandidate.aiScore >= 60 ? "text-warning" :
+                        "text-foreground"
+                      )}>
+                        {detailsCandidate.aiScore || "—"}
+                      </p>
                     </div>
-                  </div>
-                )}
-
-                {/* AI Score Detail */}
-                {detailsCandidate.aiScore > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Brain className="h-4 w-4 text-muted" />
-                      <h4 className="text-sm font-medium text-foreground">AI Score</h4>
-                    </div>
-                    <div className="ml-6 space-y-2">
-                      <div className="flex items-center gap-3">
-                        <Progress
-                          value={detailsCandidate.aiScore}
-                          className="h-2.5 flex-1"
-                          indicatorClassName={cn(
-                            detailsCandidate.aiScore >= 80 ? "bg-success" :
-                            detailsCandidate.aiScore >= 60 ? "bg-warning" :
-                            "bg-error"
-                          )}
-                        />
-                        <span className="text-sm font-semibold text-foreground w-10 text-right">
-                          {detailsCandidate.aiScore}
-                        </span>
+                    <div className="rounded-lg border border-border bg-background p-3 text-center">
+                      <p className="text-xs text-muted mb-1">Rating</p>
+                      <div className="flex justify-center mt-1">
+                        <StarRating rating={rating} />
                       </div>
-                      <p className="text-xs text-muted">
-                        {detailsCandidate.aiScore >= 80
-                          ? "Excellent match — strong technical and cultural fit signals."
-                          : detailsCandidate.aiScore >= 60
-                          ? "Good match — meets core requirements with some gaps."
-                          : "Moderate match — may need further evaluation."}
+                    </div>
+                    <div className="rounded-lg border border-border bg-background p-3 text-center">
+                      <p className="text-xs text-muted mb-1">Applied</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {appliedAt ? timeAgo(appliedAt) : "—"}
                       </p>
                     </div>
                   </div>
-                )}
 
-                {/* Notes */}
-                {detailsCandidate.notes && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <FileText className="h-4 w-4 text-muted" />
-                      <h4 className="text-sm font-medium text-foreground">Notes</h4>
+                  {/* Position */}
+                  {jobTitle && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Briefcase className="h-4 w-4 text-muted" />
+                        <h4 className="text-sm font-medium text-foreground">Position</h4>
+                      </div>
+                      <p className="text-sm text-muted-foreground ml-6">{jobTitle}</p>
                     </div>
-                    <p className="text-sm text-muted-foreground leading-relaxed ml-6 whitespace-pre-wrap">{detailsCandidate.notes}</p>
-                  </div>
-                )}
-              </div>
+                  )}
 
-              <DialogFooter>
-                <div className="flex items-center gap-2 w-full flex-wrap">
-                  {detailsCandidate.status !== "Rejected" && detailsCandidate.status !== "Hired" && (
+                  {detailsCandidate.applicationSummary && detailsCandidate.applicationSummary.total > 0 && (
                     <>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => { updateCandidateStatus(detailsCandidate.id, "Rejected"); setDetailsCandidate(null) }}
-                      >
-                        <X className="h-4 w-4" />
-                        Reject
-                      </Button>
-                      {detailsCandidate.status === "Applied" && (
-                        <Button
-                          size="sm"
-                          onClick={() => { updateCandidateStatus(detailsCandidate.id, "Screening"); setDetailsCandidate(null) }}
-                        >
-                          <Search className="h-4 w-4" />
-                          Start Screening
-                        </Button>
-                      )}
-                      {detailsCandidate.status === "Screening" && (
-                        <Button
-                          size="sm"
-                          onClick={() => { updateCandidateStatus(detailsCandidate.id, "Interview"); setDetailsCandidate(null) }}
-                        >
-                          <Calendar className="h-4 w-4" />
-                          Move to Interview
-                        </Button>
-                      )}
-                      {detailsCandidate.status === "Interview" && (
-                        <Button
-                          size="sm"
-                          onClick={() => { updateCandidateStatus(detailsCandidate.id, "Offer"); setDetailsCandidate(null) }}
-                        >
-                          <MessageSquare className="h-4 w-4" />
-                          Extend Offer
-                        </Button>
-                      )}
+                      <Separator />
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Briefcase className="h-4 w-4 text-muted" />
+                          <h4 className="text-sm font-medium text-foreground">Applications</h4>
+                          <span className="text-xs text-muted ml-1">
+                            ({detailsCandidate.applicationSummary.active} active of {detailsCandidate.applicationSummary.total} total)
+                          </span>
+                        </div>
+                        {detailsCandidate.applicationSummary.current && (
+                          <p className="text-sm text-muted-foreground ml-6">
+                            Current: {detailsCandidate.applicationSummary.current.jobTitle}
+                            {" · "}
+                            {statusConfig[detailsCandidate.applicationSummary.current.displayStatus].label}
+                          </p>
+                        )}
+                      </div>
                     </>
                   )}
-                  {detailsCandidate.status === "Offer" && (
-                    <Button
-                      size="sm"
-                      onClick={() => { updateCandidateStatus(detailsCandidate.id, "Hired"); setDetailsCandidate(null) }}
-                    >
-                      <Users className="h-4 w-4" />
-                      Mark as Hired
-                    </Button>
+
+                  <Separator />
+
+                  {/* Skills */}
+                  {skillNames.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Brain className="h-4 w-4 text-muted" />
+                        <h4 className="text-sm font-medium text-foreground">Skills</h4>
+                      </div>
+                      <div className="flex flex-wrap gap-2 ml-6">
+                        {skillNames.map((skill) => (
+                          <Badge key={skill} variant="outline">{skill}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AI Score Detail */}
+                  {detailsCandidate.aiScore > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Brain className="h-4 w-4 text-muted" />
+                        <h4 className="text-sm font-medium text-foreground">AI Score</h4>
+                      </div>
+                      <div className="ml-6 space-y-2">
+                        <div className="flex items-center gap-3">
+                          <Progress
+                            value={detailsCandidate.aiScore}
+                            className="h-2.5 flex-1"
+                            indicatorClassName={cn(
+                              detailsCandidate.aiScore >= 80 ? "bg-success" :
+                              detailsCandidate.aiScore >= 60 ? "bg-warning" :
+                              "bg-error"
+                            )}
+                          />
+                          <span className="text-sm font-semibold text-foreground w-10 text-right">
+                            {detailsCandidate.aiScore}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted">
+                          {detailsCandidate.aiScore >= 80
+                            ? "Excellent match — strong technical and cultural fit signals."
+                            : detailsCandidate.aiScore >= 60
+                            ? "Good match — meets core requirements with some gaps."
+                            : "Moderate match — may need further evaluation."}
+                        </p>
+                      </div>
+                    </div>
                   )}
                 </div>
-              </DialogFooter>
-            </>
-          )}
+
+                <DialogFooter>
+                  <div className="flex items-center gap-2 w-full flex-wrap">
+                    {displayStatus && displayStatus !== "Rejected" && displayStatus !== "Hired" && (
+                      <>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={actionInProgress}
+                          onClick={async () => { await rejectCandidateApplication(detailsCandidate.id); setDetailsCandidate(null) }}
+                        >
+                          <X className="h-4 w-4" />
+                          Reject
+                        </Button>
+                        {displayStatus === "Applied" && (
+                          <Button
+                            size="sm"
+                            disabled={actionInProgress}
+                            onClick={async () => { await advanceCandidateApplication(detailsCandidate.id, "Screening"); setDetailsCandidate(null) }}
+                          >
+                            <Search className="h-4 w-4" />
+                            Start Screening
+                          </Button>
+                        )}
+                        {displayStatus === "Screening" && (
+                          <Button
+                            size="sm"
+                            disabled={actionInProgress}
+                            onClick={async () => { await advanceCandidateApplication(detailsCandidate.id, "Interview"); setDetailsCandidate(null) }}
+                          >
+                            <Calendar className="h-4 w-4" />
+                            Move to Interview
+                          </Button>
+                        )}
+                        {displayStatus === "Interview" && (
+                          <Button
+                            size="sm"
+                            disabled={actionInProgress}
+                            onClick={async () => { await advanceCandidateApplication(detailsCandidate.id, "Offer"); setDetailsCandidate(null) }}
+                          >
+                            <MessageSquare className="h-4 w-4" />
+                            Extend Offer
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    {displayStatus === "Offer" && (
+                      <Button
+                        size="sm"
+                        disabled={actionInProgress}
+                        onClick={async () => { await advanceCandidateApplication(detailsCandidate.id, "Hired"); setDetailsCandidate(null) }}
+                      >
+                        <Users className="h-4 w-4" />
+                        Mark as Hired
+                      </Button>
+                    )}
+                  </div>
+                </DialogFooter>
+              </>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </AppLayout>

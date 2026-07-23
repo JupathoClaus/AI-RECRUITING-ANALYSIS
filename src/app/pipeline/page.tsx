@@ -2,14 +2,15 @@
 
 import * as React from "react"
 import { useStore } from "@/store/useStore"
-import type { Candidate, CandidateStatus } from "@/types"
+import type { Candidate, DisplayApplicationStatus } from "@/types"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import { Separator } from "@/components/ui/separator"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
@@ -21,7 +22,6 @@ import {
   Star,
   Mail,
   Phone,
-  FileText,
   ArrowLeft,
   ArrowRight,
   X,
@@ -29,8 +29,28 @@ import {
   MessageSquare,
 } from "lucide-react"
 
+function getDisplayStatus(c: Candidate): DisplayApplicationStatus | undefined {
+  return c.applicationSummary?.current?.displayStatus
+}
+
+function getJobTitle(c: Candidate): string {
+  return c.applicationSummary?.current?.jobTitle || c.currentJobTitle || ""
+}
+
+function getAppliedAt(c: Candidate): Date | undefined {
+  return c.applicationSummary?.current?.createdAt
+}
+
+function getRating(c: Candidate): number {
+  return c.companyProfile?.rating ?? 0
+}
+
+function getSkillNames(c: Candidate): string[] {
+  return c.skills.map((s) => s.name).filter(Boolean)
+}
+
 interface PipelineStage {
-  id: CandidateStatus
+  id: DisplayApplicationStatus
   label: string
   color: string
   colorClass: string
@@ -96,7 +116,7 @@ const pipelineStages: PipelineStage[] = [
   },
 ]
 
-const statusBadgeVariant: Record<CandidateStatus, "default" | "success" | "warning" | "error" | "secondary" | "info"> = {
+const statusBadgeVariant: Record<DisplayApplicationStatus, "default" | "success" | "warning" | "error" | "secondary" | "info"> = {
   Applied: "info",
   Screening: "warning",
   Interview: "default",
@@ -128,18 +148,19 @@ function CandidateCard({
   onMove: (candidateId: Candidate, direction: "left" | "right") => void
   onOpenDetail: (candidate: Candidate) => void
 }) {
+  const skillNames = getSkillNames(candidate)
   return (
     <div
       className="group rounded-lg border border-border bg-surface-elevated p-3 transition-all duration-200 hover:border-primary/30 hover:shadow-md cursor-pointer"
       onClick={() => onOpenDetail(candidate)}
     >
       <div className="flex items-start gap-3">
-        <Avatar className="h-9 w-9 shrink-0" fallback={getInitials(candidate.name)}>
-          {candidate.avatar && <AvatarImage src={candidate.avatar} alt={candidate.name} />}
+        <Avatar className="h-9 w-9 shrink-0" fallback={getInitials(candidate.displayName)}>
+          {candidate.avatar && <AvatarImage src={candidate.avatar} alt={candidate.displayName} />}
         </Avatar>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground truncate">{candidate.name}</p>
-          <p className="text-xs text-muted truncate mt-0.5">{candidate.jobTitle}</p>
+          <p className="text-sm font-medium text-foreground truncate">{candidate.displayName}</p>
+          <p className="text-xs text-muted truncate mt-0.5">{getJobTitle(candidate)}</p>
         </div>
         {candidate.aiScore > 0 && (
           <span className={cn("shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold", getScoreBg(candidate.aiScore))}>
@@ -148,9 +169,9 @@ function CandidateCard({
         )}
       </div>
 
-      {candidate.skills.length > 0 && (
+      {skillNames.length > 0 && (
         <div className="flex gap-1 mt-2.5 flex-wrap">
-          {candidate.skills.slice(0, 2).map((skill) => (
+          {skillNames.slice(0, 2).map((skill) => (
             <span
               key={skill}
               className="rounded-md bg-surface-hover px-1.5 py-0.5 text-[10px] text-muted-foreground font-medium"
@@ -158,16 +179,16 @@ function CandidateCard({
               {skill}
             </span>
           ))}
-          {candidate.skills.length > 2 && (
+          {skillNames.length > 2 && (
             <span className="rounded-md bg-surface-hover px-1.5 py-0.5 text-[10px] text-muted font-medium">
-              +{candidate.skills.length - 2}
+              +{skillNames.length - 2}
             </span>
           )}
         </div>
       )}
 
       <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-border/60">
-        <span className="text-[10px] text-muted">{timeAgo(candidate.appliedAt)}</span>
+        <span className="text-[10px] text-muted">{getAppliedAt(candidate) ? timeAgo(getAppliedAt(candidate)!) : "—"}</span>
         <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
           <Button
             variant="ghost"
@@ -194,7 +215,7 @@ function CandidateCard({
 }
 
 export default function PipelinePage() {
-  const { candidates, jobs, updateCandidateStatus } = useStore()
+  const { candidates, jobs, candidatesError, advanceCandidateApplication, rejectCandidateApplication } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
   const [jobFilter, setJobFilter] = React.useState<string>("all")
   const [selectedCandidate, setSelectedCandidate] = React.useState<Candidate | null>(null)
@@ -203,46 +224,48 @@ export default function PipelinePage() {
     return candidates.filter((candidate) => {
       const matchesSearch =
         searchQuery === "" ||
-        candidate.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        candidate.jobTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        candidate.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        getJobTitle(candidate).toLowerCase().includes(searchQuery.toLowerCase()) ||
         candidate.email.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesJob = jobFilter === "all" || candidate.jobId === jobFilter
+      const matchesJob = jobFilter === "all" || candidate.applicationSummary?.current?.jobId === jobFilter
       return matchesSearch && matchesJob
     })
   }, [candidates, searchQuery, jobFilter])
 
   const stageCandidates = React.useMemo(() => {
-    const map: Record<CandidateStatus, Candidate[]> = {
-      Applied: [],
-      Screening: [],
-      Interview: [],
-      Offer: [],
-      Hired: [],
-      Rejected: [],
+    const map: Record<string, Candidate[]> = {}
+    for (const stage of pipelineStages) {
+      map[stage.id] = []
     }
     for (const c of filteredCandidates) {
-      map[c.status].push(c)
+      const ds = getDisplayStatus(c)
+      if (ds && map[ds]) {
+        map[ds].push(c)
+      }
     }
-    return map
+    return map as Record<DisplayApplicationStatus, Candidate[]>
   }, [filteredCandidates])
 
   const handleMove = React.useCallback(
-    (candidate: Candidate, direction: "left" | "right") => {
-      const stageOrder: CandidateStatus[] = ["Applied", "Screening", "Interview", "Offer", "Hired", "Rejected"]
-      const currentIdx = stageOrder.indexOf(candidate.status)
+    async (candidate: Candidate, direction: "left" | "right") => {
+      const stageOrder: DisplayApplicationStatus[] = ["Applied", "Screening", "Interview", "Offer", "Hired", "Rejected"]
+      const currentDs = getDisplayStatus(candidate)
+      if (!currentDs) return
+      const currentIdx = stageOrder.indexOf(currentDs)
       if (direction === "right" && currentIdx < stageOrder.length - 1) {
-        updateCandidateStatus(candidate.id, stageOrder[currentIdx + 1])
+        await advanceCandidateApplication(candidate.id, stageOrder[currentIdx + 1])
       } else if (direction === "left" && currentIdx > 0) {
-        updateCandidateStatus(candidate.id, stageOrder[currentIdx - 1])
+        await advanceCandidateApplication(candidate.id, stageOrder[currentIdx - 1])
       }
     },
-    [updateCandidateStatus]
+    [advanceCandidateApplication]
   )
 
   const totalCandidates = filteredCandidates.length
-  const inPipeline = filteredCandidates.filter(
-    (c) => c.status !== "Hired" && c.status !== "Rejected"
-  ).length
+  const inPipeline = filteredCandidates.filter((c) => {
+    const ds = getDisplayStatus(c)
+    return ds && ds !== "Hired" && ds !== "Rejected"
+  }).length
 
   return (
     <AppLayout
@@ -273,6 +296,12 @@ export default function PipelinePage() {
           </Select>
         </div>
       </div>
+
+      {candidatesError && (
+        <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error mb-6 animate-fade-in">
+          {candidatesError}
+        </div>
+      )}
 
       <div className="animate-fade-in">
         {totalCandidates === 0 ? (
@@ -350,47 +379,58 @@ export default function PipelinePage() {
 
       <Dialog open={!!selectedCandidate} onOpenChange={(open) => !open && setSelectedCandidate(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          {selectedCandidate && (
+          {selectedCandidate && (() => {
+            const s = selectedCandidate
+            const displayStatus = getDisplayStatus(s)
+            const jobTitle = getJobTitle(s)
+            const appliedAt = getAppliedAt(s)
+            const rating = getRating(s)
+            const skillNames = getSkillNames(s)
+            return (
             <>
-              <DialogHeader>
+              <ModalHeader>
                 <div className="flex items-start gap-4">
-                  <Avatar className="h-14 w-14 shrink-0" fallback={getInitials(selectedCandidate.name)}>
-                    {selectedCandidate.avatar && <AvatarImage src={selectedCandidate.avatar} alt={selectedCandidate.name} />}
+                  <Avatar className="h-14 w-14 shrink-0" fallback={getInitials(s.displayName)}>
+                    {s.avatar && <AvatarImage src={s.avatar} alt={s.displayName} />}
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <DialogTitle className="text-xl">{selectedCandidate.name}</DialogTitle>
+                    <DialogTitle className="text-xl">{s.displayName}</DialogTitle>
                     <DialogDescription className="flex items-center gap-3 mt-1 flex-wrap">
                       <span className="flex items-center gap-1">
                         <Mail className="h-3 w-3" />
-                        {selectedCandidate.email}
+                        {s.email}
                       </span>
-                      {selectedCandidate.phone && (
+                      {s.phone && (
                         <span className="flex items-center gap-1">
                           <Phone className="h-3 w-3" />
-                          {selectedCandidate.phone}
+                          {s.phone}
                         </span>
                       )}
                     </DialogDescription>
                   </div>
-                  <Badge variant={statusBadgeVariant[selectedCandidate.status]} className="shrink-0">
-                    {selectedCandidate.status}
-                  </Badge>
+                  {displayStatus ? (
+                    <Badge variant={statusBadgeVariant[displayStatus]} className="shrink-0">
+                      {displayStatus}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="shrink-0 text-muted">Pool</Badge>
+                  )}
                 </div>
-              </DialogHeader>
+              </ModalHeader>
 
               <div className="space-y-5">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="rounded-lg border border-border bg-surface p-3 text-center">
                     <p className="text-xs text-muted mb-1">Experience</p>
                     <p className="text-lg font-semibold text-foreground">
-                      {selectedCandidate.experience}
+                      {s.totalExperienceYears}
                       <span className="text-sm font-normal text-muted ml-0.5">yr</span>
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-surface p-3 text-center">
                     <p className="text-xs text-muted mb-1">AI Score</p>
-                    <p className={cn("text-lg font-semibold", getScoreColor(selectedCandidate.aiScore))}>
-                      {selectedCandidate.aiScore || "—"}
+                    <p className={cn("text-lg font-semibold", getScoreColor(s.aiScore))}>
+                      {s.aiScore || "—"}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-surface p-3 text-center">
@@ -401,7 +441,7 @@ export default function PipelinePage() {
                           key={i}
                           className={cn(
                             "h-3.5 w-3.5",
-                            i < selectedCandidate.rating ? "text-amber-400 fill-amber-400" : "text-muted"
+                            i < rating ? "text-amber-400 fill-amber-400" : "text-muted"
                           )}
                         />
                       ))}
@@ -409,35 +449,37 @@ export default function PipelinePage() {
                   </div>
                   <div className="rounded-lg border border-border bg-surface p-3 text-center">
                     <p className="text-xs text-muted mb-1">Applied</p>
-                    <p className="text-sm font-medium text-foreground">{timeAgo(selectedCandidate.appliedAt)}</p>
+                    <p className="text-sm font-medium text-foreground">{appliedAt ? timeAgo(appliedAt) : "—"}</p>
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Briefcase className="h-4 w-4 text-muted" />
-                    <h4 className="text-sm font-medium text-foreground">Position</h4>
+                {jobTitle && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Briefcase className="h-4 w-4 text-muted" />
+                      <h4 className="text-sm font-medium text-foreground">Position</h4>
+                    </div>
+                    <p className="text-sm text-muted-foreground ml-6">{jobTitle}</p>
                   </div>
-                  <p className="text-sm text-muted-foreground ml-6">{selectedCandidate.jobTitle}</p>
-                </div>
+                )}
 
                 <Separator />
 
-                {selectedCandidate.skills.length > 0 && (
+                {skillNames.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
                       <Brain className="h-4 w-4 text-muted" />
                       <h4 className="text-sm font-medium text-foreground">Skills</h4>
                     </div>
                     <div className="flex flex-wrap gap-2 ml-6">
-                      {selectedCandidate.skills.map((skill) => (
+                      {skillNames.map((skill) => (
                         <Badge key={skill} variant="outline">{skill}</Badge>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {selectedCandidate.aiScore > 0 && (
+                {s.aiScore > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
                       <Brain className="h-4 w-4 text-muted" />
@@ -445,49 +487,37 @@ export default function PipelinePage() {
                     </div>
                     <div className="ml-6">
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        {selectedCandidate.aiScore >= 80
+                        {s.aiScore >= 80
                           ? "Excellent match — strong technical and cultural fit signals."
-                          : selectedCandidate.aiScore >= 60
+                          : s.aiScore >= 60
                           ? "Good match — meets core requirements with some gaps."
                           : "Moderate match — may need further evaluation."}
                       </p>
                     </div>
                   </div>
                 )}
-
-                {selectedCandidate.notes && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <FileText className="h-4 w-4 text-muted" />
-                      <h4 className="text-sm font-medium text-foreground">Notes</h4>
-                    </div>
-                    <p className="text-sm text-muted-foreground leading-relaxed ml-6 whitespace-pre-wrap">
-                      {selectedCandidate.notes}
-                    </p>
-                  </div>
-                )}
               </div>
 
               <DialogFooter>
                 <div className="flex items-center gap-2 w-full flex-wrap">
-                  {selectedCandidate.status !== "Rejected" && selectedCandidate.status !== "Hired" && (
+                  {displayStatus && displayStatus !== "Rejected" && displayStatus !== "Hired" && (
                     <>
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => {
-                          updateCandidateStatus(selectedCandidate.id, "Rejected")
+                        onClick={async () => {
+                          await rejectCandidateApplication(s.id)
                           setSelectedCandidate(null)
                         }}
                       >
                         <X className="h-4 w-4" />
                         Reject
                       </Button>
-                      {selectedCandidate.status === "Applied" && (
+                      {displayStatus === "Applied" && (
                         <Button
                           size="sm"
-                          onClick={() => {
-                            updateCandidateStatus(selectedCandidate.id, "Screening")
+                          onClick={async () => {
+                            await advanceCandidateApplication(s.id, "Screening")
                             setSelectedCandidate(null)
                           }}
                         >
@@ -495,11 +525,11 @@ export default function PipelinePage() {
                           Start Screening
                         </Button>
                       )}
-                      {selectedCandidate.status === "Screening" && (
+                      {displayStatus === "Screening" && (
                         <Button
                           size="sm"
-                          onClick={() => {
-                            updateCandidateStatus(selectedCandidate.id, "Interview")
+                          onClick={async () => {
+                            await advanceCandidateApplication(s.id, "Interview")
                             setSelectedCandidate(null)
                           }}
                         >
@@ -507,11 +537,11 @@ export default function PipelinePage() {
                           Move to Interview
                         </Button>
                       )}
-                      {selectedCandidate.status === "Interview" && (
+                      {displayStatus === "Interview" && (
                         <Button
                           size="sm"
-                          onClick={() => {
-                            updateCandidateStatus(selectedCandidate.id, "Offer")
+                          onClick={async () => {
+                            await advanceCandidateApplication(s.id, "Offer")
                             setSelectedCandidate(null)
                           }}
                         >
@@ -521,11 +551,11 @@ export default function PipelinePage() {
                       )}
                     </>
                   )}
-                  {selectedCandidate.status === "Offer" && (
+                  {displayStatus === "Offer" && (
                     <Button
                       size="sm"
-                      onClick={() => {
-                        updateCandidateStatus(selectedCandidate.id, "Hired")
+                      onClick={async () => {
+                        await advanceCandidateApplication(s.id, "Hired")
                         setSelectedCandidate(null)
                       }}
                     >
@@ -536,7 +566,8 @@ export default function PipelinePage() {
                 </div>
               </DialogFooter>
             </>
-          )}
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </AppLayout>

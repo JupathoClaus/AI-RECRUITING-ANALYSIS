@@ -31,6 +31,7 @@ import {
   Users as UsersIcon,
 } from "lucide-react"
 import { AppLayout } from "@/components/layout/app-layout"
+import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -80,6 +81,11 @@ const integrationIcons: Record<string, React.ReactNode> = {
 }
 
 export default function SettingsPage() {
+  const { user } = useAuth();
+  const userFirstName = user?.name?.split(" ")[0] || "User";
+  const userEmail = user?.email || "";
+  const userRole = user?.role?.toLowerCase() || "viewer";
+
   const [activeTab, setActiveTab] = useState("profile")
   const [showPassword, setShowPassword] = useState(false)
   const [twoFactor, setTwoFactor] = useState(false)
@@ -151,20 +157,20 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">First Name</label>
-                    <Input defaultValue="Sarah" />
+                    <Input defaultValue={userFirstName} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Last Name</label>
-                    <Input defaultValue="Chen" />
+                    <Input defaultValue={user?.name?.split(" ").slice(1).join(" ") || ""} />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Email</label>
-                  <Input type="email" defaultValue="sarah.chen@airecruiter.com" />
+                  <Input type="email" defaultValue={userEmail} />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Role</label>
-                  <Select defaultValue="admin">
+                  <Select defaultValue={userRole}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -191,7 +197,7 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-4">
                 <Avatar className="h-24 w-24 text-lg">
-                  SC
+                  {user?.name?.split(" ").map((n) => n[0]).join("") || "U"}
                 </Avatar>
                 <div className="flex flex-col items-center gap-2">
                   <Button variant="outline" size="sm">
@@ -216,13 +222,13 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2 sm:col-span-2">
                     <label className="text-sm font-medium text-foreground">Company Name</label>
-                    <Input defaultValue="AI Recruiter Inc." />
+                    <Input placeholder="Enter company name" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Industry</label>
                     <Select defaultValue="technology">
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Select industry" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="technology">Technology</SelectItem>
@@ -235,9 +241,9 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Company Size</label>
-                    <Select defaultValue="50-200">
+                    <Select>
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Select size" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="1-10">1-10 employees</SelectItem>
@@ -251,11 +257,11 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Website</label>
-                  <Input type="url" defaultValue="https://airecruiter.com" />
+                  <Input type="url" placeholder="https://example.com" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Locations</label>
-                  <Input defaultValue="San Francisco, CA" />
+                  <Input placeholder="City, State" />
                   <p className="text-xs text-muted">Separate multiple locations with commas.</p>
                 </div>
                 <div className="flex justify-end pt-2">

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarImage } from "@/components/ui/avatar"
+import { Avatar } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -81,9 +81,7 @@ export function TopNav({ title, description, actions }: TopNavProps) {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="gap-2 h-9 px-2.5">
-              <Avatar className="h-6 w-6" fallback={userInitials}>
-                <AvatarImage src="/avatars/sarah.jpg" alt={user?.name || "User"} />
-              </Avatar>
+              <Avatar className="h-6 w-6" fallback={userInitials} />
               <span className="text-sm font-medium hidden sm:inline">{user?.name?.split(" ")[0] || "User"}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted hidden sm:block" />
             </Button>

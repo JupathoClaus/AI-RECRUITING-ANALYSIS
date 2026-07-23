@@ -403,6 +403,82 @@ describe('InterviewsService', () => {
     });
   });
 
+  describe('start', () => {
+    it('starts a CONFIRMED interview (CONFIRMED → IN_PROGRESS)', async () => {
+      mockPrisma.interview.findFirst.mockResolvedValue({
+        ...mockInterview,
+        status: InterviewStatus.CONFIRMED,
+      });
+      mockPrisma.interview.update.mockResolvedValue({
+        ...mockInterview,
+        status: InterviewStatus.IN_PROGRESS,
+        version: 2,
+      });
+      mockPrisma.interviewHistory.create.mockResolvedValue({});
+      const result = await service.start(
+        INTERVIEW_ID,
+        { expectedVersion: 1 },
+        COMPANY_ID,
+        USER_ID,
+        MEMBERSHIP_ID,
+      );
+      expect(result).toEqual({ started: true });
+      expect(mockPrisma.interview.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: InterviewStatus.IN_PROGRESS,
+            version: 2,
+          }),
+        }),
+      );
+      expect(mockPrisma.interviewHistory.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            eventType: InterviewHistoryEventType.INTERVIEW_STARTED,
+          }),
+        }),
+      );
+    });
+
+    it('throws BAD_REQUEST when starting a SCHEDULED interview (invalid transition)', async () => {
+      mockPrisma.interview.findFirst.mockResolvedValue({
+        ...mockInterview,
+        status: InterviewStatus.SCHEDULED,
+      });
+      await expect(
+        service.start(INTERVIEW_ID, { expectedVersion: 1 }, COMPANY_ID, USER_ID, MEMBERSHIP_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BAD_REQUEST when starting a COMPLETED interview (terminal state)', async () => {
+      mockPrisma.interview.findFirst.mockResolvedValue({
+        ...mockInterview,
+        status: InterviewStatus.COMPLETED,
+      });
+      await expect(
+        service.start(INTERVIEW_ID, { expectedVersion: 1 }, COMPANY_ID, USER_ID, MEMBERSHIP_ID),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws NOT_FOUND for unknown interview', async () => {
+      mockPrisma.interview.findFirst.mockResolvedValue(null);
+      await expect(
+        service.start(INTERVIEW_ID, { expectedVersion: 1 }, COMPANY_ID, USER_ID, MEMBERSHIP_ID),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws CONFLICT on stale version', async () => {
+      mockPrisma.interview.findFirst.mockResolvedValue({
+        ...mockInterview,
+        status: InterviewStatus.CONFIRMED,
+        version: 2,
+      });
+      await expect(
+        service.start(INTERVIEW_ID, { expectedVersion: 1 }, COMPANY_ID, USER_ID, MEMBERSHIP_ID),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
   describe('complete', () => {
     it('completes an IN_PROGRESS interview', async () => {
       mockPrisma.interview.findFirst.mockResolvedValue({
@@ -432,6 +508,67 @@ describe('InterviewsService', () => {
       await expect(
         service.complete(INTERVIEW_ID, { expectedVersion: 1 }, COMPANY_ID, USER_ID, MEMBERSHIP_ID),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('state chain (SCHEDULED → CONFIRMED → IN_PROGRESS → COMPLETED)', () => {
+    let currentVersion: number;
+    let chainInterview: any;
+
+    beforeEach(() => {
+      currentVersion = 1;
+      chainInterview = {
+        ...mockInterview,
+        status: InterviewStatus.SCHEDULED,
+        version: currentVersion,
+        participants: [],
+        history: [],
+      };
+      jest.clearAllMocks();
+    });
+
+    it('executes the full lifecycle with version tracking', async () => {
+      // Step 1: confirm (SCHEDULED → CONFIRMED)
+      mockPrisma.interview.findFirst.mockResolvedValue(chainInterview);
+      const confirmResult = await service.confirm(INTERVIEW_ID, 1, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+      expect(confirmResult).toEqual({ confirmed: true });
+      // Simulate backend version increment after confirm
+      currentVersion++;
+      chainInterview = { ...chainInterview, status: InterviewStatus.CONFIRMED, version: currentVersion };
+
+      // Step 2: start (CONFIRMED → IN_PROGRESS)
+      mockPrisma.interview.findFirst.mockResolvedValue(chainInterview);
+      const startResult = await service.start(INTERVIEW_ID, { expectedVersion: currentVersion }, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+      expect(startResult).toEqual({ started: true });
+      currentVersion++;
+      chainInterview = { ...chainInterview, status: InterviewStatus.IN_PROGRESS, version: currentVersion };
+
+      // Step 3: complete (IN_PROGRESS → COMPLETED)
+      mockPrisma.interview.findFirst.mockResolvedValue(chainInterview);
+      const completeResult = await service.complete(INTERVIEW_ID, { expectedVersion: currentVersion }, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+      expect(completeResult).toEqual({ completed: true, applicationId: APP_ID });
+      currentVersion++;
+      chainInterview = { ...chainInterview, status: InterviewStatus.COMPLETED, version: currentVersion };
+
+      // Step 4: record result (COMPLETED only)
+      mockPrisma.interview.findFirst.mockResolvedValue(chainInterview);
+      mockPrisma.interview.update.mockResolvedValue({
+        ...chainInterview,
+        result: InterviewResult.PASS,
+        version: currentVersion + 1,
+      });
+      mockPrisma.interviewHistory.create.mockResolvedValue({});
+      const resultResult = await service.recordResult(INTERVIEW_ID, InterviewResult.PASS, 'Excellent', currentVersion, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+      expect(resultResult.result).toBe(InterviewResult.PASS);
+      expect(resultResult.suggestedApplicationAction).toBe('ADVANCE');
+
+      // Verify history events were written for all four steps
+      const historyCalls = mockPrisma.interviewHistory.create.mock.calls;
+      const eventTypes = historyCalls.map((c: any) => c[0].data.eventType);
+      expect(eventTypes).toContain(InterviewHistoryEventType.INTERVIEW_CONFIRMED);
+      expect(eventTypes).toContain(InterviewHistoryEventType.INTERVIEW_STARTED);
+      expect(eventTypes).toContain(InterviewHistoryEventType.INTERVIEW_COMPLETED);
+      expect(eventTypes).toContain(InterviewHistoryEventType.INTERVIEW_RESULT_RECORDED);
     });
   });
 

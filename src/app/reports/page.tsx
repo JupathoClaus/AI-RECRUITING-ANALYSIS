@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { ModalHeader } from "@/components/ui/modal-header"
 import { cn, timeAgo } from "@/lib/utils"
 import {
   FileText,
@@ -30,6 +31,7 @@ import {
   Loader2,
   CheckCircle2,
   ArrowRight,
+  Briefcase,
 } from "lucide-react"
 
 interface ReportTemplate {
@@ -40,15 +42,6 @@ interface ReportTemplate {
   color: string
   bgColor: string
   category: string
-}
-
-interface RecentReport {
-  id: string
-  title: string
-  type: string
-  date: Date
-  status: "Ready" | "Generating"
-  generatedBy: string
 }
 
 const reportTemplates: ReportTemplate[] = [
@@ -108,16 +101,14 @@ const reportTemplates: ReportTemplate[] = [
   },
 ]
 
-const recentReports: RecentReport[] = [
-  { id: "r1", title: "Q2 2026 Engineering Hiring Summary", type: "Pipeline Analytics Report", date: new Date("2026-07-10"), status: "Ready", generatedBy: "Sarah Kim" },
-  { id: "r2", title: "Candidate Evaluation - Emily Chen", type: "Candidate Evaluation Report", date: new Date("2026-07-09"), status: "Ready", generatedBy: "AI System" },
-  { id: "r3", title: "Monthly DEI Report - June 2026", type: "Diversity & Inclusion Report", date: new Date("2026-07-02"), status: "Ready", generatedBy: "HR Team" },
-  { id: "r4", title: "Source Effectiveness Analysis", type: "Source Effectiveness Report", date: new Date("2026-07-01"), status: "Generating", generatedBy: "AI System" },
-  { id: "r5", title: "Q1 2026 Interview Performance", type: "Interview Summary Report", date: new Date("2026-06-28"), status: "Ready", generatedBy: "David Park" },
-  { id: "r6", title: "Time-to-Hire Benchmark Report", type: "Time-to-Hire Report", date: new Date("2026-06-25"), status: "Ready", generatedBy: "AI System" },
-  { id: "r7", title: "Frontend Team Candidate Pool", type: "Candidate Evaluation Report", date: new Date("2026-06-20"), status: "Ready", generatedBy: "Sarah Kim" },
-  { id: "r8", title: "Recruitment Funnel Deep Dive", type: "Pipeline Analytics Report", date: new Date("2026-06-18"), status: "Generating", generatedBy: "AI System" },
-]
+interface RecentReport {
+  id: string
+  title: string
+  type: string
+  date: Date
+  status: "Ready" | "Generating"
+  generatedBy: string
+}
 
 const statusConfig: Record<"Ready" | "Generating", { variant: "success" | "warning"; icon: React.ReactNode }> = {
   Ready: { variant: "success", icon: <CheckCircle2 className="h-3 w-3" /> },
@@ -148,7 +139,7 @@ export default function ReportsPage() {
       title="Reports"
       description="Generate and manage AI-powered recruitment reports."
       actions={
-        <Button size="sm">
+        <Button size="sm" disabled>
           <Plus className="h-4 w-4" />
           Generate Report
         </Button>
@@ -161,8 +152,8 @@ export default function ReportsPage() {
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted font-semibold uppercase tracking-wide">Total Reports</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{recentReports.length}</p>
+                  <p className="text-sm text-muted font-semibold uppercase tracking-wide">Templates Available</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">{reportTemplates.length}</p>
                 </div>
                 <FileText className="h-5 w-5 text-primary" />
               </div>
@@ -172,10 +163,10 @@ export default function ReportsPage() {
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted font-semibold uppercase tracking-wide">Ready</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{recentReports.filter((r) => r.status === "Ready").length}</p>
+                  <p className="text-sm text-muted font-semibold uppercase tracking-wide">Active Jobs</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">{activeJobs}</p>
                 </div>
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                <Briefcase className="h-5 w-5 text-success" />
               </div>
             </CardContent>
           </Card>
@@ -183,10 +174,10 @@ export default function ReportsPage() {
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted font-semibold uppercase tracking-wide">Generating</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{recentReports.filter((r) => r.status === "Generating").length}</p>
+                  <p className="text-sm text-muted font-semibold uppercase tracking-wide">Total Candidates</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">{totalCandidates}</p>
                 </div>
-                <Loader2 className="h-5 w-5 text-warning animate-spin" />
+                <Users className="h-5 w-5 text-warning" />
               </div>
             </CardContent>
           </Card>
@@ -239,7 +230,7 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* Recent Reports Table */}
+        {/* Recent Reports - Empty State */}
         <Card className="animate-fade-in">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -251,61 +242,21 @@ export default function ReportsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Report</TableHead>
-                  <TableHead className="hidden md:table-cell">Type</TableHead>
-                  <TableHead className="hidden sm:table-cell">Generated</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="hidden lg:table-cell">By</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recentReports.map((report) => (
-                  <TableRow key={report.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg bg-surface-elevated flex items-center justify-center shrink-0">
-                          <FileText className="h-4 w-4 text-muted" />
-                        </div>
-                        <p className="font-medium text-foreground truncate max-w-[240px]">{report.title}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <span className="text-sm text-muted">{report.type}</span>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <span className="text-sm text-muted">{timeAgo(report.date)}</span>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusConfig[report.status].variant} className="gap-1">
-                        {statusConfig[report.status].icon}
-                        {report.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                      <span className="text-sm text-muted">{report.generatedBy}</span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={report.status === "Generating"}>
-                          <Eye className="h-4 w-4 text-muted" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={report.status === "Generating"}>
-                          <Download className="h-4 w-4 text-muted" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={report.status === "Generating"}>
-                          <Share2 className="h-4 w-4 text-muted" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="text-center py-12">
+              <FileText className="h-12 w-12 mx-auto text-muted/30 mb-4" />
+              <h4 className="font-medium text-foreground">No reports generated yet</h4>
+              <p className="text-sm text-muted mt-1">
+                Select a template above to generate your first report
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => handleGenerate(reportTemplates[0])}
+              >
+                <Sparkles className="h-4 w-4 mr-2" />
+                Try a Template
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -316,7 +267,7 @@ export default function ReportsPage() {
         <DialogContent className="max-w-xl">
           {selectedTemplate && (
             <>
-              <DialogHeader>
+              <ModalHeader>
                 <div className="flex items-start gap-3">
                   <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", selectedTemplate.bgColor, selectedTemplate.color)}>
                     {selectedTemplate.icon}
@@ -326,7 +277,7 @@ export default function ReportsPage() {
                     <DialogDescription className="mt-1">{selectedTemplate.description}</DialogDescription>
                   </div>
                 </div>
-              </DialogHeader>
+              </ModalHeader>
               <div className="grid gap-4 py-2">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-foreground">Department</label>
@@ -410,7 +361,7 @@ export default function ReportsPage() {
                 <Button variant="outline" onClick={() => setGenerateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={() => setGenerateDialogOpen(false)}>
+                <Button onClick={() => setGenerateDialogOpen(false)} disabled>
                   <Sparkles className="h-4 w-4" />
                   Generate Report
                 </Button>
