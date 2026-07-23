@@ -17,7 +17,6 @@ import {
   BarChart3,
   Settings,
   Bell,
-
   Search,
   ChevronLeft,
   ChevronRight,
@@ -33,7 +32,7 @@ import {
 interface NavItem {
   label: string
   href: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: React.ComponentType<{ className?: string; size?: number }>
   badge?: number
 }
 
@@ -121,7 +120,7 @@ export function Sidebar() {
         aria-label="Open navigation"
         aria-expanded={mobileOpen}
       >
-        <Menu className="h-5 w-5 text-foreground" />
+        <Menu className="text-foreground" size={20} />
       </button>
 
       {/* Mobile overlay */}
@@ -142,20 +141,20 @@ export function Sidebar() {
         )}
         aria-label="Main navigation"
       >
-        {/* Logo */}
-        <div className={cn("flex h-16 items-center border-b border-border shrink-0", collapsed ? "justify-center px-2" : "px-5")}>
-          <Link href="/dashboard" className="flex items-center" onClick={() => setMobileOpen(false)}>
-            <div className="flex h-[150px] w-[150px] items-center justify-center rounded-xl overflow-hidden">
+        {/* Logo Header */}
+        <div className={cn("flex items-center justify-center shrink-0 border-b border-border relative", collapsed ? "px-2 py-2" : "px-4 py-3")}>
+          <Link href="/dashboard" className="flex items-center justify-center" onClick={() => setMobileOpen(false)}>
+            <div className="flex h-[100px] w-[100px] items-center justify-center overflow-hidden">
               <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
           </Link>
           {/* Mobile close */}
           <button
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-hover lg:hidden transition-colors duration-150"
+            className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-hover lg:hidden transition-colors duration-150"
             onClick={() => setMobileOpen(false)}
             aria-label="Close navigation"
           >
-            <X className="h-4 w-4 text-muted" />
+            <X className="text-muted" size={16} />
           </button>
         </div>
 
@@ -163,7 +162,7 @@ export function Sidebar() {
         {!collapsed && (
           <div className="px-3 py-3 hidden lg:block">
             <div className="flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-2.5 text-sm text-muted cursor-pointer hover:border-primary/30 transition-all duration-150">
-              <Search className="h-4 w-4" />
+              <Search size={16} />
               <span>Search...</span>
               <kbd className="ml-auto pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded-md border border-border bg-surface px-1.5 font-mono text-[10px] font-medium text-muted">
                 ⌘K
@@ -177,7 +176,7 @@ export function Sidebar() {
           {navSections.map((section) => (
             <div key={section.title}>
               {!collapsed && (
-                <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-widest text-black">
+                <p className="mb-3 px-3 text-[11px] font-normal uppercase tracking-widest text-foreground">
                   {section.title}
                 </p>
               )}
@@ -190,10 +189,10 @@ export function Sidebar() {
                       href={item.href}
                       onClick={() => setMobileOpen(false)}
                       className={cn(
-                        "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-semibold transition-all duration-150",
+                        "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-normal transition-all duration-150",
                         isActive
                           ? "bg-primary/10 text-primary shadow-sm"
-                          : "text-black hover:bg-surface-hover hover:text-black",
+                          : "text-foreground hover:bg-surface-hover hover:text-foreground",
                         collapsed && "justify-center px-2"
                       )}
                       title={collapsed ? item.label : undefined}
@@ -202,12 +201,12 @@ export function Sidebar() {
                       {isActive && (
                         <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-primary" />
                       )}
-                      <item.icon className={cn("h-5 w-5 shrink-0", isActive ? "text-primary" : "text-black group-hover:text-black")} />
+                      <item.icon className={cn("shrink-0", isActive ? "text-primary" : "text-foreground group-hover:text-foreground")} size={22} />
                       {!collapsed && (
                         <>
                           <span className="flex-1">{item.label}</span>
                           {item.badge && (
-                            <Badge variant={isActive ? "default" : "secondary"} className="h-5 px-1.5 text-[10px] font-semibold">
+                            <Badge variant={isActive ? "default" : "secondary"} className="h-5 px-1.5 text-[10px] font-normal">
                               {item.badge}
                             </Badge>
                           )}
@@ -231,7 +230,7 @@ export function Sidebar() {
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!collapsed}
           >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </Button>
         </div>
 
@@ -241,13 +240,13 @@ export function Sidebar() {
             <Avatar className="h-8 w-8" fallback={userInitials} />
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{user?.name || "User"}</p>
+                <p className="text-sm font-normal text-foreground truncate">{user?.name || "User"}</p>
                 <p className="text-xs text-muted truncate">{user?.role || "Member"}</p>
               </div>
             )}
             {!collapsed && (
               <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleLogout} title="Sign out">
-                <LogOut className="h-4 w-4 text-muted" />
+                <LogOut className="text-muted" size={16} />
               </Button>
             )}
           </div>

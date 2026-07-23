@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { X } from "lucide-react"
+import { CloseSquare } from "iconsax-react"
 import { cn } from "@/lib/utils"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 
@@ -19,7 +19,7 @@ function ModalHeader({ children, className, showClose = true }: ModalHeaderProps
       </div>
       {showClose && (
         <DialogPrimitive.Close className="shrink-0 rounded-lg p-1.5 opacity-70 ring-offset-background transition-all duration-150 hover:opacity-100 hover:bg-surface-hover focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-surface-hover data-[state=open]:text-muted">
-          <X className="h-4 w-4" />
+          <CloseSquare className="h-4 w-4" />
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>
       )}

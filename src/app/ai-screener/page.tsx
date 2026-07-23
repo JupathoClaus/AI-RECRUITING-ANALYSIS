@@ -13,23 +13,22 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn, getInitials } from "@/lib/utils"
 import {
-  Upload,
-  FileText,
-  Brain,
-  Sparkles,
-  CheckCircle2,
+  DocumentUpload,
+  Document,
+  MagicStar,
+  TickCircle,
   Clock,
-  AlertCircle,
+  Warning2,
   Shield,
-  MapPin,
-  GraduationCap,
+  Location,
+  Teacher,
   Briefcase,
-  Zap,
-  RotateCcw,
+  Flash,
+  RefreshRightSquare,
   Eye,
-  Download,
+  DocumentDownload,
   Filter,
-} from "lucide-react"
+} from "iconsax-react"
 
 interface ScreenerCandidate {
   id: string
@@ -134,18 +133,18 @@ const screenerCandidates: ScreenerCandidate[] = [
 ]
 
 const screeningCriteria = [
-  { id: "education", label: "Education", description: "Degree level and field relevance", icon: GraduationCap, enabled: true },
+  { id: "education", label: "Education", description: "Degree level and field relevance", icon: Teacher, enabled: true },
   { id: "experience", label: "Experience", description: "Years of experience and role relevance", icon: Briefcase, enabled: true },
-  { id: "skills", label: "Skills Match", description: "Technical and soft skill alignment", icon: Zap, enabled: true },
-  { id: "location", label: "Location", description: "Geographic preference compatibility", icon: MapPin, enabled: false },
+  { id: "skills", label: "Skills Match", description: "Technical and soft skill alignment", icon: Flash, enabled: true },
+  { id: "location", label: "Location", description: "Geographic preference compatibility", icon: Location, enabled: false },
   { id: "culture", label: "Cultural Fit", description: "Values and work style alignment", icon: Shield, enabled: true },
 ]
 
 const recommendationConfig: Record<string, { variant: "success" | "default" | "warning" | "error"; icon: React.ReactNode }> = {
-  "Strong Match": { variant: "success", icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
-  "Good Match": { variant: "default", icon: <Sparkles className="h-3.5 w-3.5" /> },
-  "Possible Match": { variant: "warning", icon: <AlertCircle className="h-3.5 w-3.5" /> },
-  "Poor Match": { variant: "error", icon: <AlertCircle className="h-3.5 w-3.5" /> },
+  "Strong Match": { variant: "success", icon: <TickCircle className="h-3.5 w-3.5" /> },
+  "Good Match": { variant: "default", icon: <MagicStar className="h-3.5 w-3.5" /> },
+  "Possible Match": { variant: "warning", icon: <Warning2 className="h-3.5 w-3.5" /> },
+  "Poor Match": { variant: "error", icon: <Warning2 className="h-3.5 w-3.5" /> },
 }
 
 function getScoreColor(score: number): string {
@@ -212,7 +211,7 @@ export default function AIScreenerPage() {
             </>
           ) : (
             <>
-              <Sparkles className="h-4 w-4" />
+              <MagicStar className="h-4 w-4" />
               Start Screening
             </>
           )}
@@ -230,7 +229,7 @@ export default function AIScreenerPage() {
               )}
             >
               <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary-muted mb-4">
-                <Upload className="h-7 w-7 text-primary" />
+                <DocumentUpload className="h-7 w-7 text-primary" />
               </div>
               <h3 className="text-base font-semibold text-foreground mb-1">UPLOAD RESUMES</h3>
               <p className="text-sm text-muted max-w-md mb-4">
@@ -238,14 +237,14 @@ export default function AIScreenerPage() {
               </p>
               <div className="flex items-center gap-3">
                 <Button size="sm" variant="outline">
-                  <FileText className="h-4 w-4" />
+                  <Document className="h-4 w-4" />
                   Browse Files
                 </Button>
                 <span className="text-xs text-muted">or drop files here</span>
               </div>
               <div className="mt-4 flex items-center gap-4 text-xs text-muted">
                 <span className="flex items-center gap-1">
-                  <FileText className="h-3 w-3" />
+                  <Document className="h-3 w-3" />
                   Max 10MB per file
                 </span>
                 <span>•</span>
@@ -359,9 +358,9 @@ export default function AIScreenerPage() {
                             )}
                           />
                           <p className="text-[10px] text-muted text-right mt-1">
-                            {candidateProgress >= 100 ? "Done" : `${candidateProgress}%`}
+                            {candidateProgress >= 100 ? "Done" : `{candidateProgress}%`}
                           </p>
-                        </div>
+                        </div> 
                       </div>
                     )
                   })}
@@ -377,7 +376,7 @@ export default function AIScreenerPage() {
             <div className="flex items-center justify-between mb-4">
               <TabsList>
                 <TabsTrigger value="results" className="gap-1.5">
-                  <CheckCircle2 className="h-4 w-4" />
+                  <TickCircle className="h-4 w-4" />
                   Results ({screenerCandidates.length})
                 </TabsTrigger>
                 <TabsTrigger value="queue" className="gap-1.5">
@@ -453,7 +452,7 @@ export default function AIScreenerPage() {
                               <Eye className="h-4 w-4 text-muted" />
                             </Button>
                             <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <Download className="h-4 w-4 text-muted" />
+                              <DocumentDownload className="h-4 w-4 text-muted" />
                             </Button>
                           </div>
                         </TableCell>
@@ -476,7 +475,7 @@ export default function AIScreenerPage() {
                     <h3 className="text-base font-semibold text-foreground mb-1">No Active Screening</h3>
                     <p className="text-sm text-muted mb-4">Upload resumes and start screening to see progress here.</p>
                     <Button size="sm" onClick={startScreening}>
-                      <Sparkles className="h-4 w-4" />
+                      <MagicStar className="h-4 w-4" />
                       Start Screening
                     </Button>
                   </CardContent>
@@ -568,7 +567,7 @@ export default function AIScreenerPage() {
 
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center gap-2 text-muted">
-                      <GraduationCap className="h-3 w-3 shrink-0" />
+                      <Teacher className="h-3 w-3 shrink-0" />
                       <span className="truncate">{candidate.education}</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted">
@@ -576,7 +575,7 @@ export default function AIScreenerPage() {
                       <span>{candidate.experience}</span>
                     </div>
                     <div className="flex items-center gap-2 text-muted">
-                      <MapPin className="h-3 w-3 shrink-0" />
+                      <Location className="h-3 w-3 shrink-0" />
                       <span>{candidate.location}</span>
                     </div>
                   </div>

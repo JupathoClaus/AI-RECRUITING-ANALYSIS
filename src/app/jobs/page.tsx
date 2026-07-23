@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { ModalHeader } from "@/components/ui/modal-header"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -18,21 +18,29 @@ import { getJobs, getJobById, createJob } from "@/lib/api/jobs.api"
 import type { JobListDto } from "@/lib/api/types"
 import type { CreateJobRequest } from "@/lib/api/jobs.api"
 import {
-  Search,
-  Plus,
-  LayoutGrid,
-  List,
+  SearchNormal,
+  Add,
+  Grid5,
+  Menu,
   Briefcase,
-  MapPin,
-  DollarSign,
-  Users,
+  Location,
+  DollarSquare,
+  People,
   Calendar,
-  Building2,
+  Buildings,
+  More,
+  PauseCircle,
+  Play,
+  CloseSquare,
+  Eye,
+  Edit2,
+  Trash,
+  Document,
   ChevronLeft,
   ChevronRight,
   RotateCcw,
   AlertCircle,
-} from "lucide-react"
+} from "iconsax-react"
 
 const statusConfig: Record<string, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" }> = {
   DRAFT: { label: "Draft", variant: "secondary" },
@@ -242,17 +250,104 @@ export default function JobsPage() {
       title="Jobs"
       description={error ? "" : `${total} position${total !== 1 ? "s" : ""}${activeCount ? ` \u00B7 ${activeCount} active` : ""}`}
       actions={
-        <Button size="sm" onClick={() => { setShowCreateDialog(true); setCreateError(null) }}>
-          <Plus className="h-4 w-4" />
-          Create Job
-        </Button>
+        <Dialog open={showCreateDialog} onOpenChange={(open) => { if (!open) { setShowCreateDialog(false); setCreateError(null) } }}>
+          <DialogTrigger asChild>
+            <Button size="sm">
+              <Add className="h-4 w-4" />
+              Create Job
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-lg">
+            <ModalHeader>
+              <DialogTitle>Create New Job</DialogTitle>
+              <DialogDescription>Fill in the details to create a new job posting.</DialogDescription>
+            </ModalHeader>
+            <form onSubmit={handleCreateJob} className="space-y-4">
+              {createError && (
+                <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">{createError}</div>
+              )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Job Title *</label>
+                <Input
+                  placeholder="e.g. Senior Software Engineer"
+                  value={createForm.title}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
+                  required
+                  maxLength={200}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Type *</label>
+                  <Select value={createForm.employmentType} onValueChange={(v) => setCreateForm((f) => ({ ...f, employmentType: v as CreateJobRequest["employmentType"] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="FULL_TIME">Full-time</SelectItem>
+                      <SelectItem value="PART_TIME">Part-time</SelectItem>
+                      <SelectItem value="CONTRACT">Contract</SelectItem>
+                      <SelectItem value="TEMPORARY">Temporary</SelectItem>
+                      <SelectItem value="INTERNSHIP">Internship</SelectItem>
+                      <SelectItem value="FREELANCE">Freelance</SelectItem>
+                      <SelectItem value="OTHER">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Workplace *</label>
+                  <Select value={createForm.workplaceType} onValueChange={(v) => setCreateForm((f) => ({ ...f, workplaceType: v as CreateJobRequest["workplaceType"] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ON_SITE">On-site</SelectItem>
+                      <SelectItem value="REMOTE">Remote</SelectItem>
+                      <SelectItem value="HYBRID">Hybrid</SelectItem>
+                      <SelectItem value="FLEXIBLE">Flexible</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Level *</label>
+                  <Select value={createForm.experienceLevel} onValueChange={(v) => setCreateForm((f) => ({ ...f, experienceLevel: v as CreateJobRequest["experienceLevel"] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ENTRY">Entry</SelectItem>
+                      <SelectItem value="JUNIOR">Junior</SelectItem>
+                      <SelectItem value="MID">Mid</SelectItem>
+                      <SelectItem value="SENIOR">Senior</SelectItem>
+                      <SelectItem value="LEAD">Lead</SelectItem>
+                      <SelectItem value="MANAGER">Manager</SelectItem>
+                      <SelectItem value="DIRECTOR">Director</SelectItem>
+                      <SelectItem value="EXECUTIVE">Executive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Description *</label>
+                <textarea
+                  placeholder="Describe the role, responsibilities, and requirements..."
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
+                  required
+                  rows={5}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+                <Button type="submit" disabled={createSubmitting}>
+                  {createSubmitting ? "Creating..." : "Create Job"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       }
     >
       {/* Filters */}
       <div className="flex flex-col gap-4 mb-6 animate-fade-in">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+            <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
             <Input
               placeholder="Search jobs by title\u2026"
               className="pl-9"
@@ -299,7 +394,7 @@ export default function JobsPage() {
       </div>
 
       {/* Error State */}
-      {error && (
+      {error ? (
         <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-6 mb-6 text-center animate-fade-in">
           <AlertCircle className="h-8 w-8 text-error mx-auto mb-3" />
           <p className="text-sm text-error font-medium mb-3">{error}</p>
@@ -308,314 +403,227 @@ export default function JobsPage() {
             Retry
           </Button>
         </div>
-      )}
+      ) : (
+        <>
+          {/* View Toggle */}
+          <Tabs value={view} onValueChange={(v) => setView(v as "grid" | "table")} className="animate-fade-in">
+            <div className="flex items-center justify-between mb-4">
+              <TabsList>
+                <TabsTrigger value="grid" className="gap-1.5">
+                  <Grid5 className="h-4 w-4" />
+                  Grid
+                </TabsTrigger>
+                <TabsTrigger value="table" className="gap-1.5">
+                  <Menu className="h-4 w-4" />
+                  Table
+                </TabsTrigger>
+              </TabsList>
+              <span className="text-sm text-muted">{displayJobs.length} job{displayJobs.length !== 1 ? "s" : ""}</span>
+            </div>
 
-      {/* View Toggle & Content */}
-      {!error && (
-        <Tabs value={view} onValueChange={(v) => setView(v as "grid" | "table")} className="animate-fade-in">
-          <div className="flex items-center justify-between mb-4">
-            <TabsList>
-              <TabsTrigger value="grid" className="gap-1.5">
-                <LayoutGrid className="h-4 w-4" />
-                Grid
-              </TabsTrigger>
-              <TabsTrigger value="table" className="gap-1.5">
-                <List className="h-4 w-4" />
-                Table
-              </TabsTrigger>
-            </TabsList>
-            <span className="text-sm text-muted">{displayJobs.length} job{displayJobs.length !== 1 ? "s" : ""}</span>
-          </div>
-
-          {/* Grid View */}
-          <TabsContent value="grid">
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <JobCardSkeleton key={i} />
-                ))}
-              </div>
-            ) : displayJobs.length === 0 ? (
-              <EmptyState
-                icon={<Briefcase className="h-8 w-8 text-muted" />}
-                title="No jobs found"
-                description={searchInput || statusFilter !== "all" || departmentFilter !== "all" || typeFilter !== "all"
-                  ? "Try adjusting your filters to see more results."
-                  : "No jobs have been created yet."
-                }
-                action={
-                  (searchInput || statusFilter !== "all" || departmentFilter !== "all" || typeFilter !== "all") ? (
-                    <Button variant="outline" onClick={() => { setSearchInput(""); setDebouncedSearch(""); setStatusFilter("all"); setDepartmentFilter("all"); setTypeFilter("all") }}>
-                      Clear Filters
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {displayJobs.map((job) => (
-                  <Card
-                    key={job.id}
-                    className="group hover:border-primary/30 transition-all duration-200 cursor-pointer"
-                    onClick={() => openDetails(job.id)}
-                  >
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <CardTitle className="text-base truncate">{job.title}</CardTitle>
-                          <CardDescription className="flex items-center gap-1.5 mt-1">
-                            <Building2 className="h-3 w-3 shrink-0" />
-                            {job.department?.name ?? "No department"}
-                          </CardDescription>
-                        </div>
-                        <Badge variant={statusConfig[job.status]?.variant ?? "secondary"} className="shrink-0">
-                          {statusConfig[job.status]?.label ?? job.status}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pb-3">
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <MapPin className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{job.location ? `${job.location.name}, ${job.location.city ?? job.location.countryCode}` : "Remote / Not specified"}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <DollarSign className="h-3.5 w-3.5 shrink-0" />
-                          {job.salaryMin != null && job.salaryMax != null ? (
-                            <span>{formatCurrency(job.salaryMin)} \u2013 {formatCurrency(job.salaryMax)}</span>
-                          ) : job.salaryMin != null ? (
-                            <span>From {formatCurrency(job.salaryMin)}</span>
-                          ) : (
-                            <span>Salary not specified</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Calendar className="h-3.5 w-3.5 shrink-0" />
-                          <span>Posted {timeAgo(new Date(job.createdAt))}</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                    <CardFooter className="pt-0 flex items-center justify-between">
-                      <Badge variant={typeConfig[job.employmentType]?.variant ?? "secondary"}>
-                        {typeConfig[job.employmentType]?.label ?? job.employmentType}
-                      </Badge>
-                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                        <Users className="h-3.5 w-3.5" />
-                        <span>{job.numberOfOpenings} opening{job.numberOfOpenings !== 1 ? "s" : ""}</span>
-                      </div>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {/* Pagination */}
-            {displayJobs.length > 0 && totalPages > 1 && (
-              <div className="flex items-center justify-between pt-6 border-t border-border mt-6">
-                <p className="text-sm text-muted-foreground">
-                  Page {page} of {totalPages}
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Previous
-                  </Button>
-                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-                    Next
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
+            {/* Grid View */}
+            <TabsContent value="grid">
+              {isLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <JobCardSkeleton key={i} />
+                  ))}
                 </div>
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Table View */}
-          <TabsContent value="table">
-            {isLoading ? (
-              <Card>
-                <TableSkeleton />
-              </Card>
-            ) : displayJobs.length === 0 ? (
-              <EmptyState
-                icon={<Briefcase className="h-8 w-8 text-muted" />}
-                title="No jobs found"
-                description={searchInput || statusFilter !== "all" || departmentFilter !== "all" || typeFilter !== "all"
-                  ? "Try adjusting your filters to see more results."
-                  : "No jobs have been created yet."
-                }
-                action={
-                  (searchInput || statusFilter !== "all" || departmentFilter !== "all" || typeFilter !== "all") ? (
-                    <Button variant="outline" onClick={() => { setSearchInput(""); setDebouncedSearch(""); setStatusFilter("all"); setDepartmentFilter("all"); setTypeFilter("all") }}>
-                      Clear Filters
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ) : (
-              <Card>
-                <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Job Title</TableHead>
-                      <TableHead className="hidden md:table-cell">Department</TableHead>
-                      <TableHead className="hidden lg:table-cell">Location</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="hidden sm:table-cell">Salary</TableHead>
-                      <TableHead className="text-center">Openings</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="hidden lg:table-cell">Posted</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {displayJobs.map((job) => (
-                      <TableRow key={job.id} className="cursor-pointer" onClick={() => openDetails(job.id)}>
-                        <TableCell>
-                          <span className="font-medium text-foreground">{job.title}</span>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell text-muted-foreground">{job.department?.name ?? "\u2014"}</TableCell>
-                        <TableCell className="hidden lg:table-cell text-muted-foreground">
-                          {job.location ? `${job.location.name}, ${job.location.city ?? job.location.countryCode}` : "\u2014"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={typeConfig[job.employmentType]?.variant ?? "secondary"} className="text-xs">
-                            {typeConfig[job.employmentType]?.label ?? job.employmentType}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell text-muted-foreground">
-                          {job.salaryMin != null && job.salaryMax != null
-                            ? `${formatCurrency(job.salaryMin)} \u2013 ${formatCurrency(job.salaryMax)}`
-                            : job.salaryMin != null
-                              ? `From ${formatCurrency(job.salaryMin)}`
-                              : "\u2014"}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="font-medium text-foreground">{job.numberOfOpenings}</span>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={statusConfig[job.status]?.variant ?? "secondary"}>
+              ) : displayJobs.length === 0 ? (
+                <EmptyState
+                  icon={<Briefcase className="h-8 w-8 text-muted" />}
+                  title="No jobs found"
+                  description={searchInput || statusFilter !== "all" || departmentFilter !== "all" || typeFilter !== "all"
+                    ? "Try adjusting your filters to see more results."
+                    : "No jobs have been created yet."
+                  }
+                  action={
+                    (searchInput || statusFilter !== "all" || departmentFilter !== "all" || typeFilter !== "all") ? (
+                      <Button variant="outline" onClick={() => { setSearchInput(""); setDebouncedSearch(""); setStatusFilter("all"); setDepartmentFilter("all"); setTypeFilter("all") }}>
+                        Clear Filters
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {displayJobs.map((job) => (
+                    <Card
+                      key={job.id}
+                      className="group hover:border-primary/30 transition-all duration-200 cursor-pointer"
+                      onClick={() => openDetails(job.id)}
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <CardTitle className="text-base truncate">{job.title}</CardTitle>
+                            <CardDescription className="flex items-center gap-1.5 mt-1">
+                              <Buildings className="h-3 w-3 shrink-0" />
+                              {job.department?.name ?? "No department"}
+                            </CardDescription>
+                          </div>
+                          <Badge variant={statusConfig[job.status]?.variant ?? "secondary"} className="shrink-0">
                             {statusConfig[job.status]?.label ?? job.status}
                           </Badge>
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
-                          {timeAgo(new Date(job.createdAt))}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pb-3">
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Location className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{job.location ? `${job.location.name}, ${job.location.city ?? job.location.countryCode}` : "Remote / Not specified"}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <DollarSquare className="h-3.5 w-3.5 shrink-0" />
+                            {job.salaryMin != null && job.salaryMax != null ? (
+                              <span>{formatCurrency(job.salaryMin)} \u2013 {formatCurrency(job.salaryMax)}</span>
+                            ) : job.salaryMin != null ? (
+                              <span>From {formatCurrency(job.salaryMin)}</span>
+                            ) : (
+                              <span>Salary not specified</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Calendar className="h-3.5 w-3.5 shrink-0" />
+                            <span>Posted {timeAgo(new Date(job.createdAt))}</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                      <CardFooter className="pt-0 flex items-center justify-between">
+                        <Badge variant={typeConfig[job.employmentType]?.variant ?? "secondary"}>
+                          {typeConfig[job.employmentType]?.label ?? job.employmentType}
+                        </Badge>
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <People className="h-3.5 w-3.5" />
+                          <span>{job.numberOfOpenings} opening{job.numberOfOpenings !== 1 ? "s" : ""}</span>
+                        </div>
+                      </CardFooter>
+                    </Card>
+                  ))}
                 </div>
-              </Card>
-            )}
+              )}
 
-            {/* Pagination */}
-            {displayJobs.length > 0 && totalPages > 1 && (
-              <div className="flex items-center justify-between pt-6 border-t border-border mt-6">
-                <p className="text-sm text-muted-foreground">
-                  Page {page} of {totalPages}
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    Previous
-                  </Button>
-                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
-                    Next
-                    <ChevronRight className="h-4 w-4 ml-1" />
-                  </Button>
+              {/* Pagination */}
+              {displayJobs.length > 0 && totalPages > 1 && (
+                <div className="flex items-center justify-between pt-6 border-t border-border mt-6">
+                  <p className="text-sm text-muted-foreground">
+                    Page {page} of {totalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+              )}
+            </TabsContent>
+
+            {/* Table View */}
+            <TabsContent value="table">
+              {isLoading ? (
+                <Card>
+                  <TableSkeleton />
+                </Card>
+              ) : displayJobs.length === 0 ? (
+                <EmptyState
+                  icon={<Briefcase className="h-8 w-8 text-muted" />}
+                  title="No jobs found"
+                  description={searchInput || statusFilter !== "all" || departmentFilter !== "all" || typeFilter !== "all"
+                    ? "Try adjusting your filters to see more results."
+                    : "No jobs have been created yet."
+                  }
+                  action={
+                    (searchInput || statusFilter !== "all" || departmentFilter !== "all" || typeFilter !== "all") ? (
+                      <Button variant="outline" onClick={() => { setSearchInput(""); setDebouncedSearch(""); setStatusFilter("all"); setDepartmentFilter("all"); setTypeFilter("all") }}>
+                        Clear Filters
+                      </Button>
+                    ) : undefined
+                  }
+                />
+              ) : (
+                <Card>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Job Title</TableHead>
+                          <TableHead className="hidden md:table-cell">Department</TableHead>
+                          <TableHead className="hidden lg:table-cell">Location</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead className="hidden sm:table-cell">Salary</TableHead>
+                          <TableHead className="text-center">Openings</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="hidden lg:table-cell">Posted</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {displayJobs.map((job) => (
+                          <TableRow key={job.id} className="cursor-pointer" onClick={() => openDetails(job.id)}>
+                            <TableCell>
+                              <span className="font-medium text-foreground">{job.title}</span>
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell text-muted-foreground">{job.department?.name ?? "\u2014"}</TableCell>
+                            <TableCell className="hidden lg:table-cell text-muted-foreground">
+                              {job.location ? `${job.location.name}, ${job.location.city ?? job.location.countryCode}` : "\u2014"}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={typeConfig[job.employmentType]?.variant ?? "secondary"} className="text-xs">
+                                {typeConfig[job.employmentType]?.label ?? job.employmentType}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell text-muted-foreground">
+                              {job.salaryMin != null && job.salaryMax != null
+                                ? `${formatCurrency(job.salaryMin)} \u2013 ${formatCurrency(job.salaryMax)}`
+                                : job.salaryMin != null
+                                  ? `From ${formatCurrency(job.salaryMin)}`
+                                  : "\u2014"}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <span className="font-medium text-foreground">{job.numberOfOpenings}</span>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={statusConfig[job.status]?.variant ?? "secondary"}>
+                                {statusConfig[job.status]?.label ?? job.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
+                              {timeAgo(new Date(job.createdAt))}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </Card>
+              )}
+
+              {/* Pagination */}
+              {displayJobs.length > 0 && totalPages > 1 && (
+                <div className="flex items-center justify-between pt-6 border-t border-border mt-6">
+                  <p className="text-sm text-muted-foreground">
+                    Page {page} of {totalPages}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </>
       )}
-
-      {/* Create Job Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={(open) => { if (!open) { setShowCreateDialog(false); setCreateError(null) } }}>
-        <DialogContent className="max-w-lg">
-          <ModalHeader>
-            <DialogTitle>Create New Job</DialogTitle>
-            <DialogDescription>Fill in the details to create a new job posting.</DialogDescription>
-          </ModalHeader>
-          <form onSubmit={handleCreateJob} className="space-y-4">
-            {createError && (
-              <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">{createError}</div>
-            )}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Job Title *</label>
-              <Input
-                placeholder="e.g. Senior Software Engineer"
-                value={createForm.title}
-                onChange={(e) => setCreateForm((f) => ({ ...f, title: e.target.value }))}
-                required
-                maxLength={200}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Type *</label>
-                <Select value={createForm.employmentType} onValueChange={(v) => setCreateForm((f) => ({ ...f, employmentType: v as CreateJobRequest["employmentType"] }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="FULL_TIME">Full-time</SelectItem>
-                    <SelectItem value="PART_TIME">Part-time</SelectItem>
-                    <SelectItem value="CONTRACT">Contract</SelectItem>
-                    <SelectItem value="TEMPORARY">Temporary</SelectItem>
-                    <SelectItem value="INTERNSHIP">Internship</SelectItem>
-                    <SelectItem value="FREELANCE">Freelance</SelectItem>
-                    <SelectItem value="OTHER">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Workplace *</label>
-                <Select value={createForm.workplaceType} onValueChange={(v) => setCreateForm((f) => ({ ...f, workplaceType: v as CreateJobRequest["workplaceType"] }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ON_SITE">On-site</SelectItem>
-                    <SelectItem value="REMOTE">Remote</SelectItem>
-                    <SelectItem value="HYBRID">Hybrid</SelectItem>
-                    <SelectItem value="FLEXIBLE">Flexible</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Level *</label>
-                <Select value={createForm.experienceLevel} onValueChange={(v) => setCreateForm((f) => ({ ...f, experienceLevel: v as CreateJobRequest["experienceLevel"] }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ENTRY">Entry</SelectItem>
-                    <SelectItem value="JUNIOR">Junior</SelectItem>
-                    <SelectItem value="MID">Mid</SelectItem>
-                    <SelectItem value="SENIOR">Senior</SelectItem>
-                    <SelectItem value="LEAD">Lead</SelectItem>
-                    <SelectItem value="MANAGER">Manager</SelectItem>
-                    <SelectItem value="DIRECTOR">Director</SelectItem>
-                    <SelectItem value="EXECUTIVE">Executive</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Description *</label>
-              <textarea
-                placeholder="Describe the role, responsibilities, and requirements..."
-                value={createForm.description}
-                onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
-                required
-                rows={5}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
-              />
-            </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
-              <Button type="submit" disabled={createSubmitting}>
-                {createSubmitting ? "Creating..." : "Create Job"}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       {/* Job Details Dialog */}
       <Dialog open={!!detailsJobId} onOpenChange={(open) => { if (!open) { setDetailsJobId(null); setDetailsJob(null); setDetailsError(null) } }}>
@@ -656,17 +664,17 @@ export default function JobsPage() {
               </ModalHeader>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-lg border border-border bg-background p-3">
+                  <div className="rounded-lg bg-background border border-border p-3">
                     <p className="text-xs text-muted mb-1">Type</p>
                     <Badge variant={typeConfig[detailsJob.employmentType]?.variant ?? "secondary"}>
                       {typeConfig[detailsJob.employmentType]?.label ?? detailsJob.employmentType}
                     </Badge>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3">
+                  <div className="rounded-lg bg-background border border-border p-3">
                     <p className="text-xs text-muted mb-1">Openings</p>
                     <p className="text-sm font-medium text-foreground">{detailsJob.numberOfOpenings}</p>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3">
+                  <div className="rounded-lg bg-background border border-border p-3">
                     <p className="text-xs text-muted mb-1">Salary Range</p>
                     <p className="text-sm font-medium text-foreground">
                       {detailsJob.salaryMin != null && detailsJob.salaryMax != null
@@ -676,7 +684,7 @@ export default function JobsPage() {
                           : "Not specified"}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3">
+                  <div className="rounded-lg bg-background border border-border p-3">
                     <p className="text-xs text-muted mb-1">Posted</p>
                     <p className="text-sm font-medium text-foreground">{timeAgo(new Date(detailsJob.createdAt))}</p>
                   </div>

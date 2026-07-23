@@ -3,33 +3,35 @@
 import { useState } from "react"
 import {
   User,
-  Building2,
-  Bell,
-  Bot,
-  Puzzle,
+  Buildings,
+  Notification,
+  Cpu,
+  Command,
   Shield,
-  Upload,
-  Save,
+  DocumentUpload,
+  Save2,
   Link2,
-  Unlink,
+  Chainlink,
   Key,
-  LogOut,
+  Logout,
   Monitor,
-  Smartphone,
-  Globe,
-  Plus,
+  Mobile,
+  Global,
+  Add,
   Copy,
   Eye,
-  EyeOff,
-  Mail,
-  CalendarClock,
-  FileText,
-  Sparkles,
-  Check,
-  AlertCircle,
+  EyeSlash,
+  Message,
+  Calendar,
+  Document,
+  MagicStar,
+  TickCircle,
+  Warning2,
   Briefcase,
-  Users as UsersIcon,
-} from "lucide-react"
+  People as UsersIcon,
+  Flash,
+  Chart2,
+} from "iconsax-react"
 import { AppLayout } from "@/components/layout/app-layout"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -73,10 +75,10 @@ const apiKeys = [
 ]
 
 const integrationIcons: Record<string, React.ReactNode> = {
-  linkedin: <Globe className="h-8 w-8 text-[#0A66C2]" />,
+  linkedin: <Global className="h-8 w-8 text-[#0A66C2]" />,
   indeed: <Briefcase className="h-8 w-8 text-[#003A9B]" />,
-  glassdoor: <Building2 className="h-8 w-8 text-[#0CAA41]" />,
-  workday: <CalendarClock className="h-8 w-8 text-[#F5821F]" />,
+  glassdoor: <Buildings className="h-8 w-8 text-[#0CAA41]" />,
+  workday: <Calendar className="h-8 w-8 text-[#F5821F]" />,
   bamboohr: <UsersIcon className="h-8 w-8 text-[#00A3E0]" />,
 }
 
@@ -129,16 +131,16 @@ export default function SettingsPage() {
             <User className="h-4 w-4" /> Profile
           </TabsTrigger>
           <TabsTrigger value="company" className="gap-2">
-            <Building2 className="h-4 w-4" /> Company
+            <Buildings className="h-4 w-4" /> Company
           </TabsTrigger>
           <TabsTrigger value="notifications" className="gap-2">
-            <Bell className="h-4 w-4" /> Notifications
+            <Notification className="h-4 w-4" /> Notifications
           </TabsTrigger>
           <TabsTrigger value="ai-settings" className="gap-2">
-            <Bot className="h-4 w-4" /> AI Settings
+            <Cpu className="h-4 w-4" /> AI Settings
           </TabsTrigger>
           <TabsTrigger value="integrations" className="gap-2">
-            <Puzzle className="h-4 w-4" /> Integrations
+            <Command className="h-4 w-4" /> Integrations
           </TabsTrigger>
           <TabsTrigger value="security" className="gap-2">
             <Shield className="h-4 w-4" /> Security
@@ -184,7 +186,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex justify-end pt-2">
                   <Button>
-                    <Save className="h-4 w-4" /> Save Changes
+                    <Save2 className="h-4 w-4" /> Save Changes
                   </Button>
                 </div>
               </CardContent>
@@ -201,7 +203,7 @@ export default function SettingsPage() {
                 </Avatar>
                 <div className="flex flex-col items-center gap-2">
                   <Button variant="outline" size="sm">
-                    <Upload className="h-4 w-4" /> Upload Photo
+                    <DocumentUpload className="h-4 w-4" /> Upload Photo
                   </Button>
                   <p className="text-xs text-muted">PNG, JPG. Max 2MB.</p>
                 </div>
@@ -266,7 +268,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex justify-end pt-2">
                   <Button>
-                    <Save className="h-4 w-4" /> Save Changes
+                    <Save2 className="h-4 w-4" /> Save Changes
                   </Button>
                 </div>
               </CardContent>
@@ -278,12 +280,12 @@ export default function SettingsPage() {
                 <CardDescription>Upload your company logo.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-4">
-                <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-surface-elevated border border-border">
-                  <Building2 className="h-10 w-10 text-muted" />
+                <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-surface-elevated">
+                  <Buildings className="h-10 w-10 text-muted" />
                 </div>
                 <div className="flex flex-col items-center gap-2">
                   <Button variant="outline" size="sm">
-                    <Upload className="h-4 w-4" /> Upload Logo
+                    <DocumentUpload className="h-4 w-4" /> Upload Logo
                   </Button>
                   <p className="text-xs text-muted">PNG, JPG. Max 5MB.</p>
                 </div>
@@ -305,35 +307,35 @@ export default function SettingsPage() {
                   id: "email",
                   label: "Email Notifications",
                   description: "Receive email updates for account activity and important announcements.",
-                  icon: Mail,
+                  icon: Message,
                   defaultChecked: true,
                 },
                 {
                   id: "applications",
                   label: "Application Alerts",
                   description: "Get notified when new applications are submitted for your job postings.",
-                  icon: FileText,
+                  icon: Document,
                   defaultChecked: true,
                 },
                 {
                   id: "interviews",
                   label: "Interview Reminders",
                   description: "Receive reminders about upcoming interviews and schedule changes.",
-                  icon: CalendarClock,
+                  icon: Calendar,
                   defaultChecked: true,
                 },
                 {
                   id: "ai-scores",
                   label: "AI Score Updates",
                   description: "Notifications when candidates receive updated AI assessment scores.",
-                  icon: Sparkles,
+                  icon: MagicStar,
                   defaultChecked: false,
                 },
                 {
                   id: "digest",
                   label: "Weekly Digest",
                   description: "A weekly summary of recruitment activity, pipeline changes, and key metrics.",
-                  icon: Bell,
+                  icon: Notification,
                   defaultChecked: true,
                 },
               ].map((notif, idx) => (
@@ -444,19 +446,27 @@ export default function SettingsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">AI Model Performance</CardTitle>
-                <CardDescription>Current accuracy metrics for the screening model.</CardDescription>
+                <div className="flex items-center gap-2">
+                  <Cpu className="text-muted-foreground" size={16} />
+                  <div>
+                    <CardTitle className="text-base">AI Model Performance</CardTitle>
+                    <CardDescription>Current accuracy metrics for the screening model.</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-5">
                 {[
-                  { label: "Overall Accuracy", value: 94, color: "text-success", barColor: "bg-success" },
-                  { label: "Precision", value: 91, color: "text-success", barColor: "bg-success" },
-                  { label: "Recall", value: 88, color: "text-primary", barColor: "bg-primary" },
-                  { label: "F1 Score", value: 89, color: "text-primary", barColor: "bg-primary" },
+                  { label: "Overall Accuracy", value: 94, color: "text-success", barColor: "bg-success", icon: TickCircle },
+                  { label: "Precision", value: 91, color: "text-success", barColor: "bg-success", icon: Flash },
+                  { label: "Recall", value: 88, color: "text-primary", barColor: "bg-primary", icon: Shield },
+                  { label: "F1 Score", value: 89, color: "text-primary", barColor: "bg-primary", icon: Chart2 },
                 ].map((metric) => (
                   <div key={metric.label}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm text-muted">{metric.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <metric.icon className="text-muted-foreground" size={14} />
+                        <span className="text-sm text-muted">{metric.label}</span>
+                      </div>
                       <span className={cn("text-sm font-semibold tabular-nums", metric.color)}>
                         {metric.value}%
                       </span>
@@ -474,7 +484,7 @@ export default function SettingsPage() {
                 <div className="rounded-lg bg-surface-elevated p-3">
                   <div className="flex items-start gap-3">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-info-muted mt-0.5">
-                      <Bot className="h-4 w-4 text-info" />
+                      <Cpu className="h-4 w-4 text-info" />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">Model v2.3.1</p>
@@ -500,7 +510,7 @@ export default function SettingsPage() {
               {integrations.map((integration) => (
                 <div
                   key={integration.id}
-                  className="flex items-center justify-between rounded-lg border border-border p-4 transition-all duration-200 hover:border-border/80"
+                  className="flex items-center justify-between rounded-lg p-4 transition-all duration-200 hover:border-border/80"
                 >
                   <div className="flex items-center gap-4">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-surface-elevated">
@@ -540,7 +550,7 @@ export default function SettingsPage() {
                   >
                     {integration.connected ? (
                       <>
-                        <Unlink className="h-4 w-4" /> Disconnect
+                        <Chainlink className="h-4 w-4" /> Disconnect
                       </>
                     ) : (
                       <>
@@ -592,7 +602,7 @@ export default function SettingsPage() {
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted" />
+                      <EyeSlash className="h-4 w-4 text-muted" />
                     ) : (
                       <Eye className="h-4 w-4 text-muted" />
                     )}
@@ -638,7 +648,7 @@ export default function SettingsPage() {
                     <CardDescription>Devices and locations where your account is logged in.</CardDescription>
                   </div>
                   <Button variant="outline" size="sm">
-                    <LogOut className="h-4 w-4" /> Sign Out All
+                    <Logout className="h-4 w-4" /> Sign Out All
                   </Button>
                 </div>
               </CardHeader>
@@ -660,7 +670,7 @@ export default function SettingsPage() {
                           <div className="flex items-center gap-3">
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-elevated">
                               {session.device.includes("Mobile") ? (
-                                <Smartphone className="h-4 w-4 text-muted" />
+                                <Mobile className="h-4 w-4 text-muted" />
                               ) : (
                                 <Monitor className="h-4 w-4 text-muted" />
                               )}
@@ -707,7 +717,7 @@ export default function SettingsPage() {
                     <CardDescription>Manage API keys for programmatic access to AI Recruiter.</CardDescription>
                   </div>
                   <Button size="sm">
-                    <Plus className="h-4 w-4" /> Create Key
+                    <Add className="h-4 w-4" /> Create Key
                   </Button>
                 </div>
               </CardHeader>

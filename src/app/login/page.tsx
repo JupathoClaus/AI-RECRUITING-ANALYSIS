@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Eye, EyeOff, ArrowLeft } from "lucide-react"
+import { Eye, EyeSlash, ArrowLeft } from "iconsax-react"
 import { resendVerification } from "@/lib/api/auth.api"
 
 export default function LoginPage() {
@@ -66,7 +66,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5" />
         <div className="relative flex flex-col justify-between p-12 w-full">
           <Link href="/" className="flex items-center">
-            <div className="flex h-[150px] w-[150px] items-center justify-center rounded-xl overflow-hidden">
+            <div className="flex h-[150px] w-[150px] items-center justify-center overflow-hidden">
               <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
           </Link>
@@ -172,7 +172,7 @@ export default function LoginPage() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? <EyeSlash className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
@@ -191,6 +191,13 @@ export default function LoginPage() {
             </p>
           </div>
 
+          <div className="mt-8 rounded-lg bg-surface/50 p-4">
+            <p className="text-xs font-medium text-muted-foreground mb-2">Demo credentials</p>
+            <div className="space-y-1 text-xs text-muted font-mono">
+              <p>Email: sarah@airecruiter.com</p>
+              <p>Password: admin123</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

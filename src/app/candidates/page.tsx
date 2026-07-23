@@ -26,21 +26,22 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
 import {
-  Search,
-  Plus,
-  Users,
-  Star,
-  MoreHorizontal,
+  SearchNormal,
+  Add,
+  People,
+  Star1,
+  More,
   Eye,
-  Edit,
+  Edit2,
   Calendar,
-  X,
-  Phone,
-  Mail,
+  CloseSquare,
+  Call,
+  Message,
   Briefcase,
-  Brain,
+  MagicStar,
   MessageSquare,
-} from "lucide-react"
+  Document,
+} from "iconsax-react"
 
 const statusConfig: Record<DisplayApplicationStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" | "info" }> = {
   Applied: { label: "Applied", variant: "info" },
@@ -87,7 +88,7 @@ function StarRating({ rating, onChange }: { rating: number; onChange?: (r: numbe
           )}
           onClick={() => onChange?.(i + 1)}
         >
-          <Star className={cn("h-4 w-4", i < rating && "fill-current")} />
+          <Star1 className={cn("h-4 w-4", i < rating && "fill-current")} />
         </button>
       ))}
     </div>
@@ -214,7 +215,7 @@ export default function CandidatesPage() {
         <Dialog open={addDialogOpen} onOpenChange={(open) => { setAddDialogOpen(open); if (open) setAddFeedback(null) }}>
           <DialogTrigger asChild>
             <Button size="sm">
-              <Plus className="h-4 w-4" />
+              <Add className="h-4 w-4" />
               Add Candidate
             </Button>
           </DialogTrigger>
@@ -315,7 +316,7 @@ export default function CandidatesPage() {
                 onClick={handleAddCandidate}
                 disabled={!newCandidate.name || !newCandidate.email}
               >
-                <Plus className="h-4 w-4" />
+                <Add className="h-4 w-4" />
                 Add Candidate
               </Button>
             </DialogFooter>
@@ -336,7 +337,7 @@ export default function CandidatesPage() {
       <div className="flex flex-col gap-4 mb-6 animate-fade-in">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+            <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
             <Input
               type="search"
               name="candidate-search"
@@ -394,14 +395,14 @@ export default function CandidatesPage() {
           </Card>
         ) : candidatesError ? (
           <EmptyState
-            icon={<Users className="h-8 w-8 text-muted" />}
+            icon={<People className="h-8 w-8 text-muted" />}
             title="Failed to load candidates"
             description={candidatesError}
             action={<Button variant="outline" onClick={() => fetchCandidates()}>Retry</Button>}
           />
         ) : filteredCandidates.length === 0 ? (
           <EmptyState
-            icon={<Users className="h-8 w-8 text-muted" />}
+            icon={<People className="h-8 w-8 text-muted" />}
             title="No candidates found"
             description={
               searchQuery || statusFilter !== "all" || jobFilter !== "all" || ratingFilter !== "all"
@@ -415,7 +416,7 @@ export default function CandidatesPage() {
                 </Button>
               ) : (
                 <Button onClick={() => setAddDialogOpen(true)}>
-                  <Plus className="h-4 w-4" />
+                  <Add className="h-4 w-4" />
                   Add Candidate
                 </Button>
               )
@@ -503,7 +504,7 @@ export default function CandidatesPage() {
                                 className="h-8 w-8"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                                <More className="h-4 w-4 text-muted-foreground" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
@@ -512,7 +513,7 @@ export default function CandidatesPage() {
                                 View Profile
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                                <Edit className="h-4 w-4 mr-2" />
+                                <Edit2 className="h-4 w-4 mr-2" />
                                 Edit
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
@@ -526,7 +527,7 @@ export default function CandidatesPage() {
                                     className="text-error"
                                     onClick={async (e) => { e.stopPropagation(); await rejectCandidateApplication(candidate.id) }}
                                   >
-                                    <X className="h-4 w-4 mr-2" />
+                                    <CloseSquare className="h-4 w-4 mr-2" />
                                     Reject
                                   </DropdownMenuItem>
                                 </>
@@ -564,12 +565,12 @@ export default function CandidatesPage() {
                       <DialogTitle className="text-xl">{detailsCandidate.displayName}</DialogTitle>
                       <DialogDescription className="flex items-center gap-3 mt-1 flex-wrap">
                         <span className="flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
+                          <Message className="h-3 w-3" />
                           {detailsCandidate.email}
                         </span>
                         {detailsCandidate.phone && (
                           <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" />
+                            <Call className="h-3 w-3" />
                             {detailsCandidate.phone}
                           </span>
                         )}
@@ -658,7 +659,7 @@ export default function CandidatesPage() {
                   {skillNames.length > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-3">
-                        <Brain className="h-4 w-4 text-muted" />
+                        <MagicStar className="h-4 w-4 text-muted" />
                         <h4 className="text-sm font-medium text-foreground">Skills</h4>
                       </div>
                       <div className="flex flex-wrap gap-2 ml-6">
@@ -673,7 +674,7 @@ export default function CandidatesPage() {
                   {detailsCandidate.aiScore > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-3">
-                        <Brain className="h-4 w-4 text-muted" />
+                        <MagicStar className="h-4 w-4 text-muted" />
                         <h4 className="text-sm font-medium text-foreground">AI Score</h4>
                       </div>
                       <div className="ml-6 space-y-2">
@@ -713,7 +714,7 @@ export default function CandidatesPage() {
                           disabled={actionInProgress}
                           onClick={async () => { await rejectCandidateApplication(detailsCandidate.id); setDetailsCandidate(null) }}
                         >
-                          <X className="h-4 w-4" />
+                          <CloseSquare className="h-4 w-4" />
                           Reject
                         </Button>
                         {displayStatus === "Applied" && (
@@ -722,7 +723,7 @@ export default function CandidatesPage() {
                             disabled={actionInProgress}
                             onClick={async () => { await advanceCandidateApplication(detailsCandidate.id, "Screening"); setDetailsCandidate(null) }}
                           >
-                            <Search className="h-4 w-4" />
+                            <SearchNormal className="h-4 w-4" />
                             Start Screening
                           </Button>
                         )}
@@ -754,7 +755,7 @@ export default function CandidatesPage() {
                         disabled={actionInProgress}
                         onClick={async () => { await advanceCandidateApplication(detailsCandidate.id, "Hired"); setDetailsCandidate(null) }}
                       >
-                        <Users className="h-4 w-4" />
+                        <People className="h-4 w-4" />
                         Mark as Hired
                       </Button>
                     )}

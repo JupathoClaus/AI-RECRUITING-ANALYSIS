@@ -14,25 +14,25 @@ import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, D
 import { ModalHeader } from "@/components/ui/modal-header"
 import { cn, timeAgo } from "@/lib/utils"
 import {
-  FileText,
-  BarChart3,
-  Users,
+  Document,
+  Chart2,
+  People,
   Clock,
-  Download,
+  DocumentDownload,
   Eye,
-  Share2,
-  Plus,
+  Share,
+  Add,
   Calendar,
-  Sparkles,
-  Target,
-  TrendingUp,
-  PieChart,
+  MagicStar,
+  Flag,
+  TrendUp,
+  Chart,
   Filter,
-  Loader2,
-  CheckCircle2,
+  RefreshCircle,
+  TickCircle,
   ArrowRight,
   Briefcase,
-} from "lucide-react"
+} from "iconsax-react"
 
 interface ReportTemplate {
   id: string
@@ -49,7 +49,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl1",
     title: "Candidate Evaluation Report",
     description: "Comprehensive assessment of individual candidates including AI scores, interview feedback, and hiring recommendations.",
-    icon: <Users className="h-5 w-5" />,
+    icon: <People className="h-5 w-5" />,
     color: "text-primary",
     bgColor: "bg-primary-muted",
     category: "Candidates",
@@ -58,7 +58,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl2",
     title: "Interview Summary Report",
     description: "Aggregated interview results with scoring breakdowns, interviewer feedback, and comparison analysis.",
-    icon: <BarChart3 className="h-5 w-5" />,
+    icon: <Chart2 className="h-5 w-5" />,
     color: "text-success",
     bgColor: "bg-success-muted",
     category: "Interviews",
@@ -67,7 +67,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl3",
     title: "Pipeline Analytics Report",
     description: "End-to-end pipeline metrics including conversion rates, stage durations, and bottleneck identification.",
-    icon: <TrendingUp className="h-5 w-5" />,
+    icon: <TrendUp className="h-5 w-5" />,
     color: "text-warning",
     bgColor: "bg-warning-muted",
     category: "Analytics",
@@ -76,7 +76,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl4",
     title: "Diversity & Inclusion Report",
     description: "Demographic breakdown of applicant pool, interview candidates, and hired candidates with DEI metrics.",
-    icon: <PieChart className="h-5 w-5" />,
+    icon: <Chart className="h-5 w-5" />,
     color: "text-primary",
     bgColor: "bg-primary-muted",
     category: "Compliance",
@@ -94,7 +94,7 @@ const reportTemplates: ReportTemplate[] = [
     id: "tpl6",
     title: "Source Effectiveness Report",
     description: "ROI analysis of recruitment channels with cost-per-hire, quality metrics, and channel recommendations.",
-    icon: <Target className="h-5 w-5" />,
+    icon: <Flag className="h-5 w-5" />,
     color: "text-error",
     bgColor: "bg-error-muted",
     category: "Sourcing",
@@ -111,8 +111,8 @@ interface RecentReport {
 }
 
 const statusConfig: Record<"Ready" | "Generating", { variant: "success" | "warning"; icon: React.ReactNode }> = {
-  Ready: { variant: "success", icon: <CheckCircle2 className="h-3 w-3" /> },
-  Generating: { variant: "warning", icon: <Loader2 className="h-3 w-3 animate-spin" /> },
+  Ready: { variant: "success", icon: <TickCircle className="h-3 w-3" /> },
+  Generating: { variant: "warning", icon: <RefreshCircle className="h-3 w-3 animate-spin" /> },
 }
 
 export default function ReportsPage() {
@@ -140,7 +140,7 @@ export default function ReportsPage() {
       description="Generate and manage AI-powered recruitment reports."
       actions={
         <Button size="sm" disabled>
-          <Plus className="h-4 w-4" />
+          <Add className="h-4 w-4" />
           Generate Report
         </Button>
       }
@@ -155,7 +155,7 @@ export default function ReportsPage() {
                   <p className="text-sm text-muted font-semibold uppercase tracking-wide">Templates Available</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{reportTemplates.length}</p>
                 </div>
-                <FileText className="h-5 w-5 text-primary" />
+                <Document className="h-5 w-5 text-primary" />
               </div>
             </CardContent>
           </Card>
@@ -166,7 +166,7 @@ export default function ReportsPage() {
                   <p className="text-sm text-muted font-semibold uppercase tracking-wide">Active Jobs</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{activeJobs}</p>
                 </div>
-                <Briefcase className="h-5 w-5 text-success" />
+                <TickCircle className="h-5 w-5 text-success" />
               </div>
             </CardContent>
           </Card>
@@ -177,7 +177,7 @@ export default function ReportsPage() {
                   <p className="text-sm text-muted font-semibold uppercase tracking-wide">Total Candidates</p>
                   <p className="text-2xl font-bold text-foreground mt-1">{totalCandidates}</p>
                 </div>
-                <Users className="h-5 w-5 text-warning" />
+                <RefreshCircle className="h-5 w-5 text-warning animate-spin" />
               </div>
             </CardContent>
           </Card>
@@ -220,7 +220,7 @@ export default function ReportsPage() {
                         handleGenerate(template)
                       }}
                     >
-                      <Sparkles className="h-3 w-3" />
+                      <MagicStar className="h-3 w-3" />
                       Generate
                     </Button>
                   </div>
@@ -243,7 +243,7 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-center py-12">
-              <FileText className="h-12 w-12 mx-auto text-muted/30 mb-4" />
+              <Document className="h-12 w-12 mx-auto text-muted/30 mb-4" />
               <h4 className="font-medium text-foreground">No reports generated yet</h4>
               <p className="text-sm text-muted mt-1">
                 Select a template above to generate your first report
@@ -254,7 +254,7 @@ export default function ReportsPage() {
                 className="mt-4"
                 onClick={() => handleGenerate(reportTemplates[0])}
               >
-                <Sparkles className="h-4 w-4 mr-2" />
+                <MagicStar className="h-4 w-4 mr-2" />
                 Try a Template
               </Button>
             </div>
@@ -333,22 +333,31 @@ export default function ReportsPage() {
 
                 <Separator className="bg-surface-hover" />
 
-                <div className="rounded-lg border border-border bg-background p-4 space-y-3">
+                <div className="rounded-lg bg-background p-4 space-y-3">
                   <div className="flex items-center gap-2 text-sm text-foreground">
-                    <Sparkles className="h-4 w-4 text-primary" />
+                    <MagicStar className="h-4 w-4 text-primary" />
                     <span className="font-medium">Report Preview</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                     <div>
-                      <p className="text-lg font-bold text-foreground">{activeJobs}</p>
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <Briefcase className="text-muted-foreground" size={14} />
+                        <p className="text-lg font-bold text-foreground">{activeJobs}</p>
+                      </div>
                       <p className="text-xs text-muted">Active Jobs</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-foreground">{totalCandidates}</p>
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <People className="text-muted-foreground" size={14} />
+                        <p className="text-lg font-bold text-foreground">{totalCandidates}</p>
+                      </div>
                       <p className="text-xs text-muted">Candidates</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-foreground">{completedInterviews}</p>
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <Calendar className="text-muted-foreground" size={14} />
+                        <p className="text-lg font-bold text-foreground">{completedInterviews}</p>
+                      </div>
                       <p className="text-xs text-muted">Interviews</p>
                     </div>
                   </div>
@@ -362,7 +371,7 @@ export default function ReportsPage() {
                   Cancel
                 </Button>
                 <Button onClick={() => setGenerateDialogOpen(false)} disabled>
-                  <Sparkles className="h-4 w-4" />
+                  <MagicStar className="h-4 w-4" />
                   Generate Report
                 </Button>
               </DialogFooter>

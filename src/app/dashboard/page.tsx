@@ -4,23 +4,28 @@ import { useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   Briefcase,
-  Users,
-  CalendarClock,
-  Sparkles,
+  People,
+  Calendar,
+  MagicStar,
+  TrendUp,
+  TrendDown,
   ArrowRight,
-  FileText,
+  Document,
   Video,
-  Phone,
-  MapPin,
-  CheckCircle2,
-  XCircle,
-  Send,
-  Handshake,
+  Call,
+  Location,
+  TickCircle,
+  CloseCircle,
+  Send2,
+  MedalStar,
   Eye,
-  MoreHorizontal,
-  CalendarDays,
-  Bot,
-} from "lucide-react";
+  More,
+  Calendar2,
+  Cpu,
+  Chart2,
+  Routing,
+  Notification,
+} from "iconsax-react";
 import {
   BarChart,
   Bar,
@@ -91,17 +96,17 @@ function getStatusLabel(status: string): string {
 function getActivityIcon(type: string) {
   switch (type) {
     case "application":
-      return <FileText className="h-4 w-4 text-info" />;
+      return <Document className="h-4 w-4 text-info" />;
     case "interview":
       return <Video className="h-4 w-4 text-primary" />;
     case "offer":
-      return <Send className="h-4 w-4 text-warning" />;
+      return <Send2 className="h-4 w-4 text-warning" />;
     case "hire":
-      return <Handshake className="h-4 w-4 text-success" />;
+      return <MedalStar className="h-4 w-4 text-success" />;
     case "rejection":
-      return <XCircle className="h-4 w-4 text-error" />;
+      return <CloseCircle className="h-4 w-4 text-error" />;
     default:
-      return <FileText className="h-4 w-4 text-muted" />;
+      return <Document className="h-4 w-4 text-muted" />;
   }
 }
 
@@ -110,15 +115,15 @@ function getInterviewTypeIcon(type: string) {
     case "Video":
       return <Video className="h-3.5 w-3.5" />;
     case "Phone":
-      return <Phone className="h-3.5 w-3.5" />;
+      return <Call className="h-3.5 w-3.5" />;
     case "On-site":
-      return <MapPin className="h-3.5 w-3.5" />;
+      return <Location className="h-3.5 w-3.5" />;
     case "AI":
-      return <Bot className="h-3.5 w-3.5" />;
+      return <Cpu className="h-3.5 w-3.5" />;
     case "Technical":
-      return <CheckCircle2 className="h-3.5 w-3.5" />;
+      return <TickCircle className="h-3.5 w-3.5" />;
     default:
-      return <CalendarDays className="h-3.5 w-3.5" />;
+      return <Calendar2 className="h-3.5 w-3.5" />;
   }
 }
 
@@ -223,19 +228,19 @@ export default function DashboardPage() {
     {
       label: "Total Candidates",
       value: stats.totalCandidates.toString(),
-      icon: <Users className="h-5 w-5" />,
+      icon: <People className="h-5 w-5" />,
       color: "text-info",
     },
     {
       label: "Interviews This Week",
       value: stats.interviewsThisWeek.toString(),
-      icon: <CalendarClock className="h-5 w-5" />,
+      icon: <Calendar className="h-5 w-5" />,
       color: "text-warning",
     },
     {
       label: "Avg AI Score",
       value: stats.avgScore.toString(),
-      icon: <Sparkles className="h-5 w-5" />,
+      icon: <MagicStar className="h-5 w-5" />,
       color: "text-success",
     },
   ];
@@ -272,7 +277,7 @@ export default function DashboardPage() {
           {kpiCards.map((card) => (
             <Card
               key={card.label}
-              className="relative overflow-hidden border border-border"
+              className="relative overflow-hidden"
             >
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
@@ -283,6 +288,24 @@ export default function DashboardPage() {
                     <p className="text-3xl font-bold tracking-tight text-foreground">
                       {card.value}
                     </p>
+                    <div className="flex items-center gap-1">
+                      {card.up ? (
+                        <TrendUp className="h-3.5 w-3.5 text-success" />
+                      ) : (
+                        <TrendDown className="h-3.5 w-3.5 text-error" />
+                      )}
+                      <span
+                        className={cn(
+                          "text-xs font-semibold",
+                          card.up ? "text-success" : "text-error"
+                        )}
+                      >
+                        {card.trend}
+                      </span>
+                      <span className="text-xs text-muted">
+                        {card.trendLabel}
+                      </span>
+                    </div>
                   </div>
                   <div className={cn("shrink-0", card.color)}>
                     {card.icon}
@@ -299,14 +322,21 @@ export default function DashboardPage() {
           <Card className="lg:col-span-2">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base">
-                    Applications Over Time
-                  </CardTitle>
-                  <p className="text-sm text-muted mt-1">
-                    Last 14 days
-                  </p>
+                <div className="flex items-center gap-2">
+                  <Chart2 className="text-muted-foreground" size={16} />
+                  <div>
+                    <CardTitle className="text-base">
+                      Applications Over Time
+                    </CardTitle>
+                    <p className="text-sm text-muted mt-1">
+                      Last 14 days
+                    </p>
+                  </div>
                 </div>
+                <Badge variant="secondary" className="text-xs">
+                  <TrendUp className="h-3 w-3 mr-1" />
+                  +23% trend
+                </Badge>
               </div>
             </CardHeader>
             <CardContent>
@@ -323,12 +353,17 @@ export default function DashboardPage() {
           {/* Pipeline Distribution */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                Pipeline Distribution
-              </CardTitle>
-              <p className="text-sm text-muted mt-1">
-                Candidates by stage
-              </p>
+              <div className="flex items-center gap-2">
+                <Routing className="text-muted-foreground" size={16} />
+                <div>
+                  <CardTitle className="text-base">
+                    Pipeline Distribution
+                  </CardTitle>
+                  <p className="text-sm text-muted mt-1">
+                    Candidates by stage
+                  </p>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="h-[280px] w-full">
@@ -388,7 +423,10 @@ export default function DashboardPage() {
           <Card className="lg:col-span-2">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Recent Activity</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Notification className="text-muted-foreground" size={16} />
+                  <CardTitle className="text-base">Recent Activity</CardTitle>
+                </div>
                 <Link
                   href="/activities"
                   className="inline-flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors"
@@ -441,9 +479,12 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">
-                  Upcoming Interviews
-                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Calendar className="text-muted-foreground" size={16} />
+                  <CardTitle className="text-base">
+                    Upcoming Interviews
+                  </CardTitle>
+                </div>
                 <Link
                   href="/interviews"
                   className="inline-flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors"
@@ -487,7 +528,7 @@ export default function DashboardPage() {
                           {interview.jobTitle}
                         </p>
                         <div className="flex items-center gap-1.5 mt-1">
-                          <CalendarDays className="h-3 w-3 text-muted" />
+                          <Calendar2 className="h-3 w-3 text-muted" />
                           <p className="text-xs text-muted-foreground">
                             {interview.scheduledAt.toLocaleDateString("en-US", {
                               weekday: "short",
@@ -517,11 +558,14 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base">Top Candidates</CardTitle>
-                <p className="text-sm text-muted mt-1">
-                  Ranked by AI assessment score
-                </p>
+              <div className="flex items-center gap-2">
+                <People className="text-muted-foreground" size={16} />
+                <div>
+                  <CardTitle className="text-base">Top Candidates</CardTitle>
+                  <p className="text-sm text-muted mt-1">
+                    Ranked by AI assessment score
+                  </p>
+                </div>
               </div>
               <Link
                 href="/candidates"
@@ -615,7 +659,7 @@ export default function DashboardPage() {
                           className="h-8 w-8"
                           title="More options"
                         >
-                          <MoreHorizontal className="h-4 w-4" />
+                          <More className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>

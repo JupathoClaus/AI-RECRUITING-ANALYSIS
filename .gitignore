@@ -32,6 +32,7 @@ yarn-error.log*
 
 # development server logs
 dev-server*.log
+dev_output.log
 backend-startup.log
 backend/serve.log
 

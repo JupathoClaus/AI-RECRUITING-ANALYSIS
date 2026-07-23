@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Eye, EyeOff, ArrowLeft, CheckCircle2 } from "lucide-react"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 
 export default function RegisterPage() {
   const { user, register } = useAuth()
@@ -86,7 +87,7 @@ export default function RegisterPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5" />
         <div className="relative flex flex-col justify-between p-12 w-full">
           <Link href="/" className="flex items-center">
-            <div className="flex h-[150px] w-[150px] items-center justify-center rounded-xl overflow-hidden">
+            <div className="flex h-[150px] w-[150px] items-center justify-center overflow-hidden">
               <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
           </Link>

@@ -19,22 +19,23 @@ import { Separator } from "@/components/ui/separator"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
 import {
-  Search,
-  Plus,
+  SearchNormal,
+  Add,
   Calendar,
   Clock,
   Video,
-  Phone,
-  Users,
-  Brain,
-  BarChart3,
-  CheckCircle2,
+  Call,
+  People,
+  MagicStar,
+  Chart2,
+  TickCircle,
   Timer,
-  X,
-  TrendingUp,
-  Sparkles,
-  Building2,
-} from "lucide-react"
+  CloseSquare,
+  Document,
+  TrendUp,
+  Buildings,
+  Message,
+} from "iconsax-react"
 
 type InterviewType = Interview["type"]
 type InterviewStatus = Interview["status"]
@@ -47,10 +48,10 @@ const statusConfig: Record<InterviewStatus, { label: string; variant: "default" 
 
 const typeConfig: Record<InterviewType, { label: string; variant: "default" | "info" | "outline" | "secondary"; icon: React.ReactNode }> = {
   Video: { label: "Video", variant: "default", icon: <Video className="h-3 w-3" /> },
-  Phone: { label: "Phone", variant: "info", icon: <Phone className="h-3 w-3" /> },
-  "On-site": { label: "On-site", variant: "secondary", icon: <Building2 className="h-3 w-3" /> },
-  AI: { label: "AI", variant: "outline", icon: <Brain className="h-3 w-3" /> },
-  Technical: { label: "Technical", variant: "default", icon: <BarChart3 className="h-3 w-3" /> },
+  Phone: { label: "Phone", variant: "info", icon: <Call className="h-3 w-3" /> },
+  "On-site": { label: "On-site", variant: "secondary", icon: <Buildings className="h-3 w-3" /> },
+  AI: { label: "AI", variant: "outline", icon: <MagicStar className="h-3 w-3" /> },
+  Technical: { label: "Technical", variant: "default", icon: <Chart2 className="h-3 w-3" /> },
 }
 
 const interviewTypes: InterviewType[] = ["Video", "Phone", "On-site", "AI", "Technical"]
@@ -191,7 +192,7 @@ export default function InterviewsPage() {
         <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
-              <Plus className="h-4 w-4" />
+              <Add className="h-4 w-4" />
               Schedule Interview
             </Button>
           </DialogTrigger>
@@ -327,7 +328,7 @@ export default function InterviewsPage() {
                 <p className="text-2xl font-bold text-foreground mt-1">{completedCount}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
-                <CheckCircle2 className="h-5 w-5 text-success" />
+                <TickCircle className="h-5 w-5 text-success" />
               </div>
             </div>
           </CardContent>
@@ -342,7 +343,7 @@ export default function InterviewsPage() {
                 </p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <TrendingUp className="h-5 w-5 text-warning" />
+                <TrendUp className="h-5 w-5 text-warning" />
               </div>
             </div>
           </CardContent>
@@ -353,7 +354,7 @@ export default function InterviewsPage() {
       <div className="flex flex-col gap-4 mb-6 animate-fade-in">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+            <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
             <Input
               placeholder="Search by candidate name or job title..."
               className="pl-9"
@@ -391,7 +392,7 @@ export default function InterviewsPage() {
               )}
             </TabsTrigger>
             <TabsTrigger value="completed" className="gap-1.5">
-              <CheckCircle2 className="h-4 w-4" />
+              <TickCircle className="h-4 w-4" />
               Completed
               {completedCount > 0 && (
                 <Badge variant="success" className="ml-1 h-5 px-1.5 text-xs">
@@ -400,6 +401,7 @@ export default function InterviewsPage() {
               )}
             </TabsTrigger>
             <TabsTrigger value="all">
+              <People className="mr-1.5" size={14} />
               All
             </TabsTrigger>
           </TabsList>
@@ -426,7 +428,7 @@ export default function InterviewsPage() {
                   </Button>
                 ) : (
                   <Button onClick={() => setScheduleDialogOpen(true)}>
-                    <Plus className="h-4 w-4" />
+                    <Add className="h-4 w-4" />
                     Schedule Interview
                   </Button>
                 )
@@ -448,7 +450,7 @@ export default function InterviewsPage() {
         <TabsContent value="completed">
           {completedInterviews.length === 0 ? (
             <EmptyState
-              icon={<CheckCircle2 className="h-8 w-8 text-muted" />}
+              icon={<TickCircle className="h-8 w-8 text-muted" />}
               title="No completed interviews"
               description={
                 searchQuery || typeFilter !== "all"
@@ -479,7 +481,7 @@ export default function InterviewsPage() {
         <TabsContent value="all">
           {filteredInterviews.length === 0 ? (
             <EmptyState
-              icon={<Users className="h-8 w-8 text-muted" />}
+              icon={<People className="h-8 w-8 text-muted" />}
               title="No interviews found"
               description={
                 searchQuery || typeFilter !== "all"
@@ -493,7 +495,7 @@ export default function InterviewsPage() {
                   </Button>
                 ) : (
                   <Button onClick={() => setScheduleDialogOpen(true)}>
-                    <Plus className="h-4 w-4" />
+                    <Add className="h-4 w-4" />
                     Schedule Interview
                   </Button>
                 )
@@ -544,28 +546,39 @@ export default function InterviewsPage() {
               <div className="space-y-5">
                 {/* Quick Info Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-lg border border-border bg-surface p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Date</p>
+                  <div className="rounded-lg bg-surface p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Calendar className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Date</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground" suppressHydrationWarning>
                       {formatInterviewDate(detailsInterview.scheduledAt)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-surface p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Time</p>
+                  <div className="rounded-lg bg-surface p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Clock className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Time</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground" suppressHydrationWarning>
                       {formatInterviewTime(detailsInterview.scheduledAt)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-surface p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Duration</p>
+                  <div className="rounded-lg bg-surface p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Timer className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Duration</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground">
                       {detailsInterview.duration} min
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-surface p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Type</p>
-                    <div className="flex items-center justify-center gap-1.5 mt-1">
+                  <div className="rounded-lg bg-surface p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
                       {typeConfig[detailsInterview.type].icon}
+                      <p className="text-xs text-muted">Type</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-1.5 mt-1">
                       <span className="text-sm font-medium text-foreground">
                         {typeConfig[detailsInterview.type].label}
                       </span>
@@ -576,7 +589,7 @@ export default function InterviewsPage() {
                 {/* Position */}
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <Building2 className="h-4 w-4 text-muted" />
+                    <Buildings className="h-4 w-4 text-muted" />
                     <h4 className="text-sm font-medium text-foreground">Position</h4>
                   </div>
                   <p className="text-sm text-muted-foreground ml-6">{detailsInterview.jobTitle}</p>
@@ -588,7 +601,7 @@ export default function InterviewsPage() {
                     <Separator />
                     <div>
                       <div className="flex items-center gap-2 mb-3">
-                        <BarChart3 className="h-4 w-4 text-muted" />
+                        <Chart2 className="h-4 w-4 text-muted" />
                         <h4 className="text-sm font-medium text-foreground">Interview Score</h4>
                       </div>
                       <div className="ml-6 space-y-3">
@@ -608,8 +621,11 @@ export default function InterviewsPage() {
 
                         {/* Score Breakdown */}
                         <div className="grid grid-cols-2 gap-3 mt-4">
-                          <div className="rounded-lg bg-background border border-border p-3">
-                            <p className="text-xs text-muted mb-1">Technical Skills</p>
+                          <div className="rounded-lg bg-background p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <Document className="text-muted-foreground" size={14} />
+                              <p className="text-xs text-muted">Technical Skills</p>
+                            </div>
                             <div className="flex items-center gap-2">
                               <Progress
                                 value={Math.min(detailsInterview.score + 5, 100)}
@@ -621,8 +637,11 @@ export default function InterviewsPage() {
                               </span>
                             </div>
                           </div>
-                          <div className="rounded-lg bg-background border border-border p-3">
-                            <p className="text-xs text-muted mb-1">Communication</p>
+                          <div className="rounded-lg bg-background p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <Message className="text-muted-foreground" size={14} />
+                              <p className="text-xs text-muted">Communication</p>
+                            </div>
                             <div className="flex items-center gap-2">
                               <Progress
                                 value={Math.min(detailsInterview.score + 3, 100)}
@@ -634,8 +653,11 @@ export default function InterviewsPage() {
                               </span>
                             </div>
                           </div>
-                          <div className="rounded-lg bg-background border border-border p-3">
-                            <p className="text-xs text-muted mb-1">Problem Solving</p>
+                          <div className="rounded-lg bg-background p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <MagicStar className="text-muted-foreground" size={14} />
+                              <p className="text-xs text-muted">Problem Solving</p>
+                            </div>
                             <div className="flex items-center gap-2">
                               <Progress
                                 value={Math.max(detailsInterview.score - 2, 0)}
@@ -647,8 +669,11 @@ export default function InterviewsPage() {
                               </span>
                             </div>
                           </div>
-                          <div className="rounded-lg bg-background border border-border p-3">
-                            <p className="text-xs text-muted mb-1">Culture Fit</p>
+                          <div className="rounded-lg bg-background p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <People className="text-muted-foreground" size={14} />
+                              <p className="text-xs text-muted">Culture Fit</p>
+                            </div>
                             <div className="flex items-center gap-2">
                               <Progress
                                 value={Math.min(detailsInterview.score + 7, 100)}
@@ -672,7 +697,7 @@ export default function InterviewsPage() {
                     <Separator />
                     <div>
                       <div className="flex items-center gap-2 mb-3">
-                        <Sparkles className="h-4 w-4 text-primary" />
+                        <MagicStar className="h-4 w-4 text-primary" />
                         <h4 className="text-sm font-medium text-foreground">AI Summary</h4>
                       </div>
                       <div className="ml-6 rounded-lg bg-primary-subtle border border-primary/20 p-4">
@@ -714,7 +739,7 @@ export default function InterviewsPage() {
                         setDetailsInterview(null)
                       }}
                     >
-                      <X className="h-4 w-4" />
+                      <CloseSquare className="h-4 w-4" />
                       Cancel Interview
                     </Button>
                     <div className="flex-1" />
@@ -725,7 +750,7 @@ export default function InterviewsPage() {
                         setDetailsInterview(null)
                       }}
                     >
-                      <CheckCircle2 className="h-4 w-4" />
+                      <TickCircle className="h-4 w-4" />
                       Mark Complete
                     </Button>
                   </div>
@@ -827,7 +852,7 @@ function InterviewCard({
         {completed && interview.score != null && (
           <div className="mt-3 pt-3 border-t border-border">
             <div className="flex items-start gap-2">
-              <Sparkles className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+              <MagicStar className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground line-clamp-2">
                   {interview.candidateName} scored {interview.score}% — {getScoreLabel(interview.score)} performance
