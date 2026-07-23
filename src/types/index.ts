@@ -98,6 +98,7 @@ export interface Candidate {
 
   companyProfile?: CandidateCompanyProfile
   applicationSummary?: CandidateApplicationInfo
+  notes?: string
 }
 
 export interface Interview {

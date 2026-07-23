@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { ModalHeader } from "@/components/ui/modal-header"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -28,18 +28,10 @@ import {
   People,
   Calendar,
   Buildings,
-  More,
-  PauseCircle,
-  Play,
-  CloseSquare,
-  Eye,
-  Edit2,
-  Trash,
-  Document,
-  ChevronLeft,
-  ChevronRight,
-  RotateCcw,
-  AlertCircle,
+  DirectLeft,
+  DirectRight,
+  RotateLeft,
+  InfoCircle,
 } from "iconsax-react"
 
 const statusConfig: Record<string, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" }> = {
@@ -396,10 +388,10 @@ export default function JobsPage() {
       {/* Error State */}
       {error ? (
         <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-6 mb-6 text-center animate-fade-in">
-          <AlertCircle className="h-8 w-8 text-error mx-auto mb-3" />
+          <InfoCircle className="h-8 w-8 text-error mx-auto mb-3" />
           <p className="text-sm text-error font-medium mb-3">{error}</p>
           <Button variant="outline" size="sm" onClick={() => setFetchKey((k) => k + 1)}>
-            <RotateCcw className="h-4 w-4 mr-1.5" />
+            <RotateLeft className="h-4 w-4 mr-1.5" />
             Retry
           </Button>
         </div>
@@ -511,12 +503,12 @@ export default function JobsPage() {
                   </p>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      <DirectLeft className="h-4 w-4 mr-1" />
                       Previous
                     </Button>
                     <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
                       Next
-                      <ChevronRight className="h-4 w-4 ml-1" />
+                      <DirectRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
                 </div>
@@ -610,12 +602,12 @@ export default function JobsPage() {
                   </p>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
-                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      <DirectLeft className="h-4 w-4 mr-1" />
                       Previous
                     </Button>
                     <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
                       Next
-                      <ChevronRight className="h-4 w-4 ml-1" />
+                      <DirectRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
                 </div>
@@ -630,10 +622,10 @@ export default function JobsPage() {
         <DialogContent className="max-w-xl">
           {detailsError ? (
             <div className="py-6 text-center">
-              <AlertCircle className="h-8 w-8 text-error mx-auto mb-3" />
+              <InfoCircle className="h-8 w-8 text-error mx-auto mb-3" />
               <p className="text-sm text-error font-medium mb-3">{detailsError}</p>
               <Button variant="outline" size="sm" onClick={() => detailsJobId && openDetails(detailsJobId)}>
-                <RotateCcw className="h-4 w-4 mr-1.5" />
+                <RotateLeft className="h-4 w-4 mr-1.5" />
                 Retry
               </Button>
             </div>

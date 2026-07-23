@@ -258,6 +258,7 @@ export interface DepartmentDto {
   status: string
   sortOrder: number
   _count: { departmentMemberships: number }
+  openPositions?: number
   parentDepartment: { id: string; name: string } | null
   managerMembership: {
     id: string

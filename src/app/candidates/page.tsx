@@ -40,7 +40,6 @@ import {
   Briefcase,
   MagicStar,
   MessageSquare,
-  Document,
 } from "iconsax-react"
 
 const statusConfig: Record<DisplayApplicationStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" | "info" }> = {

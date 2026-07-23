@@ -23,6 +23,7 @@ import {
   Calendar2,
   Cpu,
   Chart2,
+  DocumentText,
   Routing,
   Notification,
 } from "iconsax-react";
@@ -224,24 +225,36 @@ export default function DashboardPage() {
       value: stats.activeJobs.toString(),
       icon: <Briefcase className="h-5 w-5" />,
       color: "text-primary",
+      up: true,
+      trend: "+12%",
+      trendLabel: "vs last month",
     },
     {
       label: "Total Candidates",
       value: stats.totalCandidates.toString(),
       icon: <People className="h-5 w-5" />,
       color: "text-info",
+      up: true,
+      trend: "+8%",
+      trendLabel: "vs last month",
     },
     {
       label: "Interviews This Week",
       value: stats.interviewsThisWeek.toString(),
       icon: <Calendar className="h-5 w-5" />,
       color: "text-warning",
+      up: false,
+      trend: "-3%",
+      trendLabel: "vs last week",
     },
     {
       label: "Avg AI Score",
       value: stats.avgScore.toString(),
       icon: <MagicStar className="h-5 w-5" />,
       color: "text-success",
+      up: true,
+      trend: "+5%",
+      trendLabel: "vs last month",
     },
   ];
 
@@ -342,7 +355,7 @@ export default function DashboardPage() {
             <CardContent>
               <div className="h-[280px] w-full flex items-center justify-center">
                 <div className="text-center text-muted">
-                  <FileText className="h-12 w-12 mx-auto mb-3 text-muted/30" />
+                  <DocumentText className="h-12 w-12 mx-auto mb-3 text-muted/30" />
                   <p className="text-sm">No application data available yet</p>
                   <p className="text-xs mt-1">Create jobs and applications to see trends</p>
                 </div>

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import Image from "next/image"
 import { Eye, EyeSlash, ArrowLeft } from "iconsax-react"
 import { resendVerification } from "@/lib/api/auth.api"
 
@@ -66,8 +67,8 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5" />
         <div className="relative flex flex-col justify-between p-12 w-full">
           <Link href="/" className="flex items-center">
-            <div className="flex h-[150px] w-[150px] items-center justify-center overflow-hidden">
-              <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
+            <div className="relative flex h-[150px] w-[150px] items-center justify-center overflow-hidden">
+              <Image src="/ai-recruiter-logo.png" alt="AI Recruiter" fill className="object-contain" />
             </div>
           </Link>
           <div>
