@@ -12,7 +12,6 @@ import {
   Save2,
   Link2,
   Chainlink,
-  Key,
   Logout,
   Monitor,
   Mobile,
@@ -26,7 +25,6 @@ import {
   Document,
   MagicStar,
   TickCircle,
-  Warning2,
   Briefcase,
   People as UsersIcon,
   Flash,
@@ -184,7 +182,8 @@ export default function SettingsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex justify-end pt-2">
+                <Separator className="opacity-50" />
+                <div className="flex justify-end">
                   <Button>
                     <Save2 className="h-4 w-4" /> Save Changes
                   </Button>
@@ -266,7 +265,8 @@ export default function SettingsPage() {
                   <Input placeholder="City, State" />
                   <p className="text-xs text-muted">Separate multiple locations with commas.</p>
                 </div>
-                <div className="flex justify-end pt-2">
+                <Separator className="opacity-50" />
+                <div className="flex justify-end">
                   <Button>
                     <Save2 className="h-4 w-4" /> Save Changes
                   </Button>

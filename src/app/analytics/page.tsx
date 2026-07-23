@@ -12,11 +12,6 @@ import {
   MagicStar,
   People,
   Buildings,
-  ArrowUp2,
-  Flash,
-  Warning2,
-  Calendar,
-  Briefcase,
 } from "iconsax-react"
 import {
   PieChart,
@@ -37,15 +32,12 @@ import { AppLayout } from "@/components/layout/app-layout"
 import { useStore } from "@/store/useStore"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { cn, formatNumber } from "@/lib/utils"
 
 const DEPT_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#3b82f6", "#ef4444", "#a855f7"]
-const SOURCE_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#3b82f6", "#a855f7"]
 
 const applicationsByDept = [
   { name: "Engineering", value: 106, color: "#6366f1" },
@@ -219,14 +211,14 @@ export default function AnalyticsPage() {
           {keyMetrics.map((metric) => (
             <Card
               key={metric.label}
-              className={cn("group relative overflow-hidden transition-all duration-200 hover:shadow-xl border-l-4", metric.accent)}
+              className={cn("group relative overflow-hidden transition-all duration-200 hover:shadow-xl border-l-4 h-full flex flex-col", metric.accent)}
             >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
+              <CardContent className="p-5 flex-1 flex flex-col">
+                <div className="flex items-start justify-between flex-1">
                   <div className="space-y-2">
-                    <p className="text-sm text-muted font-semibold uppercase tracking-wide">{metric.label}</p>
+                    <p className="text-sm text-muted font-semibold uppercase tracking-wide min-h-[20px]">{metric.label}</p>
                     <p className="text-3xl font-bold tracking-tight text-foreground">{metric.value}</p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 mt-auto pt-2">
                       {metric.up ? (
                         <TrendUp className="h-3.5 w-3.5 text-success" />
                       ) : (
@@ -335,7 +327,7 @@ export default function AnalyticsPage() {
                 </ResponsiveContainer>
               </div>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {hiringFunnel.map((stage, i) => (
+                {hiringFunnel.map((stage) => (
                   <div key={stage.stage} className="text-center">
                     <div className="flex items-center justify-center gap-1.5 mb-1">
                       <TickCircle className="text-muted-foreground" size={14} />

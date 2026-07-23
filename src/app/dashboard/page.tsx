@@ -290,18 +290,18 @@ export default function DashboardPage() {
           {kpiCards.map((card) => (
             <Card
               key={card.label}
-              className="relative overflow-hidden"
+              className="relative overflow-hidden h-full flex flex-col"
             >
-              <CardContent className="p-5">
+              <CardContent className="p-5 flex-1 flex flex-col">
                 <div className="flex items-start justify-between">
-                  <div className="space-y-2">
-                    <p className="text-sm text-black font-bold uppercase tracking-wide">
+                  <div className="space-y-2 flex-1">
+                    <p className="text-sm text-black font-bold uppercase tracking-wide min-h-[20px]">
                       {card.label}
                     </p>
                     <p className="text-3xl font-bold tracking-tight text-foreground">
                       {card.value}
                     </p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 mt-auto pt-2">
                       {card.up ? (
                         <TrendUp className="h-3.5 w-3.5 text-success" />
                       ) : (

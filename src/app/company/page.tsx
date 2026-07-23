@@ -110,13 +110,14 @@ export default function CompanyPage() {
           {metrics.map((metric) => (
             <Card
               key={metric.label}
-              className={cn("group relative overflow-hidden transition-all duration-200 hover:shadow-xl border-l-4", metric.accent)}
+              className={cn("group relative overflow-hidden transition-all duration-200 hover:shadow-xl border-l-4 h-full flex flex-col", metric.accent)}
             >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
+              <CardContent className="p-5 flex-1 flex flex-col">
+                <div className="flex items-start justify-between flex-1">
                   <div className="space-y-2">
-                    <p className="text-sm text-muted font-semibold uppercase tracking-wide">{metric.label}</p>
+                    <p className="text-sm text-muted font-semibold uppercase tracking-wide min-h-[20px]">{metric.label}</p>
                     <p className="text-3xl font-bold tracking-tight text-foreground">{metric.value}</p>
+                    <div className="h-5" />
                   </div>
                   <div className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110", metric.color)}>
                     <metric.icon className="h-5 w-5" />
@@ -215,7 +216,7 @@ export default function CompanyPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {departments.map((dept) => (
-                <Card key={dept.id} className="group hover:border-primary/30 transition-all duration-200">
+                <Card key={dept.id} className="group hover:border-primary/30 transition-all duration-200 h-full flex flex-col">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -231,7 +232,7 @@ export default function CompanyPage() {
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="pb-4 space-y-3">
+                  <CardContent className="pb-4 space-y-3 mt-auto">
                     <p className="text-xs text-muted leading-relaxed">{dept.description || ""}</p>
                     <Separator className="bg-border" />
                     <div className="flex items-center justify-between">

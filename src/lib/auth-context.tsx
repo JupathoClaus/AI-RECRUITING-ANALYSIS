@@ -30,7 +30,7 @@ const AuthContext = React.createContext<AuthContextType>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null)
-  const [loading, setLoading] = React.useState<boolean>(() => isAuthenticated())
+  const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
     if (!isAuthenticated()) return
