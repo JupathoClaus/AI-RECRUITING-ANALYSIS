@@ -337,7 +337,10 @@ export default function AnalyticsPage() {
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {hiringFunnel.map((stage, i) => (
                   <div key={stage.stage} className="text-center">
-                    <p className="text-lg font-bold text-foreground">{stage.count}</p>
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <TickCircle className="text-muted-foreground" size={14} />
+                      <p className="text-lg font-bold text-foreground">{stage.count}</p>
+                    </div>
                     <p className="text-xs text-muted truncate">{stage.stage}</p>
                     <p className="text-[10px] text-muted mt-0.5">
                       {Math.round((stage.count / totalFunnel) * 100)}%
@@ -438,7 +441,10 @@ export default function AnalyticsPage() {
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {sourceBreakdown.map((source) => (
                   <div key={source.name} className="text-center">
-                    <p className="text-lg font-bold text-foreground">{source.value}</p>
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <People className="text-muted-foreground" size={14} />
+                      <p className="text-lg font-bold text-foreground">{source.value}</p>
+                    </div>
                     <p className="text-xs text-muted truncate">{source.name}</p>
                   </div>
                 ))}
@@ -451,11 +457,13 @@ export default function AnalyticsPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base">Department Performance</CardTitle>
-                <CardDescription>Key hiring metrics by department</CardDescription>
+              <div className="flex items-center gap-2">
+                <Buildings className="text-muted-foreground" size={16} />
+                <div>
+                  <CardTitle className="text-base">Department Performance</CardTitle>
+                  <CardDescription>Key hiring metrics by department</CardDescription>
+                </div>
               </div>
-              <Buildings className="h-4 w-4 text-muted" />
             </div>
           </CardHeader>
           <CardContent>

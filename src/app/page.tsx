@@ -13,6 +13,9 @@ import {
   Shield,
   ArrowRight,
   Flash,
+  Clock,
+  TrendUp,
+  Briefcase,
 } from "iconsax-react"
 import Image from "next/image"
 import { Swiper, SwiperSlide } from "swiper/react"
@@ -86,10 +89,10 @@ const features = [
 ]
 
 const stats = [
-  { value: "10x", label: "Faster Screening" },
-  { value: "94%", label: "Candidate Satisfaction" },
-  { value: "60%", label: "Less Time-to-Hire" },
-  { value: "3x", label: "More Qualified Leads" },
+  { value: "10x", label: "Faster Screening", icon: Flash },
+  { value: "94%", label: "Candidate Satisfaction", icon: People },
+  { value: "60%", label: "Less Time-to-Hire", icon: Clock },
+  { value: "3x", label: "More Qualified Leads", icon: TrendUp },
 ]
 
 export default function LandingPage() {
@@ -171,8 +174,11 @@ export default function LandingPage() {
               <div className="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-6 sm:gap-8">
                 {stats.map((stat) => (
                   <div key={stat.label}>
-                    <p className="text-2xl sm:text-3xl font-bold text-foreground">{stat.value}</p>
-                    <p className="mt-1 text-xs sm:text-sm text-muted-foreground">{stat.label}</p>
+                    <div className="flex items-center gap-2">
+                      <stat.icon className="text-foreground/30" size={20} />
+                      <p className="text-2xl sm:text-3xl font-bold text-foreground">{stat.value}</p>
+                    </div>
+                    <p className="mt-1 text-xs sm:text-sm text-muted-foreground ml-7">{stat.label}</p>
                   </div>
                 ))}
               </div>
@@ -193,7 +199,7 @@ export default function LandingPage() {
                   }}
                   loop
                   speed={800}
-                  className="absolute inset-0"
+                  className="absolute inset-0 z-0"
                 >
                   {heroSlides.map((slide, i) => (
                     <SwiperSlide key={i}>
@@ -227,7 +233,7 @@ export default function LandingPage() {
 
                 {/* Navigation Arrows */}
                 <button
-                  className="hero-swiper-prev absolute left-3 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-md bg-white/15 border border-white/20 text-white shadow-lg transition-all duration-200 hover:bg-white/25 hover:scale-105 cursor-pointer"
+                  className="hero-swiper-prev absolute left-3 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-md bg-black/30 border border-white/30 text-white shadow-lg transition-all duration-200 hover:bg-black/50 hover:scale-105 cursor-pointer"
                   aria-label="Previous slide"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -235,7 +241,7 @@ export default function LandingPage() {
                   </svg>
                 </button>
                 <button
-                  className="hero-swiper-next absolute right-3 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-md bg-white/15 border border-white/20 text-white shadow-lg transition-all duration-200 hover:bg-white/25 hover:scale-105 cursor-pointer"
+                  className="hero-swiper-next absolute right-3 top-1/2 -translate-y-1/2 z-20 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-md bg-black/30 border border-white/30 text-white shadow-lg transition-all duration-200 hover:bg-black/50 hover:scale-105 cursor-pointer"
                   aria-label="Next slide"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -295,7 +301,7 @@ export default function LandingPage() {
             {features.map((feature) => (
               <div
                 key={feature.title}
-                className="group rounded-xl border border-border bg-background p-6 transition-all duration-200 hover:shadow-lg hover:border-primary/20"
+                className="group rounded-xl !border-0 bg-background p-6 transition-all duration-200 hover:shadow-lg hover:border-primary/20"
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary mb-4 transition-transform duration-200 group-hover:scale-110">
                   <feature.icon className="h-5 w-5" />

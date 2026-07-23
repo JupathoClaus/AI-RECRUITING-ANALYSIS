@@ -146,6 +146,7 @@ export default function NotificationsPage() {
         <div className="flex items-center justify-between mb-6">
           <TabsList>
             <TabsTrigger value="all">
+              <Notification className="mr-1.5" size={14} />
               All
               {unreadCount > 0 && (
                 <Badge variant="default" className="ml-2 h-5 min-w-5 px-1.5 text-[10px] justify-center">
@@ -153,9 +154,18 @@ export default function NotificationsPage() {
                 </Badge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="unread">Unread</TabsTrigger>
-            <TabsTrigger value="mentions">Mentions</TabsTrigger>
-            <TabsTrigger value="system">System</TabsTrigger>
+            <TabsTrigger value="unread">
+              <MessageSquare className="mr-1.5" size={14} />
+              Unread
+            </TabsTrigger>
+            <TabsTrigger value="mentions">
+              <UserAdd className="mr-1.5" size={14} />
+              Mentions
+            </TabsTrigger>
+            <TabsTrigger value="system">
+              <Cpu className="mr-1.5" size={14} />
+              System
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -208,7 +218,7 @@ function NotificationGroups({
           <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 px-1" suppressHydrationWarning>
             {label}
           </h3>
-          <div className="rounded-xl border border-border bg-surface overflow-hidden divide-y divide-border">
+          <div className="rounded-xl bg-surface overflow-hidden divide-y divide-border">
             {items.map((n) => {
               const Icon = typeIconMap[n.type]
               const read = isRead(n.id)

@@ -117,13 +117,6 @@ export default function CompanyPage() {
         <Card className="animate-fade-in">
           <CardContent className="p-6">
             <div className="flex flex-col md:flex-row gap-6">
-              {/* Company Logo */}
-              <div className="shrink-0">
-                <div className="h-20 w-20 rounded-xl bg-primary-muted flex items-center justify-center">
-                  <Buildings className="h-10 w-10 text-primary" />
-                </div>
-              </div>
-
               {/* Company Details */}
               <div className="flex-1 space-y-4">
                 <div className="flex items-start justify-between gap-4">
@@ -298,7 +291,7 @@ export default function CompanyPage() {
               ].map((office) => (
                 <div
                   key={office.city}
-                  className="rounded-lg border border-border bg-surface p-4 space-y-3"
+                  className="rounded-lg bg-surface p-4 space-y-3"
                 >
                   <div className="flex items-start justify-between">
                     <div>

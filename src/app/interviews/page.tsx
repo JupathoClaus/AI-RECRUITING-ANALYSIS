@@ -33,6 +33,7 @@ import {
   Document,
   TrendUp,
   Buildings,
+  Message,
 } from "iconsax-react"
 
 type InterviewType = Interview["type"]
@@ -385,6 +386,7 @@ export default function InterviewsPage() {
               )}
             </TabsTrigger>
             <TabsTrigger value="all">
+              <People className="mr-1.5" size={14} />
               All
             </TabsTrigger>
           </TabsList>
@@ -529,28 +531,39 @@ export default function InterviewsPage() {
               <div className="space-y-5">
                 {/* Quick Info Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-lg border border-border bg-surface p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Date</p>
+                  <div className="rounded-lg bg-surface p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Calendar className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Date</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground" suppressHydrationWarning>
                       {formatInterviewDate(detailsInterview.scheduledAt)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-surface p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Time</p>
+                  <div className="rounded-lg bg-surface p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Clock className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Time</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground" suppressHydrationWarning>
                       {formatInterviewTime(detailsInterview.scheduledAt)}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-surface p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Duration</p>
+                  <div className="rounded-lg bg-surface p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Timer className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Duration</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground">
                       {detailsInterview.duration} min
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-surface p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Type</p>
-                    <div className="flex items-center justify-center gap-1.5 mt-1">
+                  <div className="rounded-lg bg-surface p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
                       {typeConfig[detailsInterview.type].icon}
+                      <p className="text-xs text-muted">Type</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-1.5 mt-1">
                       <span className="text-sm font-medium text-foreground">
                         {typeConfig[detailsInterview.type].label}
                       </span>
@@ -593,8 +606,11 @@ export default function InterviewsPage() {
 
                         {/* Score Breakdown */}
                         <div className="grid grid-cols-2 gap-3 mt-4">
-                          <div className="rounded-lg bg-background border border-border p-3">
-                            <p className="text-xs text-muted mb-1">Technical Skills</p>
+                          <div className="rounded-lg bg-background p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <Document className="text-muted-foreground" size={14} />
+                              <p className="text-xs text-muted">Technical Skills</p>
+                            </div>
                             <div className="flex items-center gap-2">
                               <Progress
                                 value={Math.min(detailsInterview.score + 5, 100)}
@@ -606,8 +622,11 @@ export default function InterviewsPage() {
                               </span>
                             </div>
                           </div>
-                          <div className="rounded-lg bg-background border border-border p-3">
-                            <p className="text-xs text-muted mb-1">Communication</p>
+                          <div className="rounded-lg bg-background p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <Message className="text-muted-foreground" size={14} />
+                              <p className="text-xs text-muted">Communication</p>
+                            </div>
                             <div className="flex items-center gap-2">
                               <Progress
                                 value={Math.min(detailsInterview.score + 3, 100)}
@@ -619,8 +638,11 @@ export default function InterviewsPage() {
                               </span>
                             </div>
                           </div>
-                          <div className="rounded-lg bg-background border border-border p-3">
-                            <p className="text-xs text-muted mb-1">Problem Solving</p>
+                          <div className="rounded-lg bg-background p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <MagicStar className="text-muted-foreground" size={14} />
+                              <p className="text-xs text-muted">Problem Solving</p>
+                            </div>
                             <div className="flex items-center gap-2">
                               <Progress
                                 value={Math.max(detailsInterview.score - 2, 0)}
@@ -632,8 +654,11 @@ export default function InterviewsPage() {
                               </span>
                             </div>
                           </div>
-                          <div className="rounded-lg bg-background border border-border p-3">
-                            <p className="text-xs text-muted mb-1">Culture Fit</p>
+                          <div className="rounded-lg bg-background p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <People className="text-muted-foreground" size={14} />
+                              <p className="text-xs text-muted">Culture Fit</p>
+                            </div>
                             <div className="flex items-center gap-2">
                               <Progress
                                 value={Math.min(detailsInterview.score + 7, 100)}

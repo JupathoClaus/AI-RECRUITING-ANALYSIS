@@ -22,6 +22,9 @@ import {
   More,
   Calendar2,
   Cpu,
+  Chart2,
+  Routing,
+  Notification,
 } from "iconsax-react";
 import {
   AreaChart,
@@ -291,7 +294,7 @@ export default function DashboardPage() {
           {kpiCards.map((card) => (
             <Card
               key={card.label}
-              className="relative overflow-hidden border border-border"
+              className="relative overflow-hidden"
             >
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
@@ -336,13 +339,16 @@ export default function DashboardPage() {
           <Card className="lg:col-span-2">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-base">
-                    Applications Over Time
-                  </CardTitle>
-                  <p className="text-sm text-muted mt-1">
-                    Last 14 days
-                  </p>
+                <div className="flex items-center gap-2">
+                  <Chart2 className="text-muted-foreground" size={16} />
+                  <div>
+                    <CardTitle className="text-base">
+                      Applications Over Time
+                    </CardTitle>
+                    <p className="text-sm text-muted mt-1">
+                      Last 14 days
+                    </p>
+                  </div>
                 </div>
                 <Badge variant="secondary" className="text-xs">
                   <TrendUp className="h-3 w-3 mr-1" />
@@ -412,12 +418,17 @@ export default function DashboardPage() {
           {/* Pipeline Distribution */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">
-                Pipeline Distribution
-              </CardTitle>
-              <p className="text-sm text-muted mt-1">
-                Candidates by stage
-              </p>
+              <div className="flex items-center gap-2">
+                <Routing className="text-muted-foreground" size={16} />
+                <div>
+                  <CardTitle className="text-base">
+                    Pipeline Distribution
+                  </CardTitle>
+                  <p className="text-sm text-muted mt-1">
+                    Candidates by stage
+                  </p>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="h-[280px] w-full">
@@ -477,7 +488,10 @@ export default function DashboardPage() {
           <Card className="lg:col-span-2">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Recent Activity</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Notification className="text-muted-foreground" size={16} />
+                  <CardTitle className="text-base">Recent Activity</CardTitle>
+                </div>
                 <Link
                   href="/activities"
                   className="inline-flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors"
@@ -530,9 +544,12 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">
-                  Upcoming Interviews
-                </CardTitle>
+                <div className="flex items-center gap-2">
+                  <Calendar className="text-muted-foreground" size={16} />
+                  <CardTitle className="text-base">
+                    Upcoming Interviews
+                  </CardTitle>
+                </div>
                 <Link
                   href="/interviews"
                   className="inline-flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors"
@@ -606,11 +623,14 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base">Top Candidates</CardTitle>
-                <p className="text-sm text-muted mt-1">
-                  Ranked by AI assessment score
-                </p>
+              <div className="flex items-center gap-2">
+                <People className="text-muted-foreground" size={16} />
+                <div>
+                  <CardTitle className="text-base">Top Candidates</CardTitle>
+                  <p className="text-sm text-muted mt-1">
+                    Ranked by AI assessment score
+                  </p>
+                </div>
               </div>
               <Link
                 href="/candidates"

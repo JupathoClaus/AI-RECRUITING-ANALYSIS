@@ -492,12 +492,18 @@ export default function CandidatesPage() {
               <div className="space-y-5">
                 {/* Quick Stats */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-lg border border-border bg-background p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Experience</p>
+                  <div className="rounded-lg bg-background p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Briefcase className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Experience</p>
+                    </div>
                     <p className="text-lg font-semibold text-foreground">{detailsCandidate.experience}<span className="text-sm font-normal text-muted ml-0.5">yr</span></p>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3 text-center">
-                    <p className="text-xs text-muted mb-1">AI Score</p>
+                  <div className="rounded-lg bg-background p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <MagicStar className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">AI Score</p>
+                    </div>
                     <p className={cn(
                       "text-lg font-semibold",
                       detailsCandidate.aiScore >= 80 ? "text-success" :
@@ -507,14 +513,20 @@ export default function CandidatesPage() {
                       {detailsCandidate.aiScore || "—"}
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Rating</p>
+                  <div className="rounded-lg bg-background p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Star1 className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Rating</p>
+                    </div>
                     <div className="flex justify-center mt-1">
                       <StarRating rating={detailsCandidate.rating} />
                     </div>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3 text-center">
-                    <p className="text-xs text-muted mb-1">Applied</p>
+                  <div className="rounded-lg bg-background p-3 text-center">
+                    <div className="flex items-center justify-center gap-1.5 mb-1">
+                      <Calendar className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Applied</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground">{timeAgo(detailsCandidate.appliedAt)}</p>
                   </div>
                 </div>

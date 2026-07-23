@@ -29,6 +29,8 @@ import {
   Warning2,
   Briefcase,
   People as UsersIcon,
+  Flash,
+  Chart2,
 } from "iconsax-react"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -272,7 +274,7 @@ export default function SettingsPage() {
                 <CardDescription>Upload your company logo.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-4">
-                <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-surface-elevated border border-border">
+                <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-surface-elevated">
                   <Buildings className="h-10 w-10 text-muted" />
                 </div>
                 <div className="flex flex-col items-center gap-2">
@@ -438,19 +440,27 @@ export default function SettingsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">AI Model Performance</CardTitle>
-                <CardDescription>Current accuracy metrics for the screening model.</CardDescription>
+                <div className="flex items-center gap-2">
+                  <Cpu className="text-muted-foreground" size={16} />
+                  <div>
+                    <CardTitle className="text-base">AI Model Performance</CardTitle>
+                    <CardDescription>Current accuracy metrics for the screening model.</CardDescription>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-5">
                 {[
-                  { label: "Overall Accuracy", value: 94, color: "text-success", barColor: "bg-success" },
-                  { label: "Precision", value: 91, color: "text-success", barColor: "bg-success" },
-                  { label: "Recall", value: 88, color: "text-primary", barColor: "bg-primary" },
-                  { label: "F1 Score", value: 89, color: "text-primary", barColor: "bg-primary" },
+                  { label: "Overall Accuracy", value: 94, color: "text-success", barColor: "bg-success", icon: TickCircle },
+                  { label: "Precision", value: 91, color: "text-success", barColor: "bg-success", icon: Flash },
+                  { label: "Recall", value: 88, color: "text-primary", barColor: "bg-primary", icon: Shield },
+                  { label: "F1 Score", value: 89, color: "text-primary", barColor: "bg-primary", icon: Chart2 },
                 ].map((metric) => (
                   <div key={metric.label}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm text-muted">{metric.label}</span>
+                      <div className="flex items-center gap-1.5">
+                        <metric.icon className="text-muted-foreground" size={14} />
+                        <span className="text-sm text-muted">{metric.label}</span>
+                      </div>
                       <span className={cn("text-sm font-semibold tabular-nums", metric.color)}>
                         {metric.value}%
                       </span>
@@ -494,7 +504,7 @@ export default function SettingsPage() {
               {integrations.map((integration) => (
                 <div
                   key={integration.id}
-                  className="flex items-center justify-between rounded-lg border border-border p-4 transition-all duration-200 hover:border-border/80"
+                  className="flex items-center justify-between rounded-lg p-4 transition-all duration-200 hover:border-border/80"
                 >
                   <div className="flex items-center gap-4">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-surface-elevated">

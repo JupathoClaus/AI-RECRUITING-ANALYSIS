@@ -145,7 +145,7 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <div className="mt-8 rounded-lg border border-border bg-surface/50 p-4">
+          <div className="mt-8 rounded-lg bg-surface/50 p-4">
             <p className="text-xs font-medium text-muted-foreground mb-2">Demo credentials</p>
             <div className="space-y-1 text-xs text-muted font-mono">
               <p>Email: sarah@airecruiter.com</p>

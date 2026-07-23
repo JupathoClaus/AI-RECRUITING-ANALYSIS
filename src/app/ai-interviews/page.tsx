@@ -44,6 +44,8 @@ import {
   People,
   Global,
   Speedometer,
+  Warning2,
+  Document,
 } from "iconsax-react"
 
 type InterviewStatus = "Scheduled" | "In Progress" | "Completed"
@@ -345,7 +347,7 @@ export default function AIInterviewsPage() {
                   ].map((t) => (
                     <label
                       key={t.label}
-                      className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 cursor-pointer hover:border-primary/30 transition-colors"
+                      className="flex items-center gap-3 rounded-lg bg-background px-3 py-2.5 cursor-pointer hover:border-primary/30 transition-colors"
                     >
                       <input
                         type="checkbox"
@@ -567,16 +569,22 @@ export default function AIInterviewsPage() {
 
                 {/* Summary */}
                 <div>
-                  <h4 className="text-sm font-semibold text-foreground mb-2">AI Summary</h4>
-                  <p className="text-sm text-muted-foreground leading-relaxed bg-surface-elevated rounded-lg p-4 border border-border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <MagicStar className="text-muted-foreground" size={16} />
+                    <h4 className="text-sm font-semibold text-foreground">AI Summary</h4>
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed bg-surface-elevated rounded-lg p-4 ml-6">
                     {detailInterview.summary}
                   </p>
                 </div>
 
                 {/* Score Breakdown */}
                 <div>
-                  <h4 className="text-sm font-semibold text-foreground mb-3">Score Breakdown</h4>
-                  <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Chart2 className="text-muted-foreground" size={16} />
+                    <h4 className="text-sm font-semibold text-foreground">Score Breakdown</h4>
+                  </div>
+                  <div className="space-y-3 ml-6">
                     {detailInterview.scoreBreakdown?.map((item) => (
                       <div key={item.label}>
                         <div className="flex justify-between text-xs mb-1.5">
@@ -594,8 +602,11 @@ export default function AIInterviewsPage() {
                 {/* Strengths & Improvements */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <h4 className="text-sm font-semibold text-foreground mb-2">Key Strengths</h4>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <TickCircle className="text-muted-foreground" size={16} />
+                      <h4 className="text-sm font-semibold text-foreground">Key Strengths</h4>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 ml-6">
                       {detailInterview.strengths?.map((s) => (
                         <Badge key={s} variant="success" className="text-xs">
                           {s}
@@ -604,8 +615,11 @@ export default function AIInterviewsPage() {
                     </div>
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-foreground mb-2">Areas for Improvement</h4>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Warning2 className="text-muted-foreground" size={16} />
+                      <h4 className="text-sm font-semibold text-foreground">Areas for Improvement</h4>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 ml-6">
                       {detailInterview.improvements?.map((i) => (
                         <Badge key={i} variant="warning" className="text-xs">
                           {i}
@@ -619,10 +633,13 @@ export default function AIInterviewsPage() {
 
                 {/* Transcript */}
                 <div>
-                  <h4 className="text-sm font-semibold text-foreground mb-3">Transcript Preview</h4>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Document className="text-muted-foreground" size={16} />
+                    <h4 className="text-sm font-semibold text-foreground">Transcript Preview</h4>
+                  </div>
                   <div className="space-y-3">
                     {detailInterview.transcript?.map((t, idx) => (
-                      <div key={idx} className="rounded-lg border border-border bg-surface-elevated overflow-hidden">
+                      <div key={idx} className="rounded-lg bg-surface-elevated overflow-hidden">
                         <div className="px-4 py-2.5 bg-primary-subtle border-b border-border">
                           <p className="text-xs font-medium text-primary">
                             Q{idx + 1}

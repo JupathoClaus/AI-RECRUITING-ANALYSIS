@@ -34,6 +34,7 @@ import {
   Eye,
   Edit2,
   Trash,
+  Document,
 } from "iconsax-react"
 
 const statusConfig: Record<JobStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" }> = {
@@ -534,27 +535,42 @@ export default function JobsPage() {
               </ModalHeader>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-lg border border-border bg-background p-3">
-                    <p className="text-xs text-muted mb-1">Type</p>
+                  <div className="rounded-lg bg-background p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Briefcase className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Type</p>
+                    </div>
                     <Badge variant={typeConfig[detailsJob.type].variant}>{typeConfig[detailsJob.type].label}</Badge>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3">
-                    <p className="text-xs text-muted mb-1">Applicants</p>
+                  <div className="rounded-lg bg-background p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <People className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Applicants</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground">{detailsJob.applicants}</p>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3">
-                    <p className="text-xs text-muted mb-1">Salary Range</p>
+                  <div className="rounded-lg bg-background p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <DollarSquare className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Salary Range</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground">{formatCurrency(detailsJob.salaryMin)} – {formatCurrency(detailsJob.salaryMax)}</p>
                   </div>
-                  <div className="rounded-lg border border-border bg-background p-3">
-                    <p className="text-xs text-muted mb-1">Posted</p>
+                  <div className="rounded-lg bg-background p-3">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Calendar className="text-muted-foreground" size={14} />
+                      <p className="text-xs text-muted">Posted</p>
+                    </div>
                     <p className="text-sm font-medium text-foreground">{timeAgo(detailsJob.createdAt)}</p>
                   </div>
                 </div>
                 {detailsJob.description && (
                   <div>
-                    <p className="text-sm font-medium text-foreground mb-2">Description</p>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{detailsJob.description}</p>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Document className="text-muted-foreground" size={14} />
+                      <p className="text-sm font-medium text-foreground">Description</p>
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed ml-5">{detailsJob.description}</p>
                   </div>
                 )}
               </div>

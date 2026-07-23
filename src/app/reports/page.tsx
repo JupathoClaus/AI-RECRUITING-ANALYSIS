@@ -31,6 +31,7 @@ import {
   RefreshCircle,
   TickCircle,
   ArrowRight,
+  Briefcase,
 } from "iconsax-react"
 
 interface ReportTemplate {
@@ -383,22 +384,31 @@ export default function ReportsPage() {
 
                 <Separator className="bg-surface-hover" />
 
-                <div className="rounded-lg border border-border bg-background p-4 space-y-3">
+                <div className="rounded-lg bg-background p-4 space-y-3">
                   <div className="flex items-center gap-2 text-sm text-foreground">
                     <MagicStar className="h-4 w-4 text-primary" />
                     <span className="font-medium">Report Preview</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                     <div>
-                      <p className="text-lg font-bold text-foreground">{activeJobs}</p>
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <Briefcase className="text-muted-foreground" size={14} />
+                        <p className="text-lg font-bold text-foreground">{activeJobs}</p>
+                      </div>
                       <p className="text-xs text-muted">Active Jobs</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-foreground">{totalCandidates}</p>
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <People className="text-muted-foreground" size={14} />
+                        <p className="text-lg font-bold text-foreground">{totalCandidates}</p>
+                      </div>
                       <p className="text-xs text-muted">Candidates</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-foreground">{completedInterviews}</p>
+                      <div className="flex items-center justify-center gap-1.5 mb-1">
+                        <Calendar className="text-muted-foreground" size={14} />
+                        <p className="text-lg font-bold text-foreground">{completedInterviews}</p>
+                      </div>
                       <p className="text-xs text-muted">Interviews</p>
                     </div>
                   </div>
