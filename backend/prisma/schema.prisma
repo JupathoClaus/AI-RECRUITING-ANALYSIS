@@ -158,6 +158,7 @@ model User {
   verificationTokens VerificationToken[]
   authAuditEvents    AuthAuditEvent[]
   invitedInvitations CompanyInvitation[]
+  notifications      UserNotification[]
 
   @@index([status])
   @@index([createdAt])
@@ -226,6 +227,9 @@ model Company {
 
   // Phase 2.3
   interviews Interview[]
+
+  // Phase 2.4
+  notifications UserNotification[]
 
   @@index([status])
   @@index([industry])
@@ -408,6 +412,46 @@ model AuthAuditEvent {
   @@index([companyId])
   @@index([eventType])
   @@index([occurredAt])
+}
+
+model UserNotification {
+  id                String           @id @default(uuid())
+  userId            String
+  companyId         String?
+  type              NotificationType
+  title             String
+  body              String?
+  readAt            DateTime?
+  relatedEntityType String?
+  relatedEntityId   String?
+  actionUrl         String?
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  user    User?    @relation(fields: [userId], references: [id])
+  company Company? @relation(fields: [companyId], references: [id])
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@index([companyId])
+  @@index([type])
+}
+
+enum NotificationType {
+  APPLICATION_SUBMITTED
+  APPLICATION_STAGE_CHANGED
+  INTERVIEW_SCHEDULED
+  INTERVIEW_RESCHEDULED
+  INTERVIEW_CANCELLED
+  INTERVIEW_COMPLETED
+  INVITATION_SENT
+  INVITATION_ACCEPTED
+  CANDIDATE_HIRED
+  CANDIDATE_REJECTED
+  NOTE_ADDED
+  AI_SCREENING_COMPLETED
+  SYSTEM
 }
 
 model Department {

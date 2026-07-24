@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { InAppNotificationsService } from '@modules/notifications/services/in-app-notifications.service';
 import { ApplicationsService } from '../services/applications.service';
 import { ApplicationNumberService } from '../services/application-number.service';
 import { ApplicationAuditService } from '../services/application-audit.service';
@@ -69,6 +70,7 @@ describe('ApplicationsService', () => {
         { provide: ApplicationAuditService, useValue: auditService },
         { provide: ApplicationWorkflowService, useValue: workflowService },
         { provide: CompanyCandidateService, useValue: companyCandidateService },
+        { provide: InAppNotificationsService, useValue: { create: jest.fn() } },
       ],
     }).compile();
     service = module.get<ApplicationsService>(ApplicationsService);

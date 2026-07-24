@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
+import { getUnreadCount } from "@/lib/api/notifications.api"
 import { Avatar } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -82,6 +83,13 @@ export function Sidebar() {
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = React.useState(false)
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const [notificationUnread, setNotificationUnread] = React.useState(0)
+
+  React.useEffect(() => {
+    getUnreadCount().then((res) => setNotificationUnread(res.count)).catch(() => {
+      // Non-critical — badge shows 0 on failure
+    })
+  }, [])
 
   const handleLogout = () => {
     logout()
@@ -205,11 +213,14 @@ export function Sidebar() {
                       {!collapsed && (
                         <>
                           <span className="flex-1">{item.label}</span>
-                          {item.badge && (
-                            <Badge variant={isActive ? "default" : "secondary"} className="h-5 px-1.5 text-[10px] font-normal">
-                              {item.badge}
-                            </Badge>
-                          )}
+                          {(() => {
+                            const displayBadge = item.label === "Notifications" ? notificationUnread : item.badge
+                            return displayBadge ? (
+                              <Badge variant={isActive ? "default" : "secondary"} className="h-5 px-1.5 text-[10px] font-normal">
+                                {displayBadge}
+                              </Badge>
+                            ) : null
+                          })()}
                         </>
                       )}
                     </Link>

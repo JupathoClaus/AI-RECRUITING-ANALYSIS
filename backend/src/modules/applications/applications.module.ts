@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '@database/database.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { ApplicationsController } from './controllers/applications.controller';
 import { CandidateTagsController } from './controllers/candidate-tags.controller';
 import { PublicApplicationsController } from './controllers/public-applications.controller';
@@ -16,7 +17,7 @@ import { ApplicationAssignmentsService } from './services/application-assignment
 import { ScreeningAnswersService } from './services/screening-answers.service';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, NotificationsModule],
   controllers: [ApplicationsController, CandidateTagsController, PublicApplicationsController],
   providers: [
     ApplicationsService,

@@ -12,6 +12,7 @@ import {
   ApplicationActorType,
   ApplicationAuditEventType,
   CandidateSource,
+  NotificationType,
   Prisma,
 } from '@prisma/client';
 import * as crypto from 'crypto';
@@ -19,6 +20,7 @@ import { ApplicationNumberService } from './application-number.service';
 import { ApplicationAuditService } from './application-audit.service';
 import { ApplicationWorkflowService } from './application-workflow.service';
 import { CompanyCandidateService } from './company-candidate.service';
+import { InAppNotificationsService } from '@modules/notifications/services/in-app-notifications.service';
 import { CreateApplicationDto } from '../dto/create-application.dto';
 import { UpdateApplicationDto } from '../dto/update-application.dto';
 import { ApplicationQueryDto } from '../dto/application-query.dto';
@@ -46,6 +48,7 @@ export class ApplicationsService {
     private readonly auditService: ApplicationAuditService,
     private readonly workflowService: ApplicationWorkflowService,
     private readonly companyCandidateService: CompanyCandidateService,
+    private readonly inAppNotificationsService: InAppNotificationsService,
   ) {}
 
   async create(
@@ -400,9 +403,13 @@ export class ApplicationsService {
               include: { stages: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } } },
             },
             screeningQuestions: { where: { deletedAt: null, required: true } },
+            ownerMembership: {
+              include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } },
+            },
           },
         },
         screeningAnswers: true,
+        candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
     if (!app)
@@ -460,7 +467,7 @@ export class ApplicationsService {
 
     const initialStage = app.job.pipeline?.stages[0];
 
-    return this.workflowService.transition({
+    const result = await this.workflowService.transition({
       applicationId: id,
       companyId,
       toStatus: ApplicationStatus.SUBMITTED,
@@ -478,6 +485,26 @@ export class ApplicationsService {
         screeningSnapshot: screeningSnap,
       },
     });
+
+    // Notify job owner about new application
+    const jobOwner = app.job.ownerMembership;
+    if (jobOwner && jobOwner.userId !== userId) {
+      const candidateName = app.candidate
+        ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim()
+        : 'A candidate';
+      await this.inAppNotificationsService.create({
+        userId: jobOwner.userId,
+        companyId,
+        type: NotificationType.APPLICATION_SUBMITTED,
+        title: `New application from ${candidateName}`,
+        body: `${candidateName} applied for ${(app.job as any).title || ''}`,
+        relatedEntityType: 'application',
+        relatedEntityId: id,
+        actionUrl: `/applications/${id}`,
+      });
+    }
+
+    return result;
   }
 
   async getSummary(companyId: string) {
