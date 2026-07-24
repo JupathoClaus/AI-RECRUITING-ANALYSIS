@@ -11,10 +11,7 @@ export interface UpdateCompanyProfileRequest {
   description?: string
   industry?: string
   companySize?: string
-  size?: string
   city?: string
-  location?: string
-  logo?: string
 }
 
 export async function updateCompanyProfile(dto: UpdateCompanyProfileRequest): Promise<CompanyProfileResponse> {

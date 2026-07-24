@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useReducer } from "react"
 import {
   User,
   Buildings,
@@ -22,10 +22,8 @@ import {
   Calendar,
   Document,
   MagicStar,
-  TickCircle,
   Briefcase,
   People as UsersIcon,
-  Flash,
   Chart2,
 } from "iconsax-react"
 import { AppLayout } from "@/components/layout/app-layout"
@@ -88,8 +86,16 @@ export default function SettingsPage() {
 
   const [companySettings, setCompanySettings] = useState<CompanySettingsResponse | null>(null)
   const [sessions, setSessions] = useState<authApi.AuthSessionResponse[]>([])
-  const [sessionsLoading, setSessionsLoading] = useState(false)
-  const [sessionsError, setSessionsError] = useState<string | null>(null)
+  const [sessionsMeta, dispatchSessionsMeta] = useReducer(
+    (state: { loading: boolean; error: string | null }, action: { type: "loading" } | { type: "error"; error: string } | { type: "clear" }): { loading: boolean; error: string | null } => {
+      switch (action.type) {
+        case "loading": return { loading: true, error: null }
+        case "error": return { loading: false, error: action.error }
+        case "clear": return { loading: false, error: null }
+      }
+    },
+    { loading: false, error: null }
+  )
   const [pageLoading, setPageLoading] = useState(true)
   const [pageLoadError, setPageLoadError] = useState<string | null>(null)
   const [profileSaving, setProfileSaving] = useState(false)
@@ -149,12 +155,10 @@ export default function SettingsPage() {
   useEffect(() => {
     if (activeTab !== "security") return
     let cancelled = false
-    setSessionsLoading(true)
-    setSessionsError(null)
+    dispatchSessionsMeta({ type: "loading" })
     authApi.getSessions()
-      .then((data) => { if (!cancelled) setSessions(data) })
-      .catch((err: unknown) => { if (!cancelled) setSessionsError(getErrorMessage(err, "Failed to load sessions")) })
-      .finally(() => { if (!cancelled) setSessionsLoading(false) })
+      .then((data) => { if (!cancelled) { setSessions(data); dispatchSessionsMeta({ type: "clear" }) } })
+      .catch((err: unknown) => { if (!cancelled) dispatchSessionsMeta({ type: "error", error: getErrorMessage(err, "Failed to load sessions") }) })
     return () => { cancelled = true }
   }, [activeTab])
 
@@ -171,7 +175,7 @@ export default function SettingsPage() {
     } finally {
       setProfileSaving(false)
     }
-  }, [firstName, lastName])
+  }, [firstName, lastName, refreshUser])
 
   const saveCompany = useCallback(async () => {
     setCompanySaving(true)
@@ -800,9 +804,9 @@ export default function SettingsPage() {
                         await authApi.logoutAll(true)
                         const updated = await authApi.getSessions()
                         setSessions(updated)
-                        setSessionsError(null)
+                        dispatchSessionsMeta({ type: "clear" })
                       } catch (err: unknown) {
-                        setSessionsError(getErrorMessage(err, "Failed to sign out other sessions"))
+                        dispatchSessionsMeta({ type: "error", error: getErrorMessage(err, "Failed to sign out other sessions") })
                       }
                     }}
                   >
@@ -811,10 +815,10 @@ export default function SettingsPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {sessionsError && (
-                  <div className="mb-4 rounded-lg border border-error/20 bg-error/5 px-4 py-2 text-sm text-error">{sessionsError}</div>
+                {sessionsMeta.error && (
+                  <div className="mb-4 rounded-lg border border-error/20 bg-error/5 px-4 py-2 text-sm text-error">{sessionsMeta.error}</div>
                 )}
-                {sessionsLoading ? (
+                {sessionsMeta.loading ? (
                   <div className="flex items-center justify-center py-8">
                     <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                   </div>
@@ -870,9 +874,9 @@ export default function SettingsPage() {
                               try {
                                 await authApi.revokeSession(session.id)
                                 setSessions((prev) => prev.filter((s) => s.id !== session.id))
-                                setSessionsError(null)
+                                dispatchSessionsMeta({ type: "clear" })
                               } catch (err: unknown) {
-                                setSessionsError(getErrorMessage(err, "Failed to revoke session"))
+                                dispatchSessionsMeta({ type: "error", error: getErrorMessage(err, "Failed to revoke session") })
                               }
                             }}
                           >
