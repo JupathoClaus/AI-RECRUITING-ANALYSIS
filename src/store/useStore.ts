@@ -30,6 +30,14 @@ import {
 } from "@/lib/api/interviews.api"
 import type { CreateInterviewRequest, FrontendInterviewType } from "@/lib/api/interviews.api"
 import { startInterview as startInterviewApi, confirmInterview as confirmInterviewApi } from "@/lib/api/interviews.api"
+import {
+  getAnalyticsOverview,
+  getAnalyticsFunnel,
+  getAnalyticsDepartments,
+  getAnalyticsSources,
+  getAnalyticsTimeToHire,
+} from "@/lib/api/analytics.api"
+import type { OverviewResponse, FunnelStage, DeptPerformance, SourceItem, TimeToHirePoint } from "@/lib/api/analytics.api"
 
 function mapJobDto(dto: JobListDto): Job {
   const statusMap: Record<string, JobStatus> = {
@@ -84,6 +92,13 @@ interface AppState {
   candidatesError: string | null
   interviewsLoading: boolean
   interviewsError: string | null
+  analyticsOverview: OverviewResponse | null
+  analyticsFunnel: FunnelStage[]
+  analyticsDepartments: DeptPerformance[]
+  analyticsSources: SourceItem[]
+  analyticsTimeToHire: TimeToHirePoint[]
+  analyticsLoading: boolean
+  analyticsError: string | null
   addJob: (job: Omit<Job, "id" | "createdAt" | "applicants">) => void
   updateJobStatus: (id: string, status: JobStatus) => void
   addCandidateApplication: (data: {
@@ -114,6 +129,7 @@ interface AppState {
   }) => Promise<void>
   cancelInterviewById: (id: string) => Promise<void>
   completeInterviewById: (id: string) => Promise<void>
+  fetchAnalytics: (dateFrom?: string) => Promise<void>
 }
 
 async function fetchAllPages<T>(
@@ -222,6 +238,13 @@ export const useStore = create<AppState>((set, get) => ({
   candidatesError: null,
   interviewsLoading: false,
   interviewsError: null,
+  analyticsOverview: null,
+  analyticsFunnel: [],
+  analyticsDepartments: [],
+  analyticsSources: [],
+  analyticsTimeToHire: [],
+  analyticsLoading: false,
+  analyticsError: null,
   addJob: (job) =>
     set((state) => ({
       jobs: [
@@ -458,6 +481,29 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to complete interview"
       set({ interviewsError: message, interviewsLoading: false })
+    }
+  },
+  fetchAnalytics: async (dateFrom?: string) => {
+    set({ analyticsLoading: true, analyticsError: null })
+    try {
+      const [overview, funnel, departments, sources, timeToHire] = await Promise.all([
+        getAnalyticsOverview(dateFrom),
+        getAnalyticsFunnel(),
+        getAnalyticsDepartments(),
+        getAnalyticsSources(),
+        getAnalyticsTimeToHire(),
+      ])
+      set({
+        analyticsOverview: overview,
+        analyticsFunnel: funnel,
+        analyticsDepartments: departments,
+        analyticsSources: sources,
+        analyticsTimeToHire: timeToHire,
+        analyticsLoading: false,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to fetch analytics"
+      set({ analyticsError: message, analyticsLoading: false })
     }
   },
 }))

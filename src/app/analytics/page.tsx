@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import {
   Chart2 as BarChartIcon,
   Chart as PieChartIcon,
@@ -36,68 +36,29 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
 import { cn, formatNumber } from "@/lib/utils"
+import type { DeptPerformance } from "@/lib/api/analytics.api"
+import { Skeleton } from "@/components/ui/skeleton"
 
 const DEPT_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#3b82f6", "#ef4444", "#a855f7"]
-
-const applicationsByDept = [
-  { name: "Engineering", value: 106, color: "#6366f1" },
-  { name: "Product", value: 27, color: "#22c55e" },
-  { name: "Design", value: 12, color: "#f59e0b" },
-  { name: "Data", value: 0, color: "#3b82f6" },
-  { name: "Marketing", value: 7, color: "#a855f7" },
-]
-
-const hiringFunnel = [
-  { stage: "Applied", count: 143 },
-  { stage: "Screened", count: 98 },
-  { stage: "Interviewed", count: 52 },
-  { stage: "Offered", count: 18 },
-  { stage: "Hired", count: 9 },
-]
-
-const timeToHireTrend = [
-  { month: "Feb", days: 32 },
-  { month: "Mar", days: 28 },
-  { month: "Apr", days: 35 },
-  { month: "May", days: 26 },
-  { month: "Jun", days: 23 },
-  { month: "Jul", days: 21 },
-]
-
-const sourceBreakdown = [
-  { name: "LinkedIn", value: 48 },
-  { name: "Indeed", value: 32 },
-  { name: "Referral", value: 28 },
-  { name: "Website", value: 21 },
-  { name: "Other", value: 14 },
-]
-
-const deptPerformance = [
-  { dept: "Engineering", open: 4, applications: 106, avgScore: 84, timeToHire: 28 },
-  { dept: "Product", open: 1, applications: 27, avgScore: 81, timeToHire: 32 },
-  { dept: "Design", open: 1, applications: 12, avgScore: 85, timeToHire: 25 },
-  { dept: "Marketing", open: 1, applications: 7, avgScore: 82, timeToHire: 18 },
-]
 
 const aiInsights = [
   {
     icon: Clock,
     title: "Engineering roles take 15% longer to fill",
     description: "Senior engineering positions average 32 days to hire compared to 26 days for other departments. Consider expanding sourcing channels for these roles.",
-    type: "warning",
+    type: "warning" as const,
   },
   {
     icon: Flag,
     title: "Referrals yield the highest-quality candidates",
     description: "Referred candidates score an average of 89 on AI assessments versus 76 from job boards. Increasing the referral bonus could improve quality further.",
-    type: "success",
+    type: "success" as const,
   },
   {
-        icon: MagicStar,
-
+    icon: MagicStar,
     title: "AI screening accuracy improved 6% this quarter",
     description: "Model v2.3 shows 94% correlation with final hiring decisions. The NLP update has reduced false positives in engineering screenings by 12%.",
-    type: "info",
+    type: "info" as const,
   },
 ]
 
@@ -117,34 +78,81 @@ function ChartTooltip({ active, payload, label }: CustomTooltipProps) {
   )
 }
 
-function FunnelTooltip({ active, payload }: CustomTooltipProps) {
+function FunnelTooltip({ active, payload }: CustomTooltipProps & { funnelTotal?: number }) {
   if (!active || !payload?.length) return null
-  const total = hiringFunnel[0].count
-  const pct = Math.round((payload[0].value / total) * 100)
   return (
     <div className="rounded-lg border border-border bg-surface px-3 py-2 shadow-lg">
       <p className="text-xs text-muted mb-1">{payload[0].name}</p>
       <p className="text-sm font-semibold text-foreground">{payload[0].value} candidates</p>
-      <p className="text-xs text-muted">{pct}% of total</p>
     </div>
   )
 }
 
+function toAppDeptData(depts: DeptPerformance[]): { name: string; value: number; color: string }[] {
+  return depts
+    .filter((d) => d.applications > 0)
+    .map((d, i) => ({
+      name: d.dept,
+      value: d.applications,
+      color: DEPT_COLORS[i % DEPT_COLORS.length],
+    }))
+}
+
+function computeDateFrom(range: string): string | undefined {
+  const now = new Date()
+  switch (range) {
+    case "this-week":
+      now.setDate(now.getDate() - 7)
+      return now.toISOString()
+    case "this-month":
+      now.setMonth(now.getMonth() - 1)
+      return now.toISOString()
+    case "this-quarter":
+      now.setMonth(now.getMonth() - 3)
+      return now.toISOString()
+    case "this-year":
+      now.setFullYear(now.getFullYear() - 1)
+      return now.toISOString()
+    default:
+      return undefined
+  }
+}
+
 export default function AnalyticsPage() {
-  const { jobs, candidates } = useStore()
+  const {
+    analyticsOverview,
+    analyticsFunnel,
+    analyticsDepartments,
+    analyticsSources,
+    analyticsTimeToHire,
+    analyticsLoading,
+    analyticsError,
+    fetchAnalytics,
+  } = useStore()
   const [dateRange, setDateRange] = useState("this-quarter")
 
-  const totalApplications = useMemo(
-    () => candidates.length + jobs.reduce((sum, j) => sum + j.applicants, 0),
-    [candidates, jobs]
-  )
+  useEffect(() => {
+    fetchAnalytics(computeDateFrom(dateRange))
+  }, [dateRange, fetchAnalytics])
+
+  const applicationsByDept = useMemo(() => toAppDeptData(analyticsDepartments), [analyticsDepartments])
+
+  const hiringFunnel = analyticsFunnel
+
+  const timeToHireTrend = analyticsTimeToHire
+
+  const sourceBreakdown = analyticsSources
+
+  const deptPerformance = analyticsDepartments
+
+  const overview = analyticsOverview
 
   const keyMetrics = useMemo(
     () => [
       {
         label: "Total Applications",
-        value: formatNumber(totalApplications),
-        trend: "+18.5%",
+        value: overview ? formatNumber(overview.totalApplications) : "—",
+        trend: "—",
         trendLabel: "vs last quarter",
         up: true,
         icon: People,
@@ -153,8 +161,8 @@ export default function AnalyticsPage() {
       },
       {
         label: "Avg Time to Hire",
-        value: "23 days",
-        trend: "-4 days",
+        value: overview?.avgTimeToHire != null ? `${overview.avgTimeToHire} days` : "—",
+        trend: "—",
         trendLabel: "vs last quarter",
         up: true,
         icon: Clock,
@@ -163,8 +171,8 @@ export default function AnalyticsPage() {
       },
       {
         label: "Offer Acceptance Rate",
-        value: "78%",
-        trend: "+5.3%",
+        value: overview?.offerAcceptanceRate != null ? `${overview.offerAcceptanceRate}%` : "—",
+        trend: "—",
         trendLabel: "vs last quarter",
         up: true,
         icon: TickCircle,
@@ -173,19 +181,39 @@ export default function AnalyticsPage() {
       },
       {
         label: "AI Screening Accuracy",
-        value: "94%",
-        trend: "+6%",
+        value: "—",
+        trend: "—",
         trendLabel: "this quarter",
         up: true,
-    icon: MagicStar,
+        icon: MagicStar,
         color: "text-warning",
         accent: "border-l-warning",
       },
     ],
-    [totalApplications]
+    [overview]
   )
 
-  const totalFunnel = hiringFunnel[0].count
+  const totalFunnel = hiringFunnel.length > 0 ? hiringFunnel[0].count : 0
+
+  if (analyticsLoading && !analyticsOverview) {
+    return (
+      <AppLayout title="Analytics & Reporting" description="Loading analytics...">
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i}><CardContent className="p-5"><Skeleton className="h-4 w-24 mb-2" /><Skeleton className="h-8 w-16" /></CardContent></Card>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card><CardContent className="p-5"><Skeleton className="h-[300px] w-full" /></CardContent></Card>
+            <Card><CardContent className="p-5"><Skeleton className="h-[300px] w-full" /></CardContent></Card>
+            <Card><CardContent className="p-5"><Skeleton className="h-[300px] w-full" /></CardContent></Card>
+            <Card><CardContent className="p-5"><Skeleton className="h-[300px] w-full" /></CardContent></Card>
+          </div>
+        </div>
+      </AppLayout>
+    )
+  }
 
   return (
     <AppLayout
@@ -206,6 +234,12 @@ export default function AnalyticsPage() {
       }
     >
       <div className="space-y-6">
+        {analyticsError && (
+          <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error animate-fade-in">
+            {analyticsError}
+          </div>
+        )}
+
         {/* Key Metrics */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {keyMetrics.map((metric) => (
@@ -258,10 +292,13 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="h-[300px] w-full">
+                {applicationsByDept.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-sm text-muted">No data</div>
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={applicationsByDept.filter((d) => d.value > 0)}
+                      data={applicationsByDept}
                       cx="50%"
                       cy="50%"
                       innerRadius={60}
@@ -269,11 +306,9 @@ export default function AnalyticsPage() {
                       paddingAngle={3}
                       dataKey="value"
                     >
-                      {applicationsByDept
-                        .filter((d) => d.value > 0)
-                        .map((entry) => (
-                          <Cell key={entry.name} fill={entry.color} stroke="transparent" />
-                        ))}
+                      {applicationsByDept.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} stroke="transparent" />
+                      ))}
                     </Pie>
                     <RechartsTooltip content={<ChartTooltip />} />
                     <Legend
@@ -285,6 +320,7 @@ export default function AnalyticsPage() {
                     />
                   </PieChart>
                 </ResponsiveContainer>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -302,6 +338,9 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="h-[300px] w-full">
+                {hiringFunnel.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-sm text-muted">No data</div>
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={hiringFunnel}
@@ -329,6 +368,7 @@ export default function AnalyticsPage() {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+                )}
               </div>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {hiringFunnel.map((stage) => (
@@ -339,7 +379,7 @@ export default function AnalyticsPage() {
                     </div>
                     <p className="text-xs text-muted truncate">{stage.stage}</p>
                     <p className="text-[10px] text-muted mt-0.5">
-                      {Math.round((stage.count / totalFunnel) * 100)}%
+                      {totalFunnel > 0 ? Math.round((stage.count / totalFunnel) * 100) : 0}%
                     </p>
                   </div>
                 ))}
@@ -360,6 +400,9 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="h-[300px] w-full">
+                {timeToHireTrend.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-sm text-muted">No data</div>
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={timeToHireTrend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
@@ -375,7 +418,7 @@ export default function AnalyticsPage() {
                       tickLine={false}
                       tick={{ fill: "#64748b", fontSize: 12 }}
                       dx={-4}
-                      domain={[15, 40]}
+                      domain={[0, "auto"]}
                     />
                     <RechartsTooltip
                       contentStyle={{
@@ -397,6 +440,7 @@ export default function AnalyticsPage() {
                     />
                   </LineChart>
                 </ResponsiveContainer>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -414,6 +458,9 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="h-[300px] w-full">
+                {sourceBreakdown.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-sm text-muted">No data</div>
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={sourceBreakdown} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
@@ -433,6 +480,7 @@ export default function AnalyticsPage() {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+                )}
               </div>
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {sourceBreakdown.map((source) => (
@@ -476,8 +524,13 @@ export default function AnalyticsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {deptPerformance.map((dept) => {
-                    const scorePercent = dept.avgScore
+                  {deptPerformance.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center text-sm text-muted py-8">No department data</TableCell>
+                    </TableRow>
+                  ) : (
+                  deptPerformance.map((dept) => {
+                    const scorePercent = dept.avgScore ?? 50
                     return (
                       <TableRow key={dept.dept}>
                         <TableCell>
@@ -496,41 +549,50 @@ export default function AnalyticsPage() {
                             <span
                               className={cn(
                                 "text-sm font-semibold tabular-nums",
-                                scorePercent >= 85
-                                  ? "text-success"
-                                  : scorePercent >= 75
-                                    ? "text-primary"
-                                    : "text-warning"
+                                dept.avgScore != null
+                                  ? scorePercent >= 85
+                                    ? "text-success"
+                                    : scorePercent >= 75
+                                      ? "text-primary"
+                                      : "text-warning"
+                                  : "text-muted"
                               )}
                             >
-                              {dept.avgScore}
+                              {dept.avgScore != null ? dept.avgScore : "—"}
                             </span>
-                            <Progress value={scorePercent} className="h-1.5 w-12" />
+                            {dept.avgScore != null && (
+                              <Progress value={scorePercent} className="h-1.5 w-12" />
+                            )}
                           </div>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
-                          <p className="text-sm text-foreground tabular-nums">{dept.timeToHire}d</p>
+                          <p className="text-sm text-foreground tabular-nums">{dept.timeToHire != null ? `${dept.timeToHire}d` : "—"}</p>
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge
                             variant={
-                              dept.timeToHire <= 25
-                                ? "success"
-                                : dept.timeToHire <= 30
-                                  ? "warning"
-                                  : "error"
+                              dept.timeToHire != null
+                                ? dept.timeToHire <= 25
+                                  ? "success"
+                                  : dept.timeToHire <= 30
+                                    ? "warning"
+                                    : "error"
+                                : "secondary"
                             }
                           >
-                            {dept.timeToHire <= 25
-                              ? "Fast"
-                              : dept.timeToHire <= 30
-                                ? "Average"
-                                : "Slow"}
+                            {dept.timeToHire != null
+                              ? dept.timeToHire <= 25
+                                ? "Fast"
+                                : dept.timeToHire <= 30
+                                  ? "Average"
+                                  : "Slow"
+                              : "—"}
                           </Badge>
                         </TableCell>
                       </TableRow>
                     )
-                  })}
+                  })
+                  )}
                 </TableBody>
               </Table>
             </div>
