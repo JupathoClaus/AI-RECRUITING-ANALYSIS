@@ -90,7 +90,7 @@ describe('InAppNotificationsService', () => {
     it('applies category=system filter', async () => {
       prisma.userNotification.count.mockResolvedValue(0);
       prisma.userNotification.findMany.mockResolvedValue([]);
-      await service.findAll(USER_ID, undefined, buildQuery({ category: 'system' as any }));
+      await service.findAll(USER_ID, undefined, buildQuery({ category: 'system' }));
       const where = prisma.userNotification.findMany.mock.calls[0][0].where;
       expect(where.type).toEqual({ in: [NotificationType.AI_SCREENING_COMPLETED, NotificationType.SYSTEM] });
     });

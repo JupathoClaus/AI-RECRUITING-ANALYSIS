@@ -7,7 +7,7 @@ import { ApplicationAuditService } from '../services/application-audit.service';
 import { ApplicationWorkflowService } from '../services/application-workflow.service';
 import { CompanyCandidateService } from '../services/company-candidate.service';
 import { PrismaService } from '@database/prisma/prisma.service';
-import { ApplicationStatus, CandidateSource } from '@prisma/client';
+import { ApplicationStatus, CandidateSource, NotificationType } from '@prisma/client';
 
 const COMPANY_ID = 'company-1';
 const JOB_ID = 'job-1';
@@ -35,6 +35,31 @@ describe('ApplicationsService', () => {
   let auditService: any;
   let workflowService: any;
   let companyCandidateService: any;
+  let inAppNotificationsService: { create: jest.Mock };
+
+  function makeSubmitApp(overrides?: Record<string, unknown>) {
+    return {
+      id: 'app-1',
+      companyId: COMPANY_ID,
+      status: ApplicationStatus.DRAFT,
+      consentConfirmed: false,
+      version: 1,
+      job: {
+        id: JOB_ID,
+        title: 'Dev',
+        jobCode: 'JOB-2026-00001',
+        pipeline: { stages: [{ id: 'stage-1', name: 'Applied', type: 'APPLIED', sortOrder: 0 }] },
+        screeningQuestions: [],
+        ownerMembership: {
+          userId: 'owner-1',
+          user: { id: 'owner-1', firstName: 'Owner', lastName: 'User', email: 'owner@co.com' },
+        },
+      },
+      screeningAnswers: [],
+      candidate: { id: CANDIDATE_ID, firstName: 'John', lastName: 'Doe', email: 'john@test.com' },
+      ...overrides,
+    };
+  }
 
   beforeEach(async () => {
     prisma = {
@@ -48,6 +73,7 @@ describe('ApplicationsService', () => {
         update: jest.fn(),
         groupBy: jest.fn(),
       },
+      companySettings: { findUnique: jest.fn() },
       companyMembership: { findFirst: jest.fn() },
       applicationAssignment: { create: jest.fn() },
       applicationScreeningAnswer: { createMany: jest.fn() },
@@ -74,6 +100,7 @@ describe('ApplicationsService', () => {
       ],
     }).compile();
     service = module.get<ApplicationsService>(ApplicationsService);
+    inAppNotificationsService = module.get(InAppNotificationsService);
   });
 
   const createDto = {
@@ -215,6 +242,85 @@ describe('ApplicationsService', () => {
       const result = await service.create(createDto, COMPANY_ID, 'u1', 'm1');
       expect(result.publicReference).toBeDefined();
       expect(typeof result.publicReference).toBe('string');
+    });
+  });
+
+  describe('submit (notification trigger)', () => {
+    const USER_ID = 'recruiter-1';
+    const MEMBERSHIP_ID = 'm1';
+
+    function setupSubmitMocks(overrides?: Record<string, unknown>) {
+      prisma.application.findFirst.mockResolvedValue(makeSubmitApp(overrides));
+      prisma.candidate.findUnique.mockResolvedValue({ id: CANDIDATE_ID, firstName: 'John', lastName: 'Doe' });
+      workflowService.transition.mockResolvedValue({
+        id: 'app-1', companyId: COMPANY_ID, status: ApplicationStatus.SUBMITTED,
+      });
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it('sends notification when notifyRecruiterOnNewApplication is true', async () => {
+      setupSubmitMocks();
+      prisma.companySettings.findUnique.mockResolvedValue({ notifyRecruiterOnNewApplication: true });
+      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
+      expect(inAppNotificationsService.create).toHaveBeenCalledTimes(1);
+      expect(inAppNotificationsService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'owner-1',
+          companyId: COMPANY_ID,
+          type: NotificationType.APPLICATION_SUBMITTED,
+          relatedEntityId: 'app-1',
+          actionUrl: '/applications/app-1',
+        }),
+      );
+    });
+
+    it('does not send notification when notifyRecruiterOnNewApplication is false', async () => {
+      setupSubmitMocks();
+      prisma.companySettings.findUnique.mockResolvedValue({ notifyRecruiterOnNewApplication: false });
+      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
+      expect(inAppNotificationsService.create).not.toHaveBeenCalled();
+    });
+
+    it('defaults to notification enabled when settings record is absent', async () => {
+      setupSubmitMocks();
+      prisma.companySettings.findUnique.mockResolvedValue(null);
+      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
+      expect(inAppNotificationsService.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs warning and skips notification when settings query throws', async () => {
+      setupSubmitMocks();
+      prisma.companySettings.findUnique.mockRejectedValue(new Error('DB timeout'));
+      const loggerWarn = jest.spyOn(service['logger'], 'warn').mockImplementation(() => {});
+      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
+      expect(loggerWarn).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to read notification preference'),
+      );
+      expect(inAppNotificationsService.create).not.toHaveBeenCalled();
+      loggerWarn.mockRestore();
+    });
+
+    it('handles notification create internal failure gracefully', async () => {
+      setupSubmitMocks();
+      prisma.companySettings.findUnique.mockResolvedValue({ notifyRecruiterOnNewApplication: true });
+      const result = await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
+      expect(inAppNotificationsService.create).toHaveBeenCalledTimes(1);
+      expect(result).toBeDefined();
+    });
+
+    it('does not send notification when job has no owner (self-submit)', async () => {
+      setupSubmitMocks({
+        job: {
+          ...makeSubmitApp().job,
+          ownerMembership: { userId: USER_ID, user: { id: USER_ID, firstName: 'Recruiter', lastName: 'One' } },
+        },
+      });
+      prisma.companySettings.findUnique.mockResolvedValue({ notifyRecruiterOnNewApplication: true });
+      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
+      expect(inAppNotificationsService.create).not.toHaveBeenCalled();
     });
   });
 
