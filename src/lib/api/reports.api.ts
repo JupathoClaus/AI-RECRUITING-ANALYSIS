@@ -1,7 +1,7 @@
 import { apiRequest } from "./client"
 
 export interface CandidateEvaluationRow {
-  applicantionId: string
+  applicationId: string
   candidateId: string
   candidateName: string
   email: string
@@ -77,7 +77,6 @@ export interface ActivityRow {
   entityType: string
   description: string
   actorType: string | null
-  actorName: string | null
 }
 
 export interface ReportPaginationMeta {
@@ -119,29 +118,41 @@ export async function getSourceEffectiveness(params?: ReportParams) {
 }
 
 export async function getJobSummary(params?: ReportParams) {
-  return apiRequest<JobSummaryRow[]>("/reports/job-summary", { params })
+  return apiRequest<{ data: JobSummaryRow[]; meta: ReportPaginationMeta }>("/reports/job-summary", { params })
 }
 
 export async function getActivity(params?: ReportParams) {
   return apiRequest<{ data: ActivityRow[]; meta: ReportPaginationMeta }>("/reports/activity", { params })
 }
 
-function toArray(value: string | string[] | undefined): string[] {
-  if (Array.isArray(value)) return value
-  if (value) return [value]
-  return []
-}
-
-export function getExportUrl(reportName: string, params?: ReportParams): string {
-  const baseUrl = `${process.env.NEXT_PUBLIC_API_URL || ''}/api/v1/reports/${reportName}/export`
-  if (!params) return baseUrl
+/** Download a report CSV through authenticated fetch */
+export async function downloadReportCsv(reportName: string, params?: ReportParams): Promise<void> {
   const searchParams = new URLSearchParams()
-  if (params.dateFrom) searchParams.set('dateFrom', params.dateFrom)
-  if (params.dateTo) searchParams.set('dateTo', params.dateTo)
-  for (const id of toArray(params.jobIds)) searchParams.append('jobIds', id)
-  for (const id of toArray(params.departmentIds)) searchParams.append('departmentIds', id)
-  if (params.page) searchParams.set('page', String(params.page))
-  if (params.limit) searchParams.set('limit', String(params.limit))
+  if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom)
+  if (params?.dateTo) searchParams.set('dateTo', params.dateTo)
+  if (params?.page) searchParams.set('page', String(params.page))
+  if (params?.limit) searchParams.set('limit', String(params.limit))
   const qs = searchParams.toString()
-  return qs ? `${baseUrl}?${qs}` : baseUrl
+  const url = `/reports/${reportName}/export${qs ? `?${qs}` : ''}`
+
+  const res = await fetch(url, {
+    headers: { 'Accept': 'text/csv' },
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Export failed (${res.status}): ${body.slice(0, 200)}`)
+  }
+  const blob = await res.blob()
+  const disposition = res.headers.get('Content-Disposition') || ''
+  const match = disposition.match(/filename="?([^";\n]+)"?/)
+  const filename = match ? match[1] : `${reportName}.csv`
+
+  const objectUrl = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = objectUrl
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(objectUrl)
 }
