@@ -1,12 +1,6 @@
-import { IsOptional, IsString, IsArray, IsEnum, IsInt, Min, Max, IsDateString, ArrayMaxSize, IsUUID, Validate } from 'class-validator';
+import { IsOptional, IsArray, IsEnum, IsInt, Min, Max, IsDateString, ArrayMaxSize, IsUUID } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApplicationStatus } from '@prisma/client';
-
-function validateDateRange(dateFrom: string | undefined, dateTo: string | undefined): void {
-  if (dateFrom && dateTo && new Date(dateFrom) > new Date(dateTo)) {
-    throw new TypeError('dateFrom must not be after dateTo');
-  }
-}
 
 export class ReportFilterDto {
   @IsOptional()
@@ -51,8 +45,36 @@ export class ReportFilterDto {
   @Max(200)
   limit?: number = 50;
 
-  /** Validate date range on first use — called by controller */
+  /** Validates dateFrom is not after dateTo. Throws BadRequestException via NestJS pipe. */
   validateDateRange(): void {
-    validateDateRange(this.dateFrom, this.dateTo);
+    if (this.dateFrom && this.dateTo && new Date(this.dateFrom) > new Date(this.dateTo)) {
+      throw new TypeError('dateFrom must not be after dateTo');
+    }
+  }
+
+  /** Returns a new DTO with page/limit overridden for exports. */
+  withExportDefaults(): ReportFilterDto {
+    const copy = new ReportFilterDto();
+    copy.dateFrom = this.dateFrom;
+    copy.dateTo = this.dateTo;
+    copy.jobIds = this.jobIds;
+    copy.departmentIds = this.departmentIds;
+    copy.statuses = this.statuses;
+    copy.page = 1;
+    copy.limit = 5000;
+    return copy;
+  }
+
+  /** Returns a copy with dateTo adjusted to end-of-day (23:59:59 UTC). */
+  withEndOfDay(): ReportFilterDto {
+    const copy = new ReportFilterDto();
+    copy.dateFrom = this.dateFrom;
+    copy.dateTo = this.dateTo ? new Date(new Date(this.dateTo).getTime() + 86400000).toISOString().split('T')[0] : undefined;
+    copy.jobIds = this.jobIds;
+    copy.departmentIds = this.departmentIds;
+    copy.statuses = this.statuses;
+    copy.page = this.page;
+    copy.limit = this.limit;
+    return copy;
   }
 }

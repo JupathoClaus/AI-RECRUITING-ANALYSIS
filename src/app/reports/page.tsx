@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn, getErrorMessage } from "@/lib/utils"
@@ -24,7 +25,12 @@ import {
   ArrowRight2,
 } from "iconsax-react"
 import * as reportsApi from "@/lib/api/reports.api"
+import * as jobsApi from "@/lib/api/jobs.api"
+import * as companyApi from "@/lib/api/company.api"
 import type { ReportParams, CandidateEvaluationRow, InterviewSummaryRow, TimeToHireRow, SourceEffectivenessRow, JobSummaryRow, ActivityRow, PipelineReport, ReportPaginationMeta } from "@/lib/api/reports.api"
+import type { DepartmentDto } from "@/lib/api/types"
+
+const APPLICATION_STATUSES = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'SCREENING', 'SHORTLISTED', 'ASSESSMENT', 'INTERVIEW', 'OFFER', 'HIRED', 'REJECTED', 'WITHDRAWN', 'DISQUALIFIED', 'ON_HOLD', 'ARCHIVED']
 
 interface ReportView {
   id: string
@@ -106,6 +112,16 @@ export default function ReportsPage() {
   // Filters
   const [dateFrom, setDateFrom] = React.useState("")
   const [dateTo, setDateTo] = React.useState("")
+  const [filterJobId, setFilterJobId] = React.useState("")
+  const [filterDeptId, setFilterDeptId] = React.useState("")
+  const [filterStatus, setFilterStatus] = React.useState("")
+  const [jobOptions, setJobOptions] = React.useState<{ id: string; title: string }[]>([])
+  const [deptOptions, setDeptOptions] = React.useState<DepartmentDto[]>([])
+
+  React.useEffect(() => {
+    jobsApi.getJobs({ limit: 200 }).then((r) => setJobOptions(r.data.map((j) => ({ id: j.id, title: j.title })))).catch(() => {})
+    companyApi.getDepartments({ limit: 100 }).then((r) => setDeptOptions(r.data)).catch(() => {})
+  }, [])
 
   const activeReport = reportViews.find((r) => r.id === activeView)
 
@@ -113,8 +129,11 @@ export default function ReportsPage() {
     const params: ReportParams = { page: p, limit: 50 }
     if (dateFrom) params.dateFrom = dateFrom
     if (dateTo) params.dateTo = dateTo
+    if (filterJobId && filterJobId !== "all") params.jobIds = filterJobId
+    if (filterDeptId && filterDeptId !== "all") params.departmentIds = filterDeptId
+    if (filterStatus && filterStatus !== "all") params.statuses = filterStatus
     return params
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, filterJobId, filterDeptId, filterStatus])
 
   const loadReport = React.useCallback(async (viewId: string, p: number) => {
     setLoading(true)
@@ -178,6 +197,9 @@ export default function ReportsPage() {
   const handleClearFilters = () => {
     setDateFrom("")
     setDateTo("")
+    setFilterJobId("")
+    setFilterDeptId("")
+    setFilterStatus("")
     setPage(1)
   }
 
@@ -264,7 +286,37 @@ export default function ReportsPage() {
                   <label className="text-xs font-medium text-muted">Date To</label>
                   <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 w-40 text-xs" />
                 </div>
-                <Button variant="outline" size="sm" className="h-9" onClick={handleApplyFilters}>Apply Filters</Button>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted">Job</label>
+                  <Select value={filterJobId} onValueChange={setFilterJobId}>
+                    <SelectTrigger className="h-9 w-44 text-xs"><SelectValue placeholder="All Jobs" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Jobs</SelectItem>
+                      {jobOptions.map((j) => <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted">Department</label>
+                  <Select value={filterDeptId} onValueChange={setFilterDeptId}>
+                    <SelectTrigger className="h-9 w-44 text-xs"><SelectValue placeholder="All Depts" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Departments</SelectItem>
+                      {deptOptions.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted">Status</label>
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="h-9 w-40 text-xs"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      {APPLICATION_STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button variant="outline" size="sm" className="h-9" onClick={handleApplyFilters}>Apply</Button>
                 <Button variant="ghost" size="sm" className="h-9 text-xs" onClick={handleClearFilters}>Clear</Button>
               </div>
 

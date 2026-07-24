@@ -28,11 +28,7 @@ export interface InterviewSummaryRow {
   interviewerName: string | null
 }
 
-export interface PipelineStageMetric {
-  stage: string
-  count: number
-}
-
+export interface PipelineStageMetric { stage: string; count: number }
 export interface PipelineReport {
   stages: PipelineStageMetric[]
   totalApplications: number
@@ -125,23 +121,41 @@ export async function getActivity(params?: ReportParams) {
   return apiRequest<{ data: ActivityRow[]; meta: ReportPaginationMeta }>("/reports/activity", { params })
 }
 
-/** Download a report CSV through authenticated fetch */
-export async function downloadReportCsv(reportName: string, params?: ReportParams): Promise<void> {
-  const searchParams = new URLSearchParams()
-  if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom)
-  if (params?.dateTo) searchParams.set('dateTo', params.dateTo)
-  if (params?.page) searchParams.set('page', String(params.page))
-  if (params?.limit) searchParams.set('limit', String(params.limit))
-  const qs = searchParams.toString()
-  const url = `/reports/${reportName}/export${qs ? `?${qs}` : ''}`
-
-  const res = await fetch(url, {
-    headers: { 'Accept': 'text/csv' },
-  })
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`Export failed (${res.status}): ${body.slice(0, 200)}`)
+function buildExportQuery(params?: ReportParams): string {
+  const sp = new URLSearchParams()
+  if (params?.dateFrom) sp.set('dateFrom', params.dateFrom)
+  if (params?.dateTo) sp.set('dateTo', params.dateTo)
+  if (params?.jobIds) {
+    const ids = Array.isArray(params.jobIds) ? params.jobIds : [params.jobIds]
+    ids.forEach((id) => sp.append('jobIds', id))
   }
+  if (params?.departmentIds) {
+    const ids = Array.isArray(params.departmentIds) ? params.departmentIds : [params.departmentIds]
+    ids.forEach((id) => sp.append('departmentIds', id))
+  }
+  if (params?.statuses) {
+    const sts = Array.isArray(params.statuses) ? params.statuses : [params.statuses]
+    sts.forEach((s) => sp.append('statuses', s))
+  }
+  const qs = sp.toString()
+  return qs ? `?${qs}` : ''
+}
+
+/** Download a report CSV through authenticated fetch matching apiRequest pattern. */
+export async function downloadReportCsv(reportName: string, params?: ReportParams): Promise<void> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || ''
+  const url = `${baseUrl}/api/v1/reports/${reportName}/export${buildExportQuery(params)}`
+  const { getAccessToken } = await import('./client')
+  const token = getAccessToken()
+  const headers: Record<string, string> = { Accept: 'text/csv' }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(url, { credentials: 'include', headers })
+  if (!res.ok) {
+    await res.text().catch(() => {})
+    throw new Error(`Export failed (${res.status})`)
+  }
+
   const blob = await res.blob()
   const disposition = res.headers.get('Content-Disposition') || ''
   const match = disposition.match(/filename="?([^";\n]+)"?/)

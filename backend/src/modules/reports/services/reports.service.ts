@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { ApplicationStatus, Prisma } from '@prisma/client';
 import { ReportFilterDto } from '../dto/report-filter.dto';
@@ -130,22 +130,13 @@ export class ReportsService {
       this.prisma.application.findMany({
         where,
         select: {
-          id: true,
-          status: true,
-          source: true,
-          submittedAt: true,
-          rejectionReasonCode: true,
+          id: true, status: true, source: true, submittedAt: true, rejectionReasonCode: true,
           candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
           job: { select: { title: true, department: { select: { name: true } } } },
-          interviews: {
-            select: { status: true, result: true },
-            take: 1,
-            orderBy: { createdAt: 'desc' },
-          },
+          interviews: { select: { status: true, result: true }, take: 1, orderBy: { createdAt: 'desc' } },
         },
         orderBy: { submittedAt: 'desc' },
-        skip,
-        take: limit,
+        skip, take: limit,
       }),
       this.prisma.application.count({ where }),
     ]);
@@ -188,36 +179,19 @@ export class ReportsService {
       this.prisma.interview.findMany({
         where,
         select: {
-          id: true,
-          type: true,
-          status: true,
-          result: true,
-          scheduledAt: true,
-          completedAt: true,
-          durationMinutes: true,
-          application: {
-            select: {
-              job: { select: { title: true } },
-              candidate: { select: { id: true, firstName: true, lastName: true } },
-            },
-          },
-          participants: {
-            select: { membership: { select: { user: { select: { firstName: true, lastName: true } } } } },
-            take: 1,
-          },
+          id: true, type: true, status: true, result: true, scheduledAt: true, completedAt: true, durationMinutes: true,
+          application: { select: { job: { select: { title: true } }, candidate: { select: { id: true, firstName: true, lastName: true } } } },
+          participants: { select: { membership: { select: { user: { select: { firstName: true, lastName: true } } } } }, take: 1 },
         },
         orderBy: { scheduledAt: 'desc' },
-        skip,
-        take: limit,
+        skip, take: limit,
       }),
       this.prisma.interview.count({ where }),
     ]);
 
     const data: InterviewSummaryRow[] = items.map((iv) => ({
       interviewId: iv.id,
-      candidateName: iv.application?.candidate
-        ? `${iv.application.candidate.firstName} ${iv.application.candidate.lastName}`.trim()
-        : 'Unknown',
+      candidateName: iv.application?.candidate ? `${iv.application.candidate.firstName} ${iv.application.candidate.lastName}`.trim() : 'Unknown',
       jobTitle: iv.application?.job?.title || '',
       interviewType: iv.type,
       status: iv.status,
@@ -237,11 +211,12 @@ export class ReportsService {
 
   async getPipeline(companyId: string, filter: ReportFilterDto): Promise<PipelineReport> {
     const where = this.buildAppWhere(companyId, filter);
+    const activeWhere = { ...where, status: { notIn: [ApplicationStatus.DRAFT, ApplicationStatus.ARCHIVED] } };
 
     const [grouped, hiredCount, rejectedCount, activeCount] = await Promise.all([
       this.prisma.application.groupBy({
         by: ['status'],
-        where: { ...where, status: { notIn: [ApplicationStatus.DRAFT, ApplicationStatus.ARCHIVED] } },
+        where: activeWhere,
         _count: { id: true },
       }),
       this.prisma.application.count({ where: { ...where, status: ApplicationStatus.HIRED } }),
@@ -256,9 +231,7 @@ export class ReportsService {
     return {
       stages: grouped.map((g) => ({ stage: g.status, count: g._count.id })),
       totalApplications: grouped.reduce((acc, g) => acc + g._count.id, 0),
-      hiredCount,
-      rejectedCount,
-      activeCount,
+      hiredCount, rejectedCount, activeCount,
     };
   }
 
@@ -276,15 +249,12 @@ export class ReportsService {
       this.prisma.application.findMany({
         where,
         select: {
-          id: true,
-          submittedAt: true,
-          hiredAt: true,
+          id: true, submittedAt: true, hiredAt: true,
           candidate: { select: { firstName: true, lastName: true } },
           job: { select: { title: true, department: { select: { name: true } } } },
         },
         orderBy: { hiredAt: 'desc' },
-        skip,
-        take: limit,
+        skip, take: limit,
       }),
       this.prisma.application.count({ where }),
     ]);
@@ -306,7 +276,7 @@ export class ReportsService {
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
-  // ── Source Effectiveness Report (optimized: 2 queries total) ──
+  // ── Source Effectiveness Report (2 fixed queries) ──
 
   async getSourceEffectiveness(companyId: string, filter: ReportFilterDto): Promise<SourceEffectivenessRow[]> {
     const where = this.buildAppWhere(companyId, filter);
@@ -348,7 +318,7 @@ export class ReportsService {
     }));
   }
 
-  // ── Job Summary Report (optimized: 3 fixed queries instead of per-job loop) ──
+  // ── Job Summary Report (3 fixed queries, properly scoped) ──
 
   async getJobSummary(companyId: string, filter: ReportFilterDto): Promise<{ data: JobSummaryRow[]; meta: ReportPaginationMeta }> {
     const jobsWhere: Prisma.JobWhereInput = { companyId, deletedAt: null };
@@ -358,21 +328,29 @@ export class ReportsService {
     const limit = filter.limit || 50;
     const skip = (page - 1) * limit;
 
+    // Build the application where scope including all filters
+    const appWhere = this.buildAppWhere(companyId, filter);
+
     const [jobs, appByJobAndStatus, interviewByJob] = await Promise.all([
       this.prisma.job.findMany({
         where: jobsWhere,
         select: { id: true, title: true, status: true, department: { select: { name: true } } },
-        skip,
-        take: limit,
+        skip, take: limit,
       }),
+      // Scoped: only apps matching the full filter (date, job, dept, status) grouped by job+status
       this.prisma.application.groupBy({
         by: ['jobId', 'status'],
-        where: this.buildAppWhere(companyId, Object.assign(filter, { departmentIds: undefined })),
+        where: appWhere,
         _count: { id: true },
       }),
+      // Scoped: only interviews for jobs matching the department filter
       this.prisma.interview.groupBy({
         by: ['jobId'],
-        where: { companyId, jobId: { not: undefined } },
+        where: {
+          companyId,
+          ...(filter.jobIds?.length ? { jobId: { in: filter.jobIds } } : {}),
+          ...(filter.departmentIds?.length ? { job: { departmentId: { in: filter.departmentIds } } } : {}),
+        },
         _count: { id: true },
       }),
     ]);
@@ -389,7 +367,10 @@ export class ReportsService {
       appMap.set(row.jobId, entry);
     }
 
-    const interviewMap = new Map(interviewByJob.map((r) => [r.jobId, r._count?.id ?? 0]));
+    const interviewCounts = new Map<string, number>();
+    for (const row of interviewByJob) {
+      interviewCounts.set(row.jobId, (interviewCounts.get(row.jobId) || 0) + (row._count?.id ?? 0));
+    }
 
     const data: JobSummaryRow[] = jobs.map((job) => {
       const appEntry = appMap.get(job.id) || { total: 0, hired: 0, rejected: 0, active: 0 };
@@ -399,7 +380,7 @@ export class ReportsService {
         department: job.department?.name || null,
         status: job.status,
         applicationCount: appEntry.total,
-        interviewCount: interviewMap.get(job.id) || 0,
+        interviewCount: interviewCounts.get(job.id) || 0,
         hiredCount: appEntry.hired,
         rejectedCount: appEntry.rejected,
         activeApplicationCount: appEntry.active,
@@ -425,8 +406,7 @@ export class ReportsService {
         where,
         select: { eventType: true, entityType: true, description: true, actorType: true, occurredAt: true },
         orderBy: { occurredAt: 'desc' },
-        skip,
-        take: limit,
+        skip, take: limit,
       }),
       this.prisma.applicationAuditEvent.count({ where }),
     ]);

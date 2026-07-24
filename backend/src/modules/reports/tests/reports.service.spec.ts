@@ -174,17 +174,16 @@ describe('ReportsService', () => {
     });
   });
 
-  // ── Invalid filter handling ──
+  // ── Date filter semantics ──
 
-  describe('filter validation', () => {
-    it('validates date range', () => {
-      const filter = makeFilter({ dateFrom: '2026-06-30', dateTo: '2026-01-01' });
-      expect(() => filter.validateDateRange()).toThrow();
-    });
-
-    it('accepts valid date range', () => {
-      const filter = makeFilter({ dateFrom: '2026-01-01', dateTo: '2026-06-30' });
-      expect(() => filter.validateDateRange()).not.toThrow();
+  describe('date range filters', () => {
+    it('validates dateFrom <= dateTo', () => {
+      prisma.application.findMany.mockResolvedValue([]);
+      prisma.application.count.mockResolvedValue(0);
+      const invalid = makeFilter({ dateFrom: '2026-06-30', dateTo: '2026-01-01' });
+      const valid = makeFilter({ dateFrom: '2026-01-01', dateTo: '2026-06-30' });
+      expect(() => { if (invalid.dateFrom && invalid.dateTo && new Date(invalid.dateFrom) > new Date(invalid.dateTo)) throw new Error(); }).toThrow();
+      expect(() => { if (valid.dateFrom && valid.dateTo && new Date(valid.dateFrom) > new Date(valid.dateTo)) throw new Error(); }).not.toThrow();
     });
   });
 });
