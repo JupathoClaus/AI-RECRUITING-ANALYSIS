@@ -41,7 +41,7 @@ import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { cn } from "@/lib/utils"
+import { cn, getErrorMessage } from "@/lib/utils"
 import * as authApi from "@/lib/api/auth.api"
 import * as companyApi from "@/lib/api/company.api"
 import type { CompanySettingsResponse } from "@/lib/api/company.api"
@@ -71,7 +71,7 @@ const integrationIcons: Record<string, React.ReactNode> = {
 }
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const userEmail = user?.email || "";
   const userRole = user?.role?.toLowerCase() || "viewer";
 
@@ -82,12 +82,16 @@ export default function SettingsPage() {
   const [screeningThreshold, setScreeningThreshold] = useState(70)
   const [aiPersonality, setAiPersonality] = useState("professional")
   const [language, setLanguage] = useState("en")
+  const [applicationAlertsEnabled, setApplicationAlertsEnabled] = useState(true)
   const [autoSchedule, setAutoSchedule] = useState(true)
   const [recordingEnabled, setRecordingEnabled] = useState(false)
 
   const [companySettings, setCompanySettings] = useState<CompanySettingsResponse | null>(null)
-  const [sessions, setSessions] = useState<Array<{ id: string; status: string; ipAddress: string | null; userAgent: string | null; deviceName: string | null; lastUsedAt: string }>>([])
+  const [sessions, setSessions] = useState<authApi.AuthSessionResponse[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [pageLoading, setPageLoading] = useState(true)
+  const [pageLoadError, setPageLoadError] = useState<string | null>(null)
   const [profileSaving, setProfileSaving] = useState(false)
   const [companySaving, setCompanySaving] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
@@ -131,8 +135,9 @@ export default function SettingsPage() {
         setCompanyWebsite(profile.website || "")
         setCompanyCity(profile.city || "")
         setLanguage(settings.defaultInterviewLanguage || "en")
-      } catch {
-        // Settings load silently — form shows empty/placeholder
+        setApplicationAlertsEnabled(settings.notifyRecruiterOnNewApplication)
+      } catch (err: unknown) {
+        if (!cancelled) setPageLoadError(getErrorMessage(err, "Failed to load settings"))
       } finally {
         if (!cancelled) setPageLoading(false)
       }
@@ -144,9 +149,12 @@ export default function SettingsPage() {
   useEffect(() => {
     if (activeTab !== "security") return
     let cancelled = false
-    authApi.getSessions().then((data) => {
-      if (!cancelled) setSessions(data as typeof sessions)
-    }).catch(() => {})
+    setSessionsLoading(true)
+    setSessionsError(null)
+    authApi.getSessions()
+      .then((data) => { if (!cancelled) setSessions(data) })
+      .catch((err: unknown) => { if (!cancelled) setSessionsError(getErrorMessage(err, "Failed to load sessions")) })
+      .finally(() => { if (!cancelled) setSessionsLoading(false) })
     return () => { cancelled = true }
   }, [activeTab])
 
@@ -157,9 +165,9 @@ export default function SettingsPage() {
     try {
       await authApi.updateProfile({ firstName, lastName })
       setProfileSuccess("Profile updated successfully")
+      refreshUser()
     } catch (err: unknown) {
-      const apiErr = err as { message?: string }
-      setProfileError(apiErr.message || "Failed to update profile")
+      setProfileError(getErrorMessage(err, "Failed to update profile"))
     } finally {
       setProfileSaving(false)
     }
@@ -179,25 +187,23 @@ export default function SettingsPage() {
       })
       setCompanySuccess("Company details updated successfully")
     } catch (err: unknown) {
-      const apiErr = err as { message?: string }
-      setCompanyError(apiErr.message || "Failed to update company")
+      setCompanyError(getErrorMessage(err, "Failed to update company"))
     } finally {
       setCompanySaving(false)
     }
   }, [companyName, companyIndustry, companySize, companyWebsite, companyCity])
 
-  const saveSettings = useCallback(async () => {
+  const saveSettings = useCallback(async (lang?: string) => {
     setSettingsError(null)
     setSettingsSuccess(null)
     try {
       const updated = await companyApi.updateCompanySettings({
-        defaultInterviewLanguage: language,
+        defaultInterviewLanguage: lang ?? language,
       })
       setCompanySettings(updated)
       setSettingsSuccess("Settings saved successfully")
     } catch (err: unknown) {
-      const apiErr = err as { message?: string }
-      setSettingsError(apiErr.message || "Failed to save settings")
+      setSettingsError(getErrorMessage(err, "Failed to save settings"))
     }
   }, [language])
 
@@ -224,8 +230,7 @@ export default function SettingsPage() {
       setNewPassword("")
       setConfirmPassword("")
     } catch (err: unknown) {
-      const apiErr = err as { message?: string }
-      setPasswordError(apiErr.message || "Failed to change password")
+      setPasswordError(getErrorMessage(err, "Failed to change password"))
     } finally {
       setPasswordSaving(false)
     }
@@ -237,6 +242,26 @@ export default function SettingsPage() {
         <div className="space-y-6 p-6">
           <div className="h-10 w-64 bg-surface-elevated rounded animate-pulse" />
           <div className="h-[600px] bg-surface-elevated rounded animate-pulse" />
+        </div>
+      </AppLayout>
+    )
+  }
+
+  if (pageLoadError) {
+    return (
+      <AppLayout title="Settings" description="Manage your account, company, and application preferences.">
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="rounded-lg border border-error/20 bg-error/5 px-6 py-4 text-center">
+            <p className="text-sm font-medium text-error">{pageLoadError}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => window.location.reload()}
+            >
+              Retry
+            </Button>
+          </div>
         </div>
       </AppLayout>
     )
@@ -491,11 +516,29 @@ export default function SettingsPage() {
                         <p className="text-xs text-muted mt-0.5">{notif.description}</p>
                       </div>
                     </div>
-                    <Switch defaultChecked={notif.checked} disabled={!notif.supported} />
+                    <Switch
+                      checked={notif.supported ? applicationAlertsEnabled : notif.checked}
+                      disabled={!notif.supported}
+                      onCheckedChange={notif.supported ? async (val) => {
+                        setApplicationAlertsEnabled(val)
+                        try {
+                          const updated = await companyApi.updateCompanySettings({
+                            notifyRecruiterOnNewApplication: val,
+                          })
+                          setCompanySettings(updated)
+                          setSettingsSuccess("Notification preferences saved")
+                        } catch (err: unknown) {
+                          setApplicationAlertsEnabled(!val)
+                          setSettingsError(getErrorMessage(err, "Failed to update notification preferences"))
+                        }
+                      } : undefined}
+                    />
                   </div>
                   {idx < 4 && <Separator className="opacity-50" />}
                 </div>
               ))}
+              {settingsError && <p className="text-xs text-error mt-2">{settingsError}</p>}
+              {settingsSuccess && <p className="text-xs text-success mt-2">{settingsSuccess}</p>}
             </CardContent>
           </Card>
         </TabsContent>
@@ -561,7 +604,7 @@ export default function SettingsPage() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Language Preference</label>
-                    <Select value={language} onValueChange={(v) => { setLanguage(v); saveSettings() }}>
+                    <Select value={language} onValueChange={(v) => { setLanguage(v); saveSettings(v) }}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -594,49 +637,19 @@ export default function SettingsPage() {
                   <Cpu className="text-muted-foreground" size={16} />
                   <div>
                     <CardTitle className="text-base">AI Model Performance</CardTitle>
-                    <CardDescription>Current accuracy metrics for the screening model.</CardDescription>
+                    <CardDescription>Accuracy metrics are not available until the model has been deployed and trained on your organization&apos;s data.</CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-5">
-                {[
-                  { label: "Overall Accuracy", value: 94, color: "text-success", barColor: "bg-success", icon: TickCircle },
-                  { label: "Precision", value: 91, color: "text-success", barColor: "bg-success", icon: Flash },
-                  { label: "Recall", value: 88, color: "text-primary", barColor: "bg-primary", icon: Shield },
-                  { label: "F1 Score", value: 89, color: "text-primary", barColor: "bg-primary", icon: Chart2 },
-                ].map((metric) => (
-                  <div key={metric.label}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <metric.icon className="text-muted-foreground" size={14} />
-                        <span className="text-sm text-muted">{metric.label}</span>
-                      </div>
-                      <span className={cn("text-sm font-semibold tabular-nums", metric.color)}>
-                        {metric.value}%
-                      </span>
-                    </div>
-                    <Progress
-                      value={metric.value}
-                      className="h-2"
-                      indicatorClassName={metric.barColor}
-                    />
+              <CardContent>
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-elevated mb-3">
+                    <Chart2 className="h-6 w-6 text-muted" />
                   </div>
-                ))}
-
-                <Separator />
-
-                <div className="rounded-lg bg-surface-elevated p-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-info-muted mt-0.5">
-                      <Cpu className="h-4 w-4 text-info" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">Model v2.3.1</p>
-                      <p className="text-xs text-muted mt-0.5">
-                        Last trained on 5,200 candidates. Next scheduled update: Aug 1, 2026.
-                      </p>
-                    </div>
-                  </div>
+                  <p className="text-sm font-medium text-foreground">No Model Data Available</p>
+                  <p className="text-xs text-muted mt-1 max-w-sm">
+                    Performance metrics will appear here once the AI screening model has been trained on sufficient candidate data. Model training begins automatically after processing enough applications.
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -664,11 +677,11 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-foreground">{integration.name}</p>
                         <Badge
-                          variant="secondary"
+                          variant={integration.connected ? "success" : "secondary"}
                           className="text-[10px]"
                         >
-                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-muted" />
-                          Coming Soon
+                          <span className={cn("mr-1 inline-block h-1.5 w-1.5 rounded-full", integration.connected ? "bg-success" : integration.status === "Error" ? "bg-error" : "bg-muted")} />
+                          {integration.connected ? "Connected" : "Coming Soon"}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted mt-0.5">{integration.description}</p>
@@ -786,15 +799,26 @@ export default function SettingsPage() {
                       try {
                         await authApi.logoutAll(true)
                         const updated = await authApi.getSessions()
-                        setSessions(updated as typeof sessions)
-                      } catch { /* ignore */ }
+                        setSessions(updated)
+                        setSessionsError(null)
+                      } catch (err: unknown) {
+                        setSessionsError(getErrorMessage(err, "Failed to sign out other sessions"))
+                      }
                     }}
                   >
-                    <Logout className="h-4 w-4" /> Sign Out All
+                    <Logout className="h-4 w-4" /> Sign Out Other Sessions
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
+                {sessionsError && (
+                  <div className="mb-4 rounded-lg border border-error/20 bg-error/5 px-4 py-2 text-sm text-error">{sessionsError}</div>
+                )}
+                {sessionsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  </div>
+                ) : (
                 <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -846,7 +870,10 @@ export default function SettingsPage() {
                               try {
                                 await authApi.revokeSession(session.id)
                                 setSessions((prev) => prev.filter((s) => s.id !== session.id))
-                              } catch { /* ignore */ }
+                                setSessionsError(null)
+                              } catch (err: unknown) {
+                                setSessionsError(getErrorMessage(err, "Failed to revoke session"))
+                              }
                             }}
                           >
                             Revoke
@@ -858,6 +885,7 @@ export default function SettingsPage() {
                   </TableBody>
                 </Table>
                 </div>
+                )}
               </CardContent>
             </Card>
 

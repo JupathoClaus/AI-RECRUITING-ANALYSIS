@@ -29,21 +29,46 @@ export async function getMe(): Promise<MeResponse> {
   return apiRequest<MeResponse>("/auth/me")
 }
 
-export async function updateProfile(dto: { firstName?: string; lastName?: string; phone?: string }): Promise<MeResponse["user"]> {
+export interface UpdateProfileRequest {
+  firstName?: string
+  lastName?: string
+  phone?: string
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string
+  newPassword: string
+  passwordConfirmation: string
+  revokeOtherSessions?: boolean
+}
+
+export interface AuthSessionResponse {
+  id: string
+  activeCompanyId: string | null
+  status: string
+  ipAddress: string | null
+  userAgent: string | null
+  deviceName: string | null
+  lastUsedAt: string
+  expiresAt: string
+  createdAt: string
+}
+
+export async function updateProfile(dto: UpdateProfileRequest): Promise<MeResponse["user"]> {
   return apiRequest<MeResponse["user"]>("/auth/profile", {
     method: "PATCH",
     body: dto,
   })
 }
 
-export async function changePassword(dto: { currentPassword: string; newPassword: string; passwordConfirmation: string; revokeOtherSessions?: boolean }): Promise<{ message: string }> {
+export async function changePassword(dto: ChangePasswordRequest): Promise<{ message: string }> {
   return apiRequest<{ message: string }>("/auth/change-password", {
     method: "POST",
     body: dto,
   })
 }
 
-export async function getSessions(): Promise<Array<{ id: string; activeCompanyId: string | null; status: string; ipAddress: string | null; userAgent: string | null; deviceName: string | null; lastUsedAt: string; expiresAt: string; createdAt: string }>> {
+export async function getSessions(): Promise<AuthSessionResponse[]> {
   return apiRequest("/auth/sessions")
 }
 

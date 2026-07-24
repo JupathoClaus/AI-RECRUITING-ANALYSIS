@@ -42,6 +42,13 @@ export function getScoreBgColor(score: number): string {
   return "bg-error"
 }
 
+export function getErrorMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === "object" && "message" in error && typeof (error as Record<string, unknown>).message === "string") {
+    return (error as { message: string }).message
+  }
+  return fallback
+}
+
 export function getStatusBadgeVariant(
   status: string
 ): "default" | "secondary" | "success" | "warning" | "error" | "info" {

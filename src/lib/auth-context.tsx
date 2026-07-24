@@ -3,6 +3,7 @@
 import * as React from "react"
 import * as authApi from "./api/auth.api"
 import { clearTokens, isAuthenticated } from "./api/client"
+import { getErrorMessage } from "./utils"
 import type { RegisterCompanyRequest, RegisterCompanyResponse } from "./api/types"
 
 export interface User {
@@ -18,6 +19,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<{ error?: string }>
   register: (dto: RegisterCompanyRequest) => Promise<{ error?: string; data?: RegisterCompanyResponse }>
   logout: () => void
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = React.createContext<AuthContextType>({
@@ -26,6 +28,7 @@ const AuthContext = React.createContext<AuthContextType>({
   login: async () => ({}),
   register: async () => ({ error: "AuthProvider not initialized" }),
   logout: () => {},
+  refreshUser: async () => {},
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -58,6 +61,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true }
   }, [])
 
+  const refreshUser = React.useCallback(async () => {
+    try {
+      const me = await authApi.getMe()
+      const u: User = {
+        id: me.user.id,
+        name: `${me.user.firstName} ${me.user.lastName}`.trim(),
+        email: me.user.email,
+        role: me.role || "VIEWER",
+      }
+      setUser(u)
+    } catch {
+      clearTokens()
+      setUser(null)
+    }
+  }, [])
+
   const login = React.useCallback(async (email: string, password: string) => {
     try {
       const result = await authApi.login({ email, password })
@@ -70,8 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(u)
       return {}
     } catch (err: unknown) {
-      const apiErr = err as { message?: string }
-      return { error: apiErr.message || "Invalid email or password" }
+      return { error: getErrorMessage(err, "Invalid email or password") }
     }
   }, [])
 
@@ -80,11 +98,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const result = await authApi.registerCompany(dto)
       return { data: result }
     } catch (err: unknown) {
-      const apiErr = err as { message?: string; errors?: string[] }
-      if (apiErr.errors?.length) {
-        return { error: apiErr.errors.join(" ") }
+      if (err && typeof err === "object" && "errors" in err && Array.isArray((err as Record<string, unknown>).errors)) {
+        const messages: string[] = (err as { errors: string[] }).errors
+        if (messages.length > 0) {
+          return { error: messages.join(" ") }
+        }
       }
-      return { error: apiErr.message || "Registration failed. Please try again." }
+      return { error: getErrorMessage(err, "Registration failed. Please try again.") }
     }
   }, [])
 
@@ -98,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )
