@@ -1,5 +1,6 @@
-import { IsOptional, IsString, IsBoolean, IsInt, Min, Max, IsIn } from 'class-validator';
+import { IsOptional, IsBoolean, IsInt, Min, Max, IsIn, IsEnum, IsString } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
+import { NotificationType } from '@prisma/client';
 
 const CATEGORIES = ['system', 'application', 'interview', 'invitation'] as const;
 
@@ -18,8 +19,8 @@ export class NotificationQueryDto {
   limit?: number = 20;
 
   @IsOptional()
-  @IsString()
-  type?: string;
+  @IsEnum(NotificationType)
+  type?: NotificationType;
 
   @IsOptional()
   @Transform(({ value }) => value === 'true' || value === true)

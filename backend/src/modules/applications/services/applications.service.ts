@@ -496,8 +496,12 @@ export class ApplicationsService {
       try {
         const settings = await this.prisma.companySettings.findUnique({ where: { companyId } });
         shouldNotify = settings?.notifyRecruiterOnNewApplication ?? true;
-      } catch {
-        shouldNotify = true;
+      } catch (err) {
+        const msg = err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Unknown error';
+        this.logger.warn(`Failed to read notification preference, skipping notification: ${msg}`);
+        shouldNotify = false;
       }
       if (shouldNotify) {
         await this.inAppNotificationsService.create({
