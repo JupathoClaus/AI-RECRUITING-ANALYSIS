@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '@database/prisma/prisma.service';
-import { NotificationType } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { NotificationQueryDto } from '../dto/notification-query.dto';
 
 export interface CreateNotificationDto {
@@ -21,10 +21,24 @@ export class InAppNotificationsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(userId: string, companyId: string | undefined, query: NotificationQueryDto) {
-    const where: Record<string, unknown> = { userId };
+    const where: Prisma.UserNotificationWhereInput = { userId };
     if (companyId) where.companyId = companyId;
-    if (query.type) where.type = query.type;
+    if (query.type) where.type = query.type as NotificationType;
     if (query.unread === true) where.readAt = null;
+    if (query.category === 'system') {
+      where.type = { in: [NotificationType.AI_SCREENING_COMPLETED, NotificationType.SYSTEM] };
+    }
+    if (query.category === 'application') {
+      where.type = { in: [NotificationType.APPLICATION_SUBMITTED, NotificationType.APPLICATION_STAGE_CHANGED] };
+    }
+    if (query.category === 'interview') {
+      where.type = {
+        in: [NotificationType.INTERVIEW_SCHEDULED, NotificationType.INTERVIEW_RESCHEDULED, NotificationType.INTERVIEW_CANCELLED, NotificationType.INTERVIEW_COMPLETED],
+      };
+    }
+    if (query.category === 'invitation') {
+      where.type = { in: [NotificationType.INVITATION_SENT, NotificationType.INVITATION_ACCEPTED] };
+    }
 
     const page = query.page || 1;
     const limit = query.limit || 20;
@@ -47,17 +61,20 @@ export class InAppNotificationsService {
   }
 
   async getUnreadCount(userId: string, companyId?: string): Promise<number> {
-    const where: Record<string, unknown> = { userId, readAt: null };
+    const where: Prisma.UserNotificationWhereInput = { userId, readAt: null };
     if (companyId) where.companyId = companyId;
     return this.prisma.userNotification.count({ where });
   }
 
-  async markRead(notificationId: string, userId: string): Promise<void> {
-    const notification = await this.prisma.userNotification.findUnique({
-      where: { id: notificationId },
-    });
+  async markRead(notificationId: string, userId: string, companyId?: string): Promise<void> {
+    const where: Prisma.UserNotificationWhereInput = { id: notificationId, userId };
+    if (companyId) where.companyId = companyId;
+    const notification = await this.prisma.userNotification.findFirst({ where });
     if (!notification) throw new NotFoundException('Notification not found');
     if (notification.userId !== userId) throw new ForbiddenException('Access denied');
+    if (companyId && notification.companyId && notification.companyId !== companyId) {
+      throw new ForbiddenException('Access denied');
+    }
 
     await this.prisma.userNotification.update({
       where: { id: notificationId },
@@ -66,7 +83,7 @@ export class InAppNotificationsService {
   }
 
   async markAllRead(userId: string, companyId?: string): Promise<number> {
-    const where: Record<string, unknown> = { userId, readAt: null };
+    const where: Prisma.UserNotificationWhereInput = { userId, readAt: null };
     if (companyId) where.companyId = companyId;
 
     const result = await this.prisma.userNotification.updateMany({
@@ -76,29 +93,17 @@ export class InAppNotificationsService {
     return result.count;
   }
 
-  async archive(notificationId: string, userId: string): Promise<void> {
-    const notification = await this.prisma.userNotification.findUnique({
-      where: { id: notificationId },
-    });
+  async delete(notificationId: string, userId: string, companyId?: string): Promise<void> {
+    const where: Prisma.UserNotificationWhereInput = { id: notificationId, userId };
+    if (companyId) where.companyId = companyId;
+    const notification = await this.prisma.userNotification.findFirst({ where });
     if (!notification) throw new NotFoundException('Notification not found');
     if (notification.userId !== userId) throw new ForbiddenException('Access denied');
+    if (companyId && notification.companyId && notification.companyId !== companyId) {
+      throw new ForbiddenException('Access denied');
+    }
 
-    await this.prisma.userNotification.update({
-      where: { id: notificationId },
-      data: { readAt: new Date() },
-    });
-  }
-
-  async delete(notificationId: string, userId: string): Promise<void> {
-    const notification = await this.prisma.userNotification.findUnique({
-      where: { id: notificationId },
-    });
-    if (!notification) throw new NotFoundException('Notification not found');
-    if (notification.userId !== userId) throw new ForbiddenException('Access denied');
-
-    await this.prisma.userNotification.delete({
-      where: { id: notificationId },
-    });
+    await this.prisma.userNotification.delete({ where: { id: notificationId } });
   }
 
   async create(dto: CreateNotificationDto): Promise<void> {
@@ -116,7 +121,10 @@ export class InAppNotificationsService {
         },
       });
     } catch (err) {
-      this.logger.warn(`Failed to create notification: ${(err as Error).message}`);
+      const message = err && typeof err === 'object' && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : 'Unknown error';
+      this.logger.warn(`Failed to create notification: ${message}`);
     }
   }
 }

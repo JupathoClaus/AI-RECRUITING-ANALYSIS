@@ -1,5 +1,7 @@
-import { IsOptional, IsString, IsBoolean, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsInt, Min, Max, IsIn } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
+
+const CATEGORIES = ['system', 'application', 'interview', 'invitation'] as const;
 
 export class NotificationQueryDto {
   @IsOptional()
@@ -23,4 +25,9 @@ export class NotificationQueryDto {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   unread?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(CATEGORIES)
+  category?: typeof CATEGORIES[number];
 }

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback, useReducer } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,10 +19,13 @@ import {
   MessageSquare,
   Setting,
   MoreCircle,
+  Trash,
 } from "iconsax-react"
 import { cn, timeAgo, getErrorMessage } from "@/lib/utils"
 import * as notificationsApi from "@/lib/api/notifications.api"
 import type { NotificationResponse } from "@/lib/api/notifications.api"
+import { useNotificationStore } from "@/store/notification-store"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 
 type NotificationType = "application" | "interview" | "offer" | "hire" | "rejection" | "ai" | "note" | "invitation" | "system"
 
@@ -81,78 +85,109 @@ function groupByDate(items: NotificationResponse[]): Record<string, Notification
 }
 
 export default function NotificationsPage() {
+  const router = useRouter()
   const [notifications, setNotifications] = useState<NotificationResponse[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [pageMeta, dispatchPageMeta] = useReducer(
-    (state: { loading: boolean; error: string | null }, action: { type: "loading" } | { type: "error"; error: string } | { type: "done" }) => {
-      switch (action.type) {
-        case "loading": return { loading: true, error: null }
-        case "error": return { loading: false, error: action.error }
-        case "done": return { loading: false, error: null }
-      }
-    },
-    { loading: true, error: null }
-  )
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [loadMoreLoading, setLoadMoreLoading] = useState(false)
+  const [pageLoadError, setPageLoadError] = useState<string | null>(null)
+  const [pageLoadKey, setPageLoadKey] = useState(0)
   const [tab, setTab] = useState("all")
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [markAllLoading, setMarkAllLoading] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const { unreadCount, fetchUnreadCount, decrementUnread, resetUnread } = useNotificationStore()
 
   useEffect(() => {
     let cancelled = false
-    dispatchPageMeta({ type: "loading" })
-    Promise.all([
-      notificationsApi.getNotifications({ limit: 50 }),
-      notificationsApi.getUnreadCount(),
-    ]).then(([notifRes, unreadRes]) => {
+    const params: Record<string, string | number> = { page: 1, limit: 20 }
+    if (tab === "unread") params.unread = "true"
+    if (tab === "system") params.category = "system"
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true)
+    setPageLoadError(null)
+    notificationsApi.getNotifications(params).then((res) => {
       if (cancelled) return
-      setNotifications(notifRes.items)
-      setUnreadCount(unreadRes.count)
-      dispatchPageMeta({ type: "done" })
+      setNotifications(res.items)
+      setTotalPages(res.meta.totalPages)
+      setPage(1)
+      setLoading(false)
     }).catch((err: unknown) => {
       if (cancelled) return
-      dispatchPageMeta({ type: "error", error: getErrorMessage(err, "Failed to load notifications") })
+      setPageLoadError(getErrorMessage(err, "Failed to load notifications"))
+      setLoading(false)
     })
+    fetchUnreadCount()
     return () => { cancelled = true }
-  }, [])
+  }, [pageLoadKey, tab, fetchUnreadCount])
 
-  const handleMarkRead = useCallback(async (id: string) => {
+  const handleLoadMore = useCallback(async () => {
+    const nextPage = page + 1
+    setLoadMoreLoading(true)
+    try {
+      const params: Record<string, string | number> = { page: nextPage, limit: 20 }
+      if (tab === "unread") params.unread = "true"
+      if (tab === "system") params.category = "system"
+      const res = await notificationsApi.getNotifications(params)
+      setNotifications((prev) => [...prev, ...res.items])
+      setTotalPages(res.meta.totalPages)
+      setPage(nextPage)
+    } catch (err: unknown) {
+      setPageLoadError(getErrorMessage(err, "Failed to load notifications"))
+    } finally {
+      setLoadMoreLoading(false)
+    }
+  }, [page, tab])
+
+  const handleMarkRead = useCallback(async (id: string, actionUrl?: string | null) => {
     setActionLoading(id)
     try {
       await notificationsApi.markNotificationRead(id)
       setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, readAt: new Date().toISOString() } : n))
-      setUnreadCount((prev) => Math.max(0, prev - 1))
+      decrementUnread()
+      if (actionUrl) { router.push(actionUrl) }
     } catch (err: unknown) {
-      dispatchPageMeta({ type: "error", error: getErrorMessage(err, "Failed to mark as read") })
+      setPageLoadError(getErrorMessage(err, "Failed to mark as read"))
+      if (actionUrl) { router.push(actionUrl) }
     } finally {
       setActionLoading(null)
     }
-  }, [])
+  }, [decrementUnread, router])
 
   const handleMarkAllRead = useCallback(async () => {
     setMarkAllLoading(true)
     try {
       await notificationsApi.markAllNotificationsRead()
       setNotifications((prev) => prev.map((n) => n.readAt ? n : { ...n, readAt: new Date().toISOString() }))
-      setUnreadCount(0)
+      resetUnread()
     } catch (err: unknown) {
-      dispatchPageMeta({ type: "error", error: getErrorMessage(err, "Failed to mark all as read") })
+      setPageLoadError(getErrorMessage(err, "Failed to mark all as read"))
     } finally {
       setMarkAllLoading(false)
     }
+  }, [resetUnread])
+
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      await notificationsApi.deleteNotification(id)
+      setNotifications((prev) => prev.filter((n) => n.id !== id))
+      fetchUnreadCount()
+    } catch (err: unknown) {
+      setPageLoadError(getErrorMessage(err, "Failed to delete notification"))
+    } finally {
+      setDeleteConfirmId(null)
+    }
+  }, [fetchUnreadCount])
+
+  const handleTabChange = useCallback((value: string) => {
+    setTab(value)
+    setPage(1)
+    setTotalPages(1)
+    setPageLoadKey((k) => k + 1)
   }, [])
 
-  const filtered = useMemo(() => {
-    switch (tab) {
-      case "unread":
-        return notifications.filter((n) => !n.readAt)
-      case "system":
-        return notifications.filter((n) => n.type.startsWith("AI_") || n.type === "SYSTEM")
-      default:
-        return notifications
-    }
-  }, [tab, notifications])
-
-  const grouped = groupByDate(filtered)
+  const readIds = useMemo(() => new Set(notifications.filter((n) => n.readAt).map((n) => n.id)), [notifications])
 
   return (
     <AppLayout
@@ -171,7 +206,7 @@ export default function NotificationsPage() {
         </div>
       }
     >
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={handleTabChange}>
         <div className="flex items-center justify-between mb-6">
           <TabsList>
             <TabsTrigger value="all">
@@ -194,14 +229,14 @@ export default function NotificationsPage() {
           </TabsList>
         </div>
 
-        {pageMeta.error && (
+        {pageLoadError && (
           <div className="mb-4 rounded-lg border border-error/20 bg-error/5 px-4 py-2 text-sm text-error flex items-center justify-between">
-            <span>{pageMeta.error}</span>
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => window.location.reload()}>Retry</Button>
+            <span>{pageLoadError}</span>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setPageLoadKey((k) => k + 1)}>Retry</Button>
           </div>
         )}
 
-        {pageMeta.loading ? (
+        {loading ? (
           <div className="space-y-4">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex items-start gap-4 p-4">
@@ -215,29 +250,61 @@ export default function NotificationsPage() {
           </div>
         ) : (
           <NotificationGroups
-            grouped={grouped}
-            readIds={new Set(notifications.filter((n) => n.readAt).map((n) => n.id))}
+            notifications={notifications}
+            readIds={readIds}
             actionLoading={actionLoading}
             onMarkRead={handleMarkRead}
+            onDelete={(id) => setDeleteConfirmId(id)}
           />
         )}
+
+        {page < totalPages && !loading && (
+          <div className="flex justify-center mt-6">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={loadMoreLoading}
+              onClick={handleLoadMore}
+            >
+              {loadMoreLoading ? "Loading..." : "Load More"}
+            </Button>
+          </div>
+        )}
       </Tabs>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Notification</DialogTitle>
+            <DialogDescription>Are you sure you want to delete this notification? This action cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   )
 }
 
 function NotificationGroups({
-  grouped,
+  notifications,
   readIds,
   actionLoading,
   onMarkRead,
+  onDelete,
 }: {
-  grouped: Record<string, NotificationResponse[]>
+  notifications: NotificationResponse[]
   readIds: Set<string>
   actionLoading: string | null
-  onMarkRead: (id: string) => void
+  onMarkRead: (id: string, actionUrl?: string | null) => void
+  onDelete: (id: string) => void
 }) {
-  const groups = Object.entries(grouped)
+  const groups = Object.entries(groupByDate(notifications))
 
   if (groups.length === 0) {
     return (
@@ -269,7 +336,10 @@ function NotificationGroups({
               return (
                 <div
                   key={n.id}
-                  onClick={() => { if (!read && !loading) onMarkRead(n.id) }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { if (!read && !loading) onMarkRead(n.id, n.actionUrl) }}
+                  onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !read && !loading) { e.preventDefault(); onMarkRead(n.id, n.actionUrl) } }}
                   className={cn(
                     "flex items-start gap-4 px-5 py-4 cursor-pointer transition-colors duration-150",
                     read
@@ -299,6 +369,13 @@ function NotificationGroups({
                       <MoreCircle className="h-2.5 w-2.5 fill-primary text-primary" />
                     </div>
                   )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(n.id) }}
+                    className="mt-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity hover:text-error"
+                    aria-label="Delete notification"
+                  >
+                    <Trash className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               )
             })}

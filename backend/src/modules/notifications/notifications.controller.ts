@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Patch, Delete, Param, Query, Body,
+  Controller, Get, Patch, Delete, Param, Query,
   UseGuards, ParseUUIDPipe,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -35,7 +35,7 @@ export class NotificationsController {
     @Param('notificationId', ParseUUIDPipe) notificationId: string,
     @CurrentUser() user: AuthenticatedPrincipal,
   ) {
-    await this.notificationsService.markRead(notificationId, user.userId);
+    await this.notificationsService.markRead(notificationId, user.userId, user.activeCompanyId);
     return { success: true };
   }
 
@@ -53,7 +53,7 @@ export class NotificationsController {
     @Param('notificationId', ParseUUIDPipe) notificationId: string,
     @CurrentUser() user: AuthenticatedPrincipal,
   ) {
-    await this.notificationsService.delete(notificationId, user.userId);
+    await this.notificationsService.delete(notificationId, user.userId, user.activeCompanyId);
     return { success: true };
   }
 }

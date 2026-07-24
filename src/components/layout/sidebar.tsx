@@ -5,7 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
-import { getUnreadCount } from "@/lib/api/notifications.api"
+import { useNotificationStore } from "@/store/notification-store"
 import { Avatar } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -83,13 +83,9 @@ export function Sidebar() {
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = React.useState(false)
   const [mobileOpen, setMobileOpen] = React.useState(false)
-  const [notificationUnread, setNotificationUnread] = React.useState(0)
+  const { unreadCount: notificationUnread, fetchUnreadCount } = useNotificationStore()
 
-  React.useEffect(() => {
-    getUnreadCount().then((res) => setNotificationUnread(res.count)).catch(() => {
-      // Non-critical — badge shows 0 on failure
-    })
-  }, [])
+  React.useEffect(() => { fetchUnreadCount() }, [fetchUnreadCount])
 
   const handleLogout = () => {
     logout()

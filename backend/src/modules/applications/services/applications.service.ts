@@ -457,11 +457,11 @@ export class ApplicationsService {
     });
     const jobSnap = {
       id: app.job.id,
-      title: (app.job as any).title,
-      jobCode: (app.job as any).jobCode,
+      title: app.job.title,
+      jobCode: app.job.jobCode,
     };
     const screeningSnap = {
-      questionCount: (app.job as any).screeningQuestions?.length ?? 0,
+      questionCount: app.job.screeningQuestions?.length ?? 0,
       answeredCount: app.screeningAnswers.length,
     };
 
@@ -486,22 +486,31 @@ export class ApplicationsService {
       },
     });
 
-    // Notify job owner about new application
+    // Notify job owner about new application (respecting preference)
     const jobOwner = app.job.ownerMembership;
     if (jobOwner && jobOwner.userId !== userId) {
       const candidateName = app.candidate
         ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim()
         : 'A candidate';
-      await this.inAppNotificationsService.create({
-        userId: jobOwner.userId,
-        companyId,
-        type: NotificationType.APPLICATION_SUBMITTED,
-        title: `New application from ${candidateName}`,
-        body: `${candidateName} applied for ${(app.job as any).title || ''}`,
-        relatedEntityType: 'application',
-        relatedEntityId: id,
-        actionUrl: `/applications/${id}`,
-      });
+      let shouldNotify = true;
+      try {
+        const settings = await this.prisma.companySettings.findUnique({ where: { companyId } });
+        shouldNotify = settings?.notifyRecruiterOnNewApplication ?? true;
+      } catch {
+        shouldNotify = true;
+      }
+      if (shouldNotify) {
+        await this.inAppNotificationsService.create({
+          userId: jobOwner.userId,
+          companyId,
+          type: NotificationType.APPLICATION_SUBMITTED,
+          title: `New application from ${candidateName}`,
+          body: `${candidateName} applied for ${app.job.title}`,
+          relatedEntityType: 'application',
+          relatedEntityId: id,
+          actionUrl: `/applications/${id}`,
+        });
+      }
     }
 
     return result;
