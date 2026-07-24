@@ -170,8 +170,8 @@ export default function AnalyticsPage() {
         accent: "border-l-info",
       },
       {
-        label: "Offer Acceptance Rate",
-        value: overview?.offerAcceptanceRate != null ? `${overview.offerAcceptanceRate}%` : "—",
+        label: "Selection Rate",
+        value: overview?.selectionRate != null ? `${overview.selectionRate}%` : "—",
         trend: "—",
         trendLabel: "vs last quarter",
         up: true,

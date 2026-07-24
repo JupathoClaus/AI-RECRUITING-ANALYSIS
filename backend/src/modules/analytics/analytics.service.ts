@@ -1,90 +1,99 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@database/prisma/prisma.service';
-import { ApplicationStatus } from '@prisma/client';
+import { ApplicationStatus, Prisma } from '@prisma/client';
 
 const funnelStageOrder = ['Applied', 'Screened', 'Interviewed', 'Offered', 'Hired'] as const;
 
 const funnelStages: ApplicationStatus[][] = [
-  ['SUBMITTED', 'UNDER_REVIEW', 'SCREENING', 'SHORTLISTED', 'ASSESSMENT', 'INTERVIEW', 'OFFER', 'HIRED', 'REJECTED', 'WITHDRAWN', 'DISQUALIFIED', 'ON_HOLD'],
-  ['UNDER_REVIEW', 'SCREENING', 'SHORTLISTED', 'ASSESSMENT', 'INTERVIEW', 'OFFER', 'HIRED'],
-  ['INTERVIEW', 'OFFER', 'HIRED'],
-  ['OFFER', 'HIRED'],
-  ['HIRED'],
-] as unknown as ApplicationStatus[][];
+  [ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.SCREENING, ApplicationStatus.SHORTLISTED, ApplicationStatus.ASSESSMENT, ApplicationStatus.INTERVIEW, ApplicationStatus.OFFER, ApplicationStatus.HIRED, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN, ApplicationStatus.DISQUALIFIED, ApplicationStatus.ON_HOLD],
+  [ApplicationStatus.UNDER_REVIEW, ApplicationStatus.SCREENING, ApplicationStatus.SHORTLISTED, ApplicationStatus.ASSESSMENT, ApplicationStatus.INTERVIEW, ApplicationStatus.OFFER, ApplicationStatus.HIRED],
+  [ApplicationStatus.INTERVIEW, ApplicationStatus.OFFER, ApplicationStatus.HIRED],
+  [ApplicationStatus.OFFER, ApplicationStatus.HIRED],
+  [ApplicationStatus.HIRED],
+];
 
-function monthsAgo(n: number): Date {
-  const d = new Date();
-  d.setMonth(d.getMonth() - n);
-  d.setDate(1);
-  d.setHours(0, 0, 0, 0);
-  return d;
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function previousSixMonthLabels(): string[] {
+  const now = new Date();
+  const current = now.getMonth();
+  const labels: string[] = [];
+  for (let i = 5; i >= 0; i--) {
+    labels.push(MONTH_NAMES[(current - i + 12) % 12]);
+  }
+  return labels;
+}
+
+function getGroupCount(row: { _count: { id: number } | true }): number {
+  return typeof row._count === 'object' ? row._count.id : 0;
 }
 
 @Injectable()
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getOverview(companyId: string, dateFrom?: string) {
-    const where: Record<string, unknown> = { companyId, deletedAt: null };
-    if (dateFrom) where.createdAt = { gte: new Date(dateFrom) };
+  private baseWhere(companyId: string, dateFrom?: string, dateTo?: string): Prisma.ApplicationWhereInput {
+    const where: Prisma.ApplicationWhereInput = { companyId, deletedAt: null };
+    if (dateFrom || dateTo) {
+      const createdAt: Prisma.DateTimeFilter = {};
+      if (dateFrom) createdAt.gte = new Date(dateFrom);
+      if (dateTo) createdAt.lte = new Date(dateTo);
+      where.createdAt = createdAt;
+    }
+    return where;
+  }
 
-    const totalApplications = await this.prisma.application.count({ where: where as never });
+  async getOverview(companyId: string, dateFrom?: string, dateTo?: string) {
+    const where = this.baseWhere(companyId, dateFrom, dateTo);
+    const totalApplications = await this.prisma.application.count({ where });
 
-    const hiredApps = await this.prisma.application.findMany({
-      where: {
-        companyId,
-        deletedAt: null,
-        status: 'HIRED',
-        hiredAt: { not: null },
-        createdAt: { not: null },
-      } as never,
-      select: { createdAt: true, hiredAt: true },
-    });
+    const { hiredApps, validHiredCount } = await this.fetchHiredAppsWithValidCount(where);
 
     let avgTimeToHire: number | null = null;
-    if (hiredApps.length > 0) {
+    if (validHiredCount > 0) {
       const totalDays = hiredApps.reduce((sum, app) => {
         if (!app.createdAt || !app.hiredAt) return sum;
-        return sum + Math.round((app.hiredAt.getTime() - app.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+        const diff = app.hiredAt.getTime() - app.createdAt.getTime();
+        if (diff <= 0) return sum;
+        return sum + Math.round(diff / (1000 * 60 * 60 * 24));
       }, 0);
-      avgTimeToHire = Math.round(totalDays / hiredApps.length);
+      avgTimeToHire = Math.round(totalDays / validHiredCount);
     }
 
     const hiredCount = await this.prisma.application.count({
-      where: { companyId, deletedAt: null, status: 'HIRED' } as never,
+      where: { ...where, status: ApplicationStatus.HIRED },
     });
     const offeredCount = await this.prisma.application.count({
-      where: { companyId, deletedAt: null, status: 'OFFER' } as never,
+      where: { ...where, status: ApplicationStatus.OFFER },
     });
     const rejectedCount = await this.prisma.application.count({
-      where: { companyId, deletedAt: null, status: 'REJECTED' } as never,
+      where: { ...where, status: ApplicationStatus.REJECTED },
     });
 
-    const acceptedOrOffered = hiredCount + offeredCount;
-    const totalDecided = acceptedOrOffered + rejectedCount;
-
-    const offerAcceptanceRate = totalDecided > 0 ? Math.round((acceptedOrOffered / totalDecided) * 100) : null;
+    const totalDecided = hiredCount + offeredCount + rejectedCount;
+    const selectionRate = totalDecided > 0 ? Math.round(((hiredCount + offeredCount) / totalDecided) * 100) : null;
 
     return {
       totalApplications,
       avgTimeToHire,
-      offerAcceptanceRate,
+      selectionRate,
       aiScreeningAccuracy: null,
     };
   }
 
-  async getFunnel(companyId: string) {
+  async getFunnel(companyId: string, dateFrom?: string, dateTo?: string) {
+    const where: Prisma.ApplicationWhereInput = {
+      ...this.baseWhere(companyId, dateFrom, dateTo),
+      status: { notIn: [ApplicationStatus.DRAFT, ApplicationStatus.ARCHIVED] },
+    };
+
     const counts = await this.prisma.application.groupBy({
       by: ['status'],
-      where: {
-        companyId,
-        deletedAt: null,
-        status: { notIn: ['DRAFT', 'ARCHIVED'] as ApplicationStatus[] },
-      },
+      where,
       _count: { id: true },
     });
 
-    const statusMap = new Map(counts.map((r) => [r.status, r._count.id]));
+    const statusMap = new Map(counts.map((r) => [r.status, getGroupCount(r)]));
     const funnel = funnelStages.map((statuses, i) => ({
       stage: funnelStageOrder[i],
       count: statuses.reduce((sum, s) => sum + (statusMap.get(s) || 0), 0),
@@ -93,20 +102,21 @@ export class AnalyticsService {
     return funnel;
   }
 
-  async getDepartments(companyId: string) {
+  async getDepartments(companyId: string, dateFrom?: string, dateTo?: string) {
     const depts = await this.prisma.department.findMany({
       where: { companyId, deletedAt: null, status: 'ACTIVE' },
       select: { id: true, name: true },
     });
 
     const jobs = await this.prisma.job.findMany({
-      where: { companyId, deletedAt: null, departmentId: { not: null } } as never,
+      where: { companyId, deletedAt: null },
       select: { id: true, departmentId: true, numberOfOpenings: true },
     });
 
+    const appWhere = this.baseWhere(companyId, dateFrom, dateTo);
     const appsByDept = await this.prisma.application.groupBy({
       by: ['jobId'],
-      where: { companyId, deletedAt: null, job: { departmentId: { not: null } } } as never,
+      where: appWhere,
       _count: { id: true },
     });
 
@@ -124,7 +134,7 @@ export class AnalyticsService {
     for (const app of appsByDept) {
       const deptId = jobDeptMap.get(app.jobId);
       if (deptId) {
-        deptApps.set(deptId, (deptApps.get(deptId) || 0) + app._count.id);
+        deptApps.set(deptId, (deptApps.get(deptId) || 0) + getGroupCount(app));
       }
     }
 
@@ -132,34 +142,20 @@ export class AnalyticsService {
       dept: dept.name,
       open: deptOpenings.get(dept.id) || 0,
       applications: deptApps.get(dept.id) || 0,
-      avgScore: null as number | null,
-      timeToHire: null as number | null,
+      avgScore: null,
+      timeToHire: null,
     }));
   }
 
-  async getSources(companyId: string) {
-    const [appSources, candSources] = await Promise.all([
-      this.prisma.application.groupBy({
-        by: ['source'],
-        where: { companyId, deletedAt: null, source: { not: null } } as never,
-        _count: { id: true },
-        orderBy: { _count: { id: 'desc' } },
-      }),
-      this.prisma.companyCandidate.groupBy({
-        by: ['source'],
-        where: { companyId, deletedAt: null, source: { not: null } } as never,
-        _count: { id: true },
-        orderBy: { _count: { id: 'desc' } },
-      }),
-    ]);
+  async getSources(companyId: string, dateFrom?: string, dateTo?: string) {
+    const where = this.baseWhere(companyId, dateFrom, dateTo);
 
-    const merged = new Map<string, number>();
-    for (const r of appSources) {
-      merged.set(r.source, (merged.get(r.source) || 0) + (r._count as never as { id: number }).id);
-    }
-    for (const r of candSources) {
-      merged.set(r.source, (merged.get(r.source) || 0) + (r._count as never as { id: number }).id);
-    }
+    const appSources = await this.prisma.application.groupBy({
+      by: ['source'],
+      where,
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+    });
 
     const sourceLabels: Record<string, string> = {
       CAREERS_PAGE: 'Careers Page',
@@ -175,37 +171,40 @@ export class AnalyticsService {
       OTHER: 'Other',
     };
 
-    return Array.from(merged.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([source, value]) => ({
-        name: sourceLabels[source] || source,
-        value,
-      }));
+    return appSources.map((r) => ({
+      name: sourceLabels[r.source] || r.source,
+      value: getGroupCount(r),
+    }));
   }
 
-  async getTimeToHireTrend(companyId: string) {
-    const sixMonthsAgo = monthsAgo(6);
+  async getTimeToHireTrend(companyId: string, dateFrom?: string, dateTo?: string) {
+    const where = this.baseWhere(companyId, dateFrom, dateTo);
+    const monthLabels = previousSixMonthLabels();
 
-    const hiredApps = await this.prisma.application.findMany({
-      where: {
-        companyId,
-        deletedAt: null,
-        status: 'HIRED',
-        hiredAt: { not: null, gte: sixMonthsAgo },
-        createdAt: { not: null },
-      } as never,
-      select: { createdAt: true, hiredAt: true },
+    const now = new Date();
+    const firstLabelMonth = (now.getMonth() - 5 + 12) % 12;
+    const startYear = now.getFullYear() - (firstLabelMonth > now.getMonth() ? 1 : 0);
+    const rangeStart = new Date(startYear, firstLabelMonth, 1);
+
+    const { hiredApps } = await this.fetchHiredAppsWithValidCount({
+      ...where,
+      hiredAt: { gte: rangeStart },
     });
 
-    const monthLabels = ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'];
+    const monthToLabel = new Map<number, string>();
+    for (let i = 0; i < monthLabels.length; i++) {
+      monthToLabel.set((firstLabelMonth + i) % 12, monthLabels[i]);
+    }
+
     const monthData = new Map<string, number[]>();
     for (const label of monthLabels) monthData.set(label, []);
 
     for (const app of hiredApps) {
       if (!app.createdAt || !app.hiredAt) continue;
-      const days = Math.round((app.hiredAt.getTime() - app.createdAt.getTime()) / (1000 * 60 * 60 * 24));
-      const monthIdx = app.hiredAt.getMonth();
-      const label = monthLabels[monthIdx >= 1 && monthIdx <= 6 ? monthIdx - 1 : monthIdx - 7 + 12];
+      const diff = app.hiredAt.getTime() - app.createdAt.getTime();
+      if (diff <= 0) continue;
+      const days = Math.round(diff / (1000 * 60 * 60 * 24));
+      const label = monthToLabel.get(app.hiredAt.getMonth());
       if (label && monthData.has(label)) {
         monthData.get(label)!.push(days);
       }
@@ -218,5 +217,21 @@ export class AnalyticsService {
         days: values.length > 0 ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0,
       };
     });
+  }
+
+  private async fetchHiredAppsWithValidCount(where: Prisma.ApplicationWhereInput): Promise<{ hiredApps: { createdAt: Date; hiredAt: Date | null }[]; validHiredCount: number }> {
+    const hiredApps = await this.prisma.application.findMany({
+      where: { ...where, status: ApplicationStatus.HIRED },
+      select: { createdAt: true, hiredAt: true },
+    });
+
+    let validHiredCount = 0;
+    for (const app of hiredApps) {
+      if (app.createdAt && app.hiredAt && app.hiredAt.getTime() - app.createdAt.getTime() > 0) {
+        validHiredCount++;
+      }
+    }
+
+    return { hiredApps, validHiredCount };
   }
 }

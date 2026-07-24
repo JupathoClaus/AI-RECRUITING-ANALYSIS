@@ -19,31 +19,48 @@ export class AnalyticsController {
   async getOverview(
     @CurrentUser() user: AuthenticatedPrincipal,
     @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.analyticsService.getOverview(user.activeCompanyId!, dateFrom);
+    return this.analyticsService.getOverview(user.activeCompanyId!, dateFrom, dateTo);
   }
 
   @Get('funnel')
   @RequirePermissions('applications.read')
-  async getFunnel(@CurrentUser() user: AuthenticatedPrincipal) {
-    return this.analyticsService.getFunnel(user.activeCompanyId!);
+  async getFunnel(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.analyticsService.getFunnel(user.activeCompanyId!, dateFrom, dateTo);
   }
 
   @Get('departments')
   @RequirePermissions('applications.read')
-  async getDepartments(@CurrentUser() user: AuthenticatedPrincipal) {
-    return this.analyticsService.getDepartments(user.activeCompanyId!);
+  async getDepartments(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.analyticsService.getDepartments(user.activeCompanyId!, dateFrom, dateTo);
   }
 
   @Get('sources')
   @RequirePermissions('applications.read')
-  async getSources(@CurrentUser() user: AuthenticatedPrincipal) {
-    return this.analyticsService.getSources(user.activeCompanyId!);
+  async getSources(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.analyticsService.getSources(user.activeCompanyId!, dateFrom, dateTo);
   }
 
   @Get('time-to-hire')
   @RequirePermissions('applications.read')
-  async getTimeToHireTrend(@CurrentUser() user: AuthenticatedPrincipal) {
-    return this.analyticsService.getTimeToHireTrend(user.activeCompanyId!);
+  async getTimeToHireTrend(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.analyticsService.getTimeToHireTrend(user.activeCompanyId!, dateFrom, dateTo);
   }
 }

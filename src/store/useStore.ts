@@ -488,10 +488,10 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const [overview, funnel, departments, sources, timeToHire] = await Promise.all([
         getAnalyticsOverview(dateFrom),
-        getAnalyticsFunnel(),
-        getAnalyticsDepartments(),
-        getAnalyticsSources(),
-        getAnalyticsTimeToHire(),
+        getAnalyticsFunnel(dateFrom),
+        getAnalyticsDepartments(dateFrom),
+        getAnalyticsSources(dateFrom),
+        getAnalyticsTimeToHire(dateFrom),
       ])
       set({
         analyticsOverview: overview,

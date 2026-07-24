@@ -3,7 +3,7 @@ import { apiRequest } from "./client"
 export interface OverviewResponse {
   totalApplications: number
   avgTimeToHire: number | null
-  offerAcceptanceRate: number | null
+  selectionRate: number | null
   aiScreeningAccuracy: null
 }
 
@@ -30,24 +30,39 @@ export interface TimeToHirePoint {
   days: number
 }
 
-export async function getAnalyticsOverview(dateFrom?: string): Promise<OverviewResponse> {
+function dateParams(dateFrom?: string, dateTo?: string): Record<string, string> | undefined {
+  const params: Record<string, string> = {}
+  if (dateFrom) params.dateFrom = dateFrom
+  if (dateTo) params.dateTo = dateTo
+  return Object.keys(params).length > 0 ? params : undefined
+}
+
+export async function getAnalyticsOverview(dateFrom?: string, dateTo?: string): Promise<OverviewResponse> {
   return apiRequest<OverviewResponse>("/analytics/overview", {
-    params: dateFrom ? { dateFrom } : undefined,
+    params: dateParams(dateFrom, dateTo),
   })
 }
 
-export async function getAnalyticsFunnel(): Promise<FunnelStage[]> {
-  return apiRequest<FunnelStage[]>("/analytics/funnel")
+export async function getAnalyticsFunnel(dateFrom?: string, dateTo?: string): Promise<FunnelStage[]> {
+  return apiRequest<FunnelStage[]>("/analytics/funnel", {
+    params: dateParams(dateFrom, dateTo),
+  })
 }
 
-export async function getAnalyticsDepartments(): Promise<DeptPerformance[]> {
-  return apiRequest<DeptPerformance[]>("/analytics/departments")
+export async function getAnalyticsDepartments(dateFrom?: string, dateTo?: string): Promise<DeptPerformance[]> {
+  return apiRequest<DeptPerformance[]>("/analytics/departments", {
+    params: dateParams(dateFrom, dateTo),
+  })
 }
 
-export async function getAnalyticsSources(): Promise<SourceItem[]> {
-  return apiRequest<SourceItem[]>("/analytics/sources")
+export async function getAnalyticsSources(dateFrom?: string, dateTo?: string): Promise<SourceItem[]> {
+  return apiRequest<SourceItem[]>("/analytics/sources", {
+    params: dateParams(dateFrom, dateTo),
+  })
 }
 
-export async function getAnalyticsTimeToHire(): Promise<TimeToHirePoint[]> {
-  return apiRequest<TimeToHirePoint[]>("/analytics/time-to-hire")
+export async function getAnalyticsTimeToHire(dateFrom?: string, dateTo?: string): Promise<TimeToHirePoint[]> {
+  return apiRequest<TimeToHirePoint[]>("/analytics/time-to-hire", {
+    params: dateParams(dateFrom, dateTo),
+  })
 }
