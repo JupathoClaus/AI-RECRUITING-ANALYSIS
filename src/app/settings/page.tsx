@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   User,
   Buildings,
@@ -11,13 +11,11 @@ import {
   DocumentUpload,
   Save2,
   Link2,
-  Chainlink,
   Logout,
   Monitor,
   Mobile,
   Global,
   Add,
-  Copy,
   Eye,
   EyeSlash,
   Message,
@@ -44,6 +42,9 @@ import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
+import * as authApi from "@/lib/api/auth.api"
+import * as companyApi from "@/lib/api/company.api"
+import type { CompanySettingsResponse } from "@/lib/api/company.api"
 
 interface Integration {
   id: string
@@ -54,22 +55,11 @@ interface Integration {
 }
 
 const initialIntegrations: Integration[] = [
-  { id: "linkedin", name: "LinkedIn", description: "Import candidate profiles and job postings directly from LinkedIn Recruiter.", connected: true, status: "Connected" },
-  { id: "indeed", name: "Indeed", description: "Sync job listings and receive applications from Indeed.", connected: true, status: "Connected" },
+  { id: "linkedin", name: "LinkedIn", description: "Import candidate profiles and job postings directly from LinkedIn Recruiter.", connected: false, status: "Disconnected" },
+  { id: "indeed", name: "Indeed", description: "Sync job listings and receive applications from Indeed.", connected: false, status: "Disconnected" },
   { id: "glassdoor", name: "Glassdoor", description: "Publish jobs to Glassdoor and gather employer reviews.", connected: false, status: "Disconnected" },
-  { id: "workday", name: "Workday", description: "Two-way sync for employee data, positions, and hires.", connected: true, status: "Error" },
+  { id: "workday", name: "Workday", description: "Two-way sync for employee data, positions, and hires.", connected: false, status: "Disconnected" },
   { id: "bamboohr", name: "BambooHR", description: "Synchronize candidate data and HR records automatically.", connected: false, status: "Disconnected" },
-]
-
-const activeSessions = [
-  { id: "s1", device: "Chrome on Windows", ip: "192.168.1.42", lastActive: "Active now", current: true },
-  { id: "s2", device: "Safari on macOS", ip: "10.0.0.15", lastActive: "2h ago", current: false },
-  { id: "s3", device: "AI Recruiter Mobile App", ip: "203.0.113.42", lastActive: "1d ago", current: false },
-]
-
-const apiKeys = [
-  { id: "k1", name: "Production API", key: "ta_live_••••••••••••a3f8", created: "Jun 15, 2026", lastUsed: "2h ago" },
-  { id: "k2", name: "Staging API", key: "ta_test_••••••••••••b2c1", created: "Jun 1, 2026", lastUsed: "5d ago" },
 ]
 
 const integrationIcons: Record<string, React.ReactNode> = {
@@ -82,40 +72,174 @@ const integrationIcons: Record<string, React.ReactNode> = {
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const userFirstName = user?.name?.split(" ")[0] || "User";
   const userEmail = user?.email || "";
   const userRole = user?.role?.toLowerCase() || "viewer";
 
   const [activeTab, setActiveTab] = useState("profile")
   const [showPassword, setShowPassword] = useState(false)
   const [twoFactor, setTwoFactor] = useState(false)
-  const [integrations, setIntegrations] = useState(initialIntegrations)
+  const [integrations] = useState(initialIntegrations)
   const [screeningThreshold, setScreeningThreshold] = useState(70)
   const [aiPersonality, setAiPersonality] = useState("professional")
   const [language, setLanguage] = useState("en")
   const [autoSchedule, setAutoSchedule] = useState(true)
   const [recordingEnabled, setRecordingEnabled] = useState(false)
 
-  const toggleIntegration = (id: string) => {
-    setIntegrations((prev) =>
-      prev.map((i) =>
-        i.id === id
-          ? {
-              ...i,
-              connected: !i.connected,
-              status: !i.connected ? ("Connected" as const) : ("Disconnected" as const),
-            }
-          : i
-      )
+  const [companySettings, setCompanySettings] = useState<CompanySettingsResponse | null>(null)
+  const [sessions, setSessions] = useState<Array<{ id: string; status: string; ipAddress: string | null; userAgent: string | null; deviceName: string | null; lastUsedAt: string }>>([])
+  const [pageLoading, setPageLoading] = useState(true)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [companySaving, setCompanySaving] = useState(false)
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [companyError, setCompanyError] = useState<string | null>(null)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
+  const [companySuccess, setCompanySuccess] = useState<string | null>(null)
+  const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null)
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
+
+  const initialFirstName = user?.name?.split(" ")[0] || ""
+  const initialLastName = user?.name?.split(" ").slice(1).join(" ") || ""
+  const [firstName, setFirstName] = useState(initialFirstName)
+  const [lastName, setLastName] = useState(initialLastName)
+
+  const [companyName, setCompanyName] = useState("")
+  const [companyIndustry, setCompanyIndustry] = useState("")
+  const [companySize, setCompanySize] = useState("")
+  const [companyWebsite, setCompanyWebsite] = useState("")
+  const [companyCity, setCompanyCity] = useState("")
+
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const [profile, settings] = await Promise.all([
+          companyApi.getCompanyProfile(),
+          companyApi.getCompanySettings(),
+        ])
+        if (cancelled) return
+        setCompanySettings(settings)
+        setCompanyName(profile.name || "")
+        setCompanyIndustry(profile.industry || "")
+        setCompanySize(profile.companySize || "")
+        setCompanyWebsite(profile.website || "")
+        setCompanyCity(profile.city || "")
+        setLanguage(settings.defaultInterviewLanguage || "en")
+      } catch {
+        // Settings load silently — form shows empty/placeholder
+      } finally {
+        if (!cancelled) setPageLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab !== "security") return
+    let cancelled = false
+    authApi.getSessions().then((data) => {
+      if (!cancelled) setSessions(data as typeof sessions)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [activeTab])
+
+  const saveProfile = useCallback(async () => {
+    setProfileSaving(true)
+    setProfileError(null)
+    setProfileSuccess(null)
+    try {
+      await authApi.updateProfile({ firstName, lastName })
+      setProfileSuccess("Profile updated successfully")
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string }
+      setProfileError(apiErr.message || "Failed to update profile")
+    } finally {
+      setProfileSaving(false)
+    }
+  }, [firstName, lastName])
+
+  const saveCompany = useCallback(async () => {
+    setCompanySaving(true)
+    setCompanyError(null)
+    setCompanySuccess(null)
+    try {
+      await companyApi.updateCompanyProfile({
+        name: companyName,
+        industry: companyIndustry || undefined,
+        companySize: companySize || undefined,
+        website: companyWebsite || undefined,
+        city: companyCity || undefined,
+      })
+      setCompanySuccess("Company details updated successfully")
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string }
+      setCompanyError(apiErr.message || "Failed to update company")
+    } finally {
+      setCompanySaving(false)
+    }
+  }, [companyName, companyIndustry, companySize, companyWebsite, companyCity])
+
+  const saveSettings = useCallback(async () => {
+    setSettingsError(null)
+    setSettingsSuccess(null)
+    try {
+      const updated = await companyApi.updateCompanySettings({
+        defaultInterviewLanguage: language,
+      })
+      setCompanySettings(updated)
+      setSettingsSuccess("Settings saved successfully")
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string }
+      setSettingsError(apiErr.message || "Failed to save settings")
+    }
+  }, [language])
+
+  const handleChangePassword = useCallback(async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordError("All password fields are required")
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords do not match")
+      return
+    }
+    setPasswordSaving(true)
+    setPasswordError(null)
+    setPasswordSuccess(null)
+    try {
+      await authApi.changePassword({
+        currentPassword,
+        newPassword,
+        passwordConfirmation: confirmPassword,
+      })
+      setPasswordSuccess("Password changed successfully")
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string }
+      setPasswordError(apiErr.message || "Failed to change password")
+    } finally {
+      setPasswordSaving(false)
+    }
+  }, [currentPassword, newPassword, confirmPassword])
+
+  if (pageLoading) {
+    return (
+      <AppLayout title="Settings" description="Manage your account, company, and application preferences.">
+        <div className="space-y-6 p-6">
+          <div className="h-10 w-64 bg-surface-elevated rounded animate-pulse" />
+          <div className="h-[600px] bg-surface-elevated rounded animate-pulse" />
+        </div>
+      </AppLayout>
     )
-  }
-
-  const getIntegrationIcon = (id: string) => integrationIcons[id]
-
-  const integrationStatusColor: Record<string, string> = {
-    Connected: "success",
-    Disconnected: "secondary",
-    Error: "error",
   }
 
   return (
@@ -154,24 +278,30 @@ export default function SettingsPage() {
                 <CardDescription>Update your profile details and contact information.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {profileError && (
+                  <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-2 text-sm text-error">{profileError}</div>
+                )}
+                {profileSuccess && (
+                  <div className="rounded-lg border border-success/20 bg-success/5 px-4 py-2 text-sm text-success">{profileSuccess}</div>
+                )}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">First Name</label>
-                    <Input defaultValue={userFirstName} />
+                    <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Last Name</label>
-                    <Input defaultValue={user?.name?.split(" ").slice(1).join(" ") || ""} />
+                    <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Email</label>
-                  <Input type="email" defaultValue={userEmail} />
+                  <Input type="email" value={userEmail} disabled className="opacity-60" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Role</label>
-                  <Select defaultValue={userRole}>
-                    <SelectTrigger>
+                  <Select defaultValue={userRole} disabled>
+                    <SelectTrigger className="opacity-60">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -184,8 +314,8 @@ export default function SettingsPage() {
                 </div>
                 <Separator className="opacity-50" />
                 <div className="flex justify-end">
-                  <Button>
-                    <Save2 className="h-4 w-4" /> Save Changes
+                  <Button onClick={saveProfile} disabled={profileSaving}>
+                    <Save2 className="h-4 w-4" /> {profileSaving ? "Saving..." : "Save Changes"}
                   </Button>
                 </div>
               </CardContent>
@@ -201,7 +331,7 @@ export default function SettingsPage() {
                   {user?.name?.split(" ").map((n) => n[0]).join("") || "U"}
                 </Avatar>
                 <div className="flex flex-col items-center gap-2">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" disabled title="Photo upload coming soon">
                     <DocumentUpload className="h-4 w-4" /> Upload Photo
                   </Button>
                   <p className="text-xs text-muted">PNG, JPG. Max 2MB.</p>
@@ -220,14 +350,20 @@ export default function SettingsPage() {
                 <CardDescription>Manage your organization&apos;s information.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {companyError && (
+                  <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-2 text-sm text-error">{companyError}</div>
+                )}
+                {companySuccess && (
+                  <div className="rounded-lg border border-success/20 bg-success/5 px-4 py-2 text-sm text-success">{companySuccess}</div>
+                )}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2 sm:col-span-2">
                     <label className="text-sm font-medium text-foreground">Company Name</label>
-                    <Input placeholder="Enter company name" />
+                    <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Enter company name" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Industry</label>
-                    <Select defaultValue="technology">
+                    <Select value={companyIndustry || "technology"} onValueChange={setCompanyIndustry}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select industry" />
                       </SelectTrigger>
@@ -242,7 +378,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Company Size</label>
-                    <Select>
+                    <Select value={companySize} onValueChange={setCompanySize}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select size" />
                       </SelectTrigger>
@@ -258,17 +394,17 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Website</label>
-                  <Input type="url" placeholder="https://example.com" />
+                  <Input type="url" value={companyWebsite} onChange={(e) => setCompanyWebsite(e.target.value)} placeholder="https://example.com" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Locations</label>
-                  <Input placeholder="City, State" />
+                  <Input value={companyCity} onChange={(e) => setCompanyCity(e.target.value)} placeholder="City, State" />
                   <p className="text-xs text-muted">Separate multiple locations with commas.</p>
                 </div>
                 <Separator className="opacity-50" />
                 <div className="flex justify-end">
-                  <Button>
-                    <Save2 className="h-4 w-4" /> Save Changes
+                  <Button onClick={saveCompany} disabled={companySaving}>
+                    <Save2 className="h-4 w-4" /> {companySaving ? "Saving..." : "Save Changes"}
                   </Button>
                 </div>
               </CardContent>
@@ -284,7 +420,7 @@ export default function SettingsPage() {
                   <Buildings className="h-10 w-10 text-muted" />
                 </div>
                 <div className="flex flex-col items-center gap-2">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" disabled title="Logo upload coming soon">
                     <DocumentUpload className="h-4 w-4" /> Upload Logo
                   </Button>
                   <p className="text-xs text-muted">PNG, JPG. Max 5MB.</p>
@@ -308,35 +444,40 @@ export default function SettingsPage() {
                   label: "Email Notifications",
                   description: "Receive email updates for account activity and important announcements.",
                   icon: Message,
-                  defaultChecked: true,
+                  checked: true,
+                  supported: false,
                 },
                 {
                   id: "applications",
                   label: "Application Alerts",
                   description: "Get notified when new applications are submitted for your job postings.",
                   icon: Document,
-                  defaultChecked: true,
+                  checked: companySettings?.notifyRecruiterOnNewApplication ?? true,
+                  supported: true,
                 },
                 {
                   id: "interviews",
                   label: "Interview Reminders",
                   description: "Receive reminders about upcoming interviews and schedule changes.",
                   icon: Calendar,
-                  defaultChecked: true,
+                  checked: false,
+                  supported: false,
                 },
                 {
                   id: "ai-scores",
                   label: "AI Score Updates",
                   description: "Notifications when candidates receive updated AI assessment scores.",
                   icon: MagicStar,
-                  defaultChecked: false,
+                  checked: false,
+                  supported: false,
                 },
                 {
                   id: "digest",
                   label: "Weekly Digest",
                   description: "A weekly summary of recruitment activity, pipeline changes, and key metrics.",
                   icon: Notification,
-                  defaultChecked: true,
+                  checked: false,
+                  supported: false,
                 },
               ].map((notif, idx) => (
                 <div key={notif.id}>
@@ -350,7 +491,7 @@ export default function SettingsPage() {
                         <p className="text-xs text-muted mt-0.5">{notif.description}</p>
                       </div>
                     </div>
-                    <Switch defaultChecked={notif.defaultChecked} />
+                    <Switch defaultChecked={notif.checked} disabled={!notif.supported} />
                   </div>
                   {idx < 4 && <Separator className="opacity-50" />}
                 </div>
@@ -373,7 +514,7 @@ export default function SettingsPage() {
                     <label className="text-sm font-medium text-foreground">
                       Screening Threshold: <span className="text-primary">{screeningThreshold}%</span>
                     </label>
-                    <span className="text-xs text-muted">Minimum AI score to advance</span>
+                    <span className="text-xs text-muted">Feature coming soon</span>
                   </div>
                   <input
                     type="range"
@@ -381,7 +522,8 @@ export default function SettingsPage() {
                     max={100}
                     value={screeningThreshold}
                     onChange={(e) => setScreeningThreshold(Number(e.target.value))}
-                    className="w-full h-2 rounded-full appearance-none cursor-pointer bg-surface-elevated accent-[#6366f1]"
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer bg-surface-elevated accent-[#6366f1] opacity-60"
+                    disabled
                   />
                   <div className="flex justify-between text-xs text-muted">
                     <span>0%</span>
@@ -397,15 +539,15 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-foreground">Auto-schedule Interviews</p>
-                      <p className="text-xs text-muted">Automatically schedule interviews for top-scoring candidates</p>
+                      <p className="text-xs text-muted">Feature coming soon</p>
                     </div>
-                    <Switch checked={autoSchedule} onCheckedChange={setAutoSchedule} />
+                    <Switch checked={autoSchedule} onCheckedChange={setAutoSchedule} disabled />
                   </div>
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">AI Interviewer Personality</label>
-                    <Select value={aiPersonality} onValueChange={setAiPersonality}>
-                      <SelectTrigger>
+                    <Select value={aiPersonality} onValueChange={setAiPersonality} disabled>
+                      <SelectTrigger className="opacity-60">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -419,7 +561,7 @@ export default function SettingsPage() {
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Language Preference</label>
-                    <Select value={language} onValueChange={setLanguage}>
+                    <Select value={language} onValueChange={(v) => { setLanguage(v); saveSettings() }}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -431,14 +573,16 @@ export default function SettingsPage() {
                         <SelectItem value="zh">Chinese</SelectItem>
                       </SelectContent>
                     </Select>
+                    {settingsError && <p className="text-xs text-error mt-1">{settingsError}</p>}
+                    {settingsSuccess && <p className="text-xs text-success mt-1">{settingsSuccess}</p>}
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-foreground">Interview Recording</p>
-                      <p className="text-xs text-muted">Record AI interview sessions for review and compliance</p>
+                      <p className="text-xs text-muted">Feature coming soon</p>
                     </div>
-                    <Switch checked={recordingEnabled} onCheckedChange={setRecordingEnabled} />
+                    <Switch checked={recordingEnabled} onCheckedChange={setRecordingEnabled} disabled />
                   </div>
                 </div>
               </CardContent>
@@ -514,49 +658,29 @@ export default function SettingsPage() {
                 >
                   <div className="flex items-center gap-4">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-surface-elevated">
-                      {getIntegrationIcon(integration.id)}
+                      {integrationIcons[integration.id]}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-foreground">{integration.name}</p>
                         <Badge
-                          variant={
-                            integrationStatusColor[integration.status] as
-                              | "success"
-                              | "secondary"
-                              | "error"
-                          }
+                          variant="secondary"
                           className="text-[10px]"
                         >
-                          <span
-                            className={cn(
-                              "mr-1 inline-block h-1.5 w-1.5 rounded-full",
-                              integration.status === "Connected" && "bg-success",
-                              integration.status === "Disconnected" && "bg-muted",
-                              integration.status === "Error" && "bg-error"
-                            )}
-                          />
-                          {integration.status}
+                          <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-muted" />
+                          Coming Soon
                         </Badge>
                       </div>
                       <p className="text-xs text-muted mt-0.5">{integration.description}</p>
                     </div>
                   </div>
                   <Button
-                    variant={integration.connected ? "outline" : "default"}
+                    variant="outline"
                     size="sm"
-                    onClick={() => toggleIntegration(integration.id)}
-                    className="shrink-0"
+                    disabled
+                    className="shrink-0 opacity-50"
                   >
-                    {integration.connected ? (
-                      <>
-                        <Chainlink className="h-4 w-4" /> Disconnect
-                      </>
-                    ) : (
-                      <>
-                        <Link2 className="h-4 w-4" /> Connect
-                      </>
-                    )}
+                    <Link2 className="h-4 w-4" /> Connect
                   </Button>
                 </div>
               ))}
@@ -574,23 +698,29 @@ export default function SettingsPage() {
                 <CardDescription>Update your account password. Use a strong, unique password.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {passwordError && (
+                  <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-2 text-sm text-error">{passwordError}</div>
+                )}
+                {passwordSuccess && (
+                  <div className="rounded-lg border border-success/20 bg-success/5 px-4 py-2 text-sm text-success">{passwordSuccess}</div>
+                )}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Current Password</label>
                   <div className="relative">
-                    <Input type={showPassword ? "text" : "password"} placeholder="Enter current password" />
+                    <Input type={showPassword ? "text" : "password"} placeholder="Enter current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">New Password</label>
                     <div className="relative">
-                      <Input type={showPassword ? "text" : "password"} placeholder="Enter new password" />
+                      <Input type={showPassword ? "text" : "password"} placeholder="Enter new password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Confirm New Password</label>
                     <div className="relative">
-                      <Input type={showPassword ? "text" : "password"} placeholder="Confirm new password" />
+                      <Input type={showPassword ? "text" : "password"} placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
                     </div>
                   </div>
                 </div>
@@ -610,7 +740,9 @@ export default function SettingsPage() {
                   </Button>
                 </div>
                 <div className="flex justify-end">
-                  <Button>Update Password</Button>
+                  <Button onClick={handleChangePassword} disabled={passwordSaving}>
+                    {passwordSaving ? "Updating..." : "Update Password"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -630,11 +762,11 @@ export default function SettingsPage() {
                     <div>
                       <p className="text-sm font-medium text-foreground">Two-Factor Authentication</p>
                       <p className="text-xs text-muted mt-0.5">
-                        Secure your account with an authenticator app or SMS code.
+                        Feature coming soon
                       </p>
                     </div>
                   </div>
-                  <Switch checked={twoFactor} onCheckedChange={setTwoFactor} />
+                  <Switch checked={twoFactor} onCheckedChange={setTwoFactor} disabled />
                 </div>
               </CardContent>
             </Card>
@@ -647,7 +779,17 @@ export default function SettingsPage() {
                     <CardTitle className="text-base">Active Sessions</CardTitle>
                     <CardDescription>Devices and locations where your account is logged in.</CardDescription>
                   </div>
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await authApi.logoutAll(true)
+                        const updated = await authApi.getSessions()
+                        setSessions(updated as typeof sessions)
+                      } catch { /* ignore */ }
+                    }}
+                  >
                     <Logout className="h-4 w-4" /> Sign Out All
                   </Button>
                 </div>
@@ -664,12 +806,17 @@ export default function SettingsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {activeSessions.map((session) => (
+                    {sessions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-sm text-muted py-4">No active sessions</TableCell>
+                      </TableRow>
+                    ) : (
+                    sessions.map((session) => (
                       <TableRow key={session.id}>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-elevated">
-                              {session.device.includes("Mobile") ? (
+                              {session.userAgent?.includes("Mobile") ? (
                                 <Mobile className="h-4 w-4 text-muted" />
                               ) : (
                                 <Monitor className="h-4 w-4 text-muted" />
@@ -677,31 +824,37 @@ export default function SettingsPage() {
                             </div>
                             <div>
                               <p className="text-sm font-medium text-foreground">
-                                {session.device}
-                                {session.current && (
-                                  <span className="ml-2 text-xs text-primary">(Current)</span>
-                                )}
+                                {session.deviceName || session.userAgent || "Unknown device"}
                               </p>
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
                           <code className="text-xs text-muted bg-surface-elevated px-2 py-0.5 rounded">
-                            {session.ip}
+                            {session.ipAddress || "—"}
                           </code>
                         </TableCell>
                         <TableCell>
-                          <p className="text-sm text-muted">{session.lastActive}</p>
+                          <p className="text-sm text-muted">{session.lastUsedAt ? new Date(session.lastUsedAt).toLocaleDateString() : "—"}</p>
                         </TableCell>
                         <TableCell className="text-right">
-                          {!session.current && (
-                            <Button variant="ghost" size="sm" className="h-8 text-xs text-error">
-                              Revoke
-                            </Button>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-xs text-error"
+                            onClick={async () => {
+                              try {
+                                await authApi.revokeSession(session.id)
+                                setSessions((prev) => prev.filter((s) => s.id !== session.id))
+                              } catch { /* ignore */ }
+                            }}
+                          >
+                            Revoke
+                          </Button>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ))
+                    )}
                   </TableBody>
                 </Table>
                 </div>
@@ -716,54 +869,14 @@ export default function SettingsPage() {
                     <CardTitle className="text-base">API Keys</CardTitle>
                     <CardDescription>Manage API keys for programmatic access to AI Recruiter.</CardDescription>
                   </div>
-                  <Button size="sm">
+                  <Button size="sm" disabled>
                     <Add className="h-4 w-4" /> Create Key
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="hover:bg-transparent">
-                      <TableHead>Name</TableHead>
-                      <TableHead>API Key</TableHead>
-                      <TableHead className="hidden sm:table-cell">Created</TableHead>
-                      <TableHead className="hidden sm:table-cell">Last Used</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {apiKeys.map((apiKey) => (
-                      <TableRow key={apiKey.id}>
-                        <TableCell>
-                          <p className="text-sm font-medium text-foreground">{apiKey.name}</p>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <code className="text-xs text-muted bg-surface-elevated px-2 py-0.5 rounded font-mono">
-                              {apiKey.key}
-                            </code>
-                            <Button variant="ghost" size="icon" className="h-6 w-6">
-                              <Copy className="h-3 w-3 text-muted" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <p className="text-sm text-muted">{apiKey.created}</p>
-                        </TableCell>
-                        <TableCell>
-                          <p className="text-sm text-muted">{apiKey.lastUsed}</p>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="h-8 text-xs text-error">
-                            Revoke
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="rounded-lg bg-surface-elevated p-6 text-center">
+                  <p className="text-sm text-muted">API key management is not available yet.</p>
                 </div>
               </CardContent>
             </Card>

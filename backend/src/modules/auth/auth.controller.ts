@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Patch,
   Delete,
   Body,
   Param,
@@ -25,6 +26,7 @@ import { Request, Response } from 'express';
 
 import { RequestWithId } from '@common/types/request.types';
 import { AuthService } from './auth.service';
+import { UsersService } from '@modules/users/users.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CsrfProtected } from './decorators/csrf-protected.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -41,6 +43,7 @@ import {
   ResetPasswordDto,
   ChangePasswordDto,
   LogoutAllDto,
+  UpdateProfileDto,
 } from './dto';
 
 @ApiTags('Auth')
@@ -49,6 +52,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Post('register-company')
@@ -244,6 +248,34 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async getMe(@CurrentUser() user: AuthenticatedPrincipal) {
     return this.authService.getMe(user.userId, user.activeCompanyId, user.membershipId);
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update current user profile' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Profile updated' })
+  @HttpCode(HttpStatus.OK)
+  async updateProfile(
+    @Body() dto: UpdateProfileDto,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    const updated = await this.usersService.update(user.userId, dto);
+    return {
+      id: updated.id,
+      email: updated.email,
+      firstName: updated.firstName,
+      lastName: updated.lastName,
+      phone: updated.phone,
+      avatarUrl: updated.avatarUrl,
+      status: updated.status,
+      timezone: updated.timezone,
+      preferredLocale: updated.preferredLocale,
+      createdAt: updated.createdAt,
+      emailVerifiedAt: updated.emailVerifiedAt,
+      lastLoginAt: updated.lastLoginAt,
+      passwordChangedAt: updated.passwordChangedAt,
+    };
   }
 
   @Get('sessions')

@@ -451,7 +451,7 @@ export default function AnalyticsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <CardTitle className="text-base">Source Breakdown</CardTitle>
-                  <CardDescription>Candidates by source channel</CardDescription>
+                  <CardDescription>Applications by source channel</CardDescription>
                 </div>
                 <People className="h-4 w-4 text-muted" />
               </div>

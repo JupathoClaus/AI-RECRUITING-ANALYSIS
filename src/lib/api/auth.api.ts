@@ -29,6 +29,37 @@ export async function getMe(): Promise<MeResponse> {
   return apiRequest<MeResponse>("/auth/me")
 }
 
+export async function updateProfile(dto: { firstName?: string; lastName?: string; phone?: string }): Promise<MeResponse["user"]> {
+  return apiRequest<MeResponse["user"]>("/auth/profile", {
+    method: "PATCH",
+    body: dto,
+  })
+}
+
+export async function changePassword(dto: { currentPassword: string; newPassword: string; passwordConfirmation: string; revokeOtherSessions?: boolean }): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>("/auth/change-password", {
+    method: "POST",
+    body: dto,
+  })
+}
+
+export async function getSessions(): Promise<Array<{ id: string; activeCompanyId: string | null; status: string; ipAddress: string | null; userAgent: string | null; deviceName: string | null; lastUsedAt: string; expiresAt: string; createdAt: string }>> {
+  return apiRequest("/auth/sessions")
+}
+
+export async function revokeSession(sessionId: string): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/auth/sessions/${sessionId}`, {
+    method: "DELETE",
+  })
+}
+
+export async function logoutAll(exceptCurrentSession?: boolean): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>("/auth/logout-all", {
+    method: "POST",
+    body: { exceptCurrentSession },
+  })
+}
+
 export async function logout(): Promise<void> {
   try {
     await apiRequest<void>("/auth/logout", { method: "POST" })
