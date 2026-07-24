@@ -1,40 +1,29 @@
 "use client"
 
 import * as React from "react"
-import { useStore } from "@/store/useStore"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { ModalHeader } from "@/components/ui/modal-header"
-import { cn, timeAgo } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
+import { cn, getErrorMessage } from "@/lib/utils"
 import {
   Document,
   Chart2,
   People,
   Clock,
   DocumentDownload,
-  Eye,
-  Share,
-  Add,
-  Calendar,
   MagicStar,
   Flag,
   TrendUp,
   Chart,
-  Filter,
-  RefreshCircle,
-  TickCircle,
-  ArrowRight,
   Briefcase,
 } from "iconsax-react"
+import * as reportsApi from "@/lib/api/reports.api"
+import type { ReportParams, CandidateEvaluationRow, InterviewSummaryRow, TimeToHireRow, SourceEffectivenessRow, JobSummaryRow, ActivityRow, PipelineReport } from "@/lib/api/reports.api"
 
-interface ReportTemplate {
+interface ReportView {
   id: string
   title: string
   description: string
@@ -44,341 +33,475 @@ interface ReportTemplate {
   category: string
 }
 
-const reportTemplates: ReportTemplate[] = [
+const reportViews: ReportView[] = [
   {
-    id: "tpl1",
+    id: "candidate-evaluation",
     title: "Candidate Evaluation Report",
-    description: "Comprehensive assessment of individual candidates including AI scores, interview feedback, and hiring recommendations.",
+    description: "Candidate details, application status, source, and interview outcomes by job.",
     icon: <People className="h-5 w-5" />,
     color: "text-primary",
     bgColor: "bg-primary-muted",
     category: "Candidates",
   },
   {
-    id: "tpl2",
+    id: "interview-summary",
     title: "Interview Summary Report",
-    description: "Aggregated interview results with scoring breakdowns, interviewer feedback, and comparison analysis.",
+    description: "Aggregated interview results with type, status, duration, and interviewer feedback.",
     icon: <Chart2 className="h-5 w-5" />,
     color: "text-success",
     bgColor: "bg-success-muted",
     category: "Interviews",
   },
   {
-    id: "tpl3",
+    id: "pipeline",
     title: "Pipeline Analytics Report",
-    description: "End-to-end pipeline metrics including conversion rates, stage durations, and bottleneck identification.",
+    description: "End-to-end pipeline metrics including conversion rates and stage distributions.",
     icon: <TrendUp className="h-5 w-5" />,
     color: "text-warning",
     bgColor: "bg-warning-muted",
     category: "Analytics",
   },
   {
-    id: "tpl4",
-    title: "Diversity & Inclusion Report",
-    description: "Demographic breakdown of applicant pool, interview candidates, and hired candidates with DEI metrics.",
-    icon: <Chart className="h-5 w-5" />,
-    color: "text-primary",
-    bgColor: "bg-primary-muted",
-    category: "Compliance",
-  },
-  {
-    id: "tpl5",
+    id: "time-to-hire",
     title: "Time-to-Hire Report",
-    description: "Analysis of hiring velocity by department, role, and source with historical trend comparisons.",
+    description: "Analysis of hiring velocity from application submission to hired date.",
     icon: <Clock className="h-5 w-5" />,
     color: "text-info",
     bgColor: "bg-info-muted",
     category: "Operations",
   },
   {
-    id: "tpl6",
+    id: "source-effectiveness",
     title: "Source Effectiveness Report",
-    description: "ROI analysis of recruitment channels with cost-per-hire, quality metrics, and channel recommendations.",
+    description: "Applications by source channel with interview and hire conversion rates.",
     icon: <Flag className="h-5 w-5" />,
     color: "text-error",
     bgColor: "bg-error-muted",
     category: "Sourcing",
   },
+  {
+    id: "job-summary",
+    title: "Job Summary Report",
+    description: "Per-job breakdown of applications, interviews, hires, and active candidates.",
+    icon: <Briefcase className="h-5 w-5" />,
+    color: "text-primary",
+    bgColor: "bg-primary-muted",
+    category: "Jobs",
+  },
+  {
+    id: "diversity",
+    title: "Diversity & Inclusion Report",
+    description: "Demographic reporting requires explicitly collected and authorized candidate data.",
+    icon: <Chart className="h-5 w-5" />,
+    color: "text-muted",
+    bgColor: "bg-surface-elevated",
+    category: "Compliance",
+  },
+  {
+    id: "activity",
+    title: "Recruitment Activity Report",
+    description: "Audit trail of application events including submissions, stage changes, and interviews.",
+    icon: <MagicStar className="h-5 w-5" />,
+    color: "text-warning",
+    bgColor: "bg-warning-muted",
+    category: "Audit",
+  },
 ]
 
-interface RecentReport {
-  id: string
-  title: string
-  type: string
-  date: Date
-  status: "Ready" | "Generating"
-  generatedBy: string
-}
-
-const statusConfig: Record<"Ready" | "Generating", { variant: "success" | "warning"; icon: React.ReactNode }> = {
-  Ready: { variant: "success", icon: <TickCircle className="h-3 w-3" /> },
-  Generating: { variant: "warning", icon: <RefreshCircle className="h-3 w-3 animate-spin" /> },
+function formatDate(iso: string | null): string {
+  if (!iso) return "—"
+  return new Date(iso).toLocaleDateString()
 }
 
 export default function ReportsPage() {
-  const { jobs, candidates, interviews } = useStore()
-  const [generateDialogOpen, setGenerateDialogOpen] = React.useState(false)
-  const [selectedTemplate, setSelectedTemplate] = React.useState<ReportTemplate | null>(null)
-  const [reportParams, setReportParams] = React.useState({
-    department: "all",
-    dateRange: "this-month",
-    format: "pdf",
-  })
+  const [activeView, setActiveView] = React.useState<string | null>(null)
+  const [data, setData] = React.useState<unknown>(null)
+  const [loading, setLoading] = React.useState(false)
+  const [error, setError] = React.useState<string | null>(null)
+  const [params] = React.useState<ReportParams>({ page: 1, limit: 100 })
 
-  const handleGenerate = (template: ReportTemplate) => {
-    setSelectedTemplate(template)
-    setGenerateDialogOpen(true)
+  const activeReport = reportViews.find((r) => r.id === activeView)
+
+  React.useEffect(() => {
+    let cancelled = false
+    if (activeView && activeView !== "diversity") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(true)
+      setError(null)
+      const fn = async () => {
+        try {
+          let result: unknown
+          switch (activeView) {
+            case "candidate-evaluation": result = await reportsApi.getCandidateEvaluation(params); break
+            case "interview-summary": result = await reportsApi.getInterviewSummary(params); break
+            case "pipeline": result = await reportsApi.getPipeline(params); break
+            case "time-to-hire": result = await reportsApi.getTimeToHire(params); break
+            case "source-effectiveness": result = await reportsApi.getSourceEffectiveness(params); break
+            case "job-summary": result = await reportsApi.getJobSummary(params); break
+            case "activity": result = await reportsApi.getActivity(params); break
+          }
+          if (!cancelled) setData(result)
+        } catch (err: unknown) {
+          if (!cancelled) setError(getErrorMessage(err, "Failed to load report"))
+        } finally {
+          if (!cancelled) setLoading(false)
+        }
+      }
+      fn()
+    }
+    if (activeView === "diversity") {
+      setData(null)
+      setLoading(false)
+    }
+    return () => { cancelled = true }
+  }, [activeView, params])
+
+  const handleViewChange = (viewId: string) => {
+    setActiveView(viewId)
+    setData(null)
   }
 
-  const activeJobs = jobs.filter((j) => j.status === "Active").length
-  const totalCandidates = candidates.length
-  const completedInterviews = interviews.filter((i) => i.status === "Completed").length
+  const handleExport = () => {
+    if (!activeView || activeView === "diversity") return
+    const url = reportsApi.getExportUrl(activeView, params)
+    window.open(url!, "_blank")
+  }
+
+  const renderDiversityUnavailable = () => (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-elevated mb-4">
+        <Chart className="h-8 w-8 text-muted" />
+      </div>
+      <h3 className="text-lg font-semibold text-foreground mb-2">Not Available</h3>
+      <p className="text-sm text-muted max-w-lg">
+        Diversity and inclusion reporting requires demographic data that is explicitly collected from candidates with their consent.
+        This information is not currently collected or stored in the system.
+        If your organization collects this data through an external process, it cannot be reported here without a data integration.
+      </p>
+    </div>
+  )
 
   return (
     <AppLayout
       title="Reports"
-      description="Generate and manage AI-powered recruitment reports."
-      actions={
-        <Button size="sm" disabled>
-          <Add className="h-4 w-4" />
-          Generate Report
-        </Button>
-      }
+      description="Generate and export recruitment reports from live system data."
     >
       <div className="space-y-6">
-        {/* Stats Overview */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 animate-fade-in">
-          <Card className="border-l-4 border-l-primary">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted font-semibold uppercase tracking-wide">Templates Available</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{reportTemplates.length}</p>
+        {/* Report Selector */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {reportViews.map((view) => (
+            <Card
+              key={view.id}
+              className={cn(
+                "group hover:border-primary/30 transition-all duration-200 cursor-pointer",
+                activeView === view.id && "border-primary/50 ring-1 ring-primary/20"
+              )}
+              onClick={() => handleViewChange(view.id)}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", view.bgColor, view.color)}>
+                    {view.icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-foreground truncate">{view.title}</p>
+                    <p className="text-xs text-muted truncate">{view.category}</p>
+                  </div>
                 </div>
-                <Document className="h-5 w-5 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-success">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted font-semibold uppercase tracking-wide">Active Jobs</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{activeJobs}</p>
-                </div>
-                <TickCircle className="h-5 w-5 text-success" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-warning">
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted font-semibold uppercase tracking-wide">Total Candidates</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{totalCandidates}</p>
-                </div>
-                <RefreshCircle className="h-5 w-5 text-warning animate-spin" />
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ))}
         </div>
 
-        {/* Report Templates */}
-        <div className="animate-fade-in">
-          <h3 className="text-sm font-medium text-muted mb-4">Report Templates</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {reportTemplates.map((template) => (
-              <Card
-                key={template.id}
-                className="group hover:border-primary/30 transition-all duration-200 cursor-pointer"
-                onClick={() => handleGenerate(template)}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", template.bgColor, template.color)}>
-                        {template.icon}
-                      </div>
-                      <div className="min-w-0">
-                        <CardTitle className="text-sm truncate">{template.title}</CardTitle>
-                        <CardDescription className="text-xs">{template.category}</CardDescription>
-                      </div>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-muted shrink-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+        {/* Active Report */}
+        {activeReport && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", activeReport.bgColor, activeReport.color)}>
+                    {activeReport.icon}
                   </div>
-                </CardHeader>
-                <CardContent className="pb-4">
-                  <p className="text-xs text-muted leading-relaxed line-clamp-2">{template.description}</p>
-                  <div className="mt-3 flex items-center justify-between">
-                    <Badge variant="outline" className="text-[10px]">{template.category}</Badge>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs gap-1"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleGenerate(template)
-                      }}
-                    >
-                      <MagicStar className="h-3 w-3" />
-                      Generate
-                    </Button>
+                  <div className="min-w-0">
+                    <CardTitle className="text-base">{activeReport.title}</CardTitle>
+                    <CardDescription>{activeReport.description}</CardDescription>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-
-        {/* Recent Reports - Empty State */}
-        <Card className="animate-fade-in">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base">Recent Reports</CardTitle>
-                <CardDescription>Your recently generated reports</CardDescription>
+                </div>
+                {activeView !== "diversity" && (
+                  <Button variant="outline" size="sm" onClick={handleExport} disabled={loading || !data}>
+                    <DocumentDownload className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                )}
               </div>
-              <Calendar className="h-4 w-4 text-muted" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-12">
+            </CardHeader>
+            <CardContent>
+              {activeView === "diversity" ? (
+                renderDiversityUnavailable()
+              ) : loading ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : error ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <p className="text-sm text-error mb-3">{error}</p>
+                  <Button variant="outline" size="sm" onClick={() => window.location.reload()}>Retry</Button>
+                </div>
+              ) : data ? (
+                <ReportTable viewId={activeView!} data={data} />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <Document className="h-12 w-12 text-muted/30 mb-3" />
+                  <p className="text-sm text-muted">Select a report above to view data</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {!activeView && (
+          <Card>
+            <CardContent className="py-12 text-center">
               <Document className="h-12 w-12 mx-auto text-muted/30 mb-4" />
-              <h4 className="font-medium text-foreground">No reports generated yet</h4>
-              <p className="text-sm text-muted mt-1">
-                Select a template above to generate your first report
+              <h4 className="font-medium text-foreground">Select a Report</h4>
+              <p className="text-sm text-muted mt-1 max-w-md mx-auto">
+                Choose a report type above to view live data from your recruitment pipeline.
+                All reports are generated from real system data.
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                onClick={() => handleGenerate(reportTemplates[0])}
-              >
-                <MagicStar className="h-4 w-4 mr-2" />
-                Try a Template
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
-
-      {/* Generate Report Dialog */}
-      <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
-        <DialogContent className="max-w-xl">
-          {selectedTemplate && (
-            <>
-              <ModalHeader>
-                <div className="flex items-start gap-3">
-                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", selectedTemplate.bgColor, selectedTemplate.color)}>
-                    {selectedTemplate.icon}
-                  </div>
-                  <div>
-                    <DialogTitle>{selectedTemplate.title}</DialogTitle>
-                    <DialogDescription className="mt-1">{selectedTemplate.description}</DialogDescription>
-                  </div>
-                </div>
-              </ModalHeader>
-              <div className="grid gap-4 py-2">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Department</label>
-                  <Select
-                    value={reportParams.department}
-                    onValueChange={(v) => setReportParams((p) => ({ ...p, department: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Departments</SelectItem>
-                      {Array.from(new Set(jobs.map((j) => j.department))).map((d) => (
-                        <SelectItem key={d} value={d}>{d}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Date Range</label>
-                  <Select
-                    value={reportParams.dateRange}
-                    onValueChange={(v) => setReportParams((p) => ({ ...p, dateRange: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="this-week">This Week</SelectItem>
-                      <SelectItem value="this-month">This Month</SelectItem>
-                      <SelectItem value="this-quarter">This Quarter</SelectItem>
-                      <SelectItem value="this-year">This Year</SelectItem>
-                      <SelectItem value="all-time">All Time</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Output Format</label>
-                  <Select
-                    value={reportParams.format}
-                    onValueChange={(v) => setReportParams((p) => ({ ...p, format: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pdf">PDF Document</SelectItem>
-                      <SelectItem value="csv">CSV Spreadsheet</SelectItem>
-                      <SelectItem value="json">JSON Data</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Separator className="bg-surface-hover" />
-
-                <div className="rounded-lg bg-background p-4 space-y-3">
-                  <div className="flex items-center gap-2 text-sm text-foreground">
-                    <MagicStar className="h-4 w-4 text-primary" />
-                    <span className="font-medium">Report Preview</span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
-                    <div>
-                      <div className="flex items-center justify-center gap-1.5 mb-1">
-                        <Briefcase className="text-muted-foreground" size={14} />
-                        <p className="text-lg font-bold text-foreground">{activeJobs}</p>
-                      </div>
-                      <p className="text-xs text-muted">Active Jobs</p>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-center gap-1.5 mb-1">
-                        <People className="text-muted-foreground" size={14} />
-                        <p className="text-lg font-bold text-foreground">{totalCandidates}</p>
-                      </div>
-                      <p className="text-xs text-muted">Candidates</p>
-                    </div>
-                    <div>
-                      <div className="flex items-center justify-center gap-1.5 mb-1">
-                        <Calendar className="text-muted-foreground" size={14} />
-                        <p className="text-lg font-bold text-foreground">{completedInterviews}</p>
-                      </div>
-                      <p className="text-xs text-muted">Interviews</p>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted text-center">
-                    Report will include data from {reportParams.dateRange.replace("-", " ")} across {reportParams.department === "all" ? "all departments" : reportParams.department}.
-                  </p>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setGenerateDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={() => setGenerateDialogOpen(false)} disabled>
-                  <MagicStar className="h-4 w-4" />
-                  Generate Report
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
     </AppLayout>
   )
+}
+
+function ReportTable({ viewId, data }: { viewId: string; data: unknown }) {
+  if (viewId === "pipeline") {
+    const pipeline = data as PipelineReport
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Card><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-foreground">{pipeline.totalApplications}</p><p className="text-xs text-muted">Total</p></CardContent></Card>
+          <Card><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-success">{pipeline.activeCount}</p><p className="text-xs text-muted">Active</p></CardContent></Card>
+          <Card><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-info">{pipeline.hiredCount}</p><p className="text-xs text-muted">Hired</p></CardContent></Card>
+          <Card><CardContent className="p-3 text-center"><p className="text-2xl font-bold text-error">{pipeline.rejectedCount}</p><p className="text-xs text-muted">Rejected</p></CardContent></Card>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Stage</TableHead>
+              <TableHead className="text-right">Count</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pipeline.stages.map((s) => (
+              <TableRow key={s.stage}>
+                <TableCell className="font-medium">{s.stage}</TableCell>
+                <TableCell className="text-right">{s.count}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    )
+  }
+
+  if (viewId === "source-effectiveness") {
+    const rows = data as SourceEffectivenessRow[]
+    if (rows.length === 0) return <div className="py-8 text-center text-sm text-muted">No source data available</div>
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Source</TableHead>
+            <TableHead className="text-right">Applications</TableHead>
+            <TableHead className="text-right">Interviewed</TableHead>
+            <TableHead className="text-right">Hired</TableHead>
+            <TableHead className="text-right">Rejected</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.source}>
+              <TableCell className="font-medium">{r.source}</TableCell>
+              <TableCell className="text-right">{r.applicationCount}</TableCell>
+              <TableCell className="text-right">{r.interviewedCount}</TableCell>
+              <TableCell className="text-right">{r.hiredCount}</TableCell>
+              <TableCell className="text-right">{r.rejectedCount}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (viewId === "job-summary") {
+    const rows = data as JobSummaryRow[]
+    if (rows.length === 0) return <div className="py-8 text-center text-sm text-muted">No job data available</div>
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Job</TableHead>
+            <TableHead>Department</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Applications</TableHead>
+            <TableHead className="text-right">Interviews</TableHead>
+            <TableHead className="text-right">Active</TableHead>
+            <TableHead className="text-right">Hired</TableHead>
+            <TableHead className="text-right">Rejected</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.jobId}>
+              <TableCell className="font-medium">{r.title}</TableCell>
+              <TableCell>{r.department || "—"}</TableCell>
+              <TableCell><Badge variant="secondary" className="text-[10px]">{r.status}</Badge></TableCell>
+              <TableCell className="text-right">{r.applicationCount}</TableCell>
+              <TableCell className="text-right">{r.interviewCount}</TableCell>
+              <TableCell className="text-right">{r.activeApplicationCount}</TableCell>
+              <TableCell className="text-right">{r.hiredCount}</TableCell>
+              <TableCell className="text-right">{r.rejectedCount}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (viewId === "candidate-evaluation") {
+    const { data: rows } = data as { data: CandidateEvaluationRow[] }
+    if (rows.length === 0) return <div className="py-8 text-center text-sm text-muted">No candidate data available</div>
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Candidate</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Job</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Source</TableHead>
+            <TableHead>Submitted</TableHead>
+            <TableHead>Interview</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.applicantionId}>
+              <TableCell className="font-medium">{r.candidateName}</TableCell>
+              <TableCell className="text-xs text-muted">{r.email}</TableCell>
+              <TableCell>{r.jobTitle}</TableCell>
+              <TableCell><Badge variant="secondary" className="text-[10px]">{r.applicationStatus}</Badge></TableCell>
+              <TableCell className="text-xs">{r.source}</TableCell>
+              <TableCell className="text-xs">{formatDate(r.submittedAt)}</TableCell>
+              <TableCell className="text-xs">{r.interviewStatus || "—"}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (viewId === "interview-summary") {
+    const { data: rows } = data as { data: InterviewSummaryRow[] }
+    if (rows.length === 0) return <div className="py-8 text-center text-sm text-muted">No interview data available</div>
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Candidate</TableHead>
+            <TableHead>Job</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Result</TableHead>
+            <TableHead>Scheduled</TableHead>
+            <TableHead className="text-right">Duration</TableHead>
+            <TableHead>Interviewer</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.interviewId}>
+              <TableCell className="font-medium">{r.candidateName}</TableCell>
+              <TableCell>{r.jobTitle}</TableCell>
+              <TableCell className="text-xs">{r.interviewType}</TableCell>
+              <TableCell><Badge variant="secondary" className="text-[10px]">{r.status}</Badge></TableCell>
+              <TableCell className="text-xs">{r.result || "—"}</TableCell>
+              <TableCell className="text-xs">{formatDate(r.scheduledAt)}</TableCell>
+              <TableCell className="text-right text-xs">{r.durationMinutes ? `${r.durationMinutes}m` : "—"}</TableCell>
+              <TableCell className="text-xs">{r.interviewerName || "—"}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (viewId === "time-to-hire") {
+    const { data: rows } = data as { data: TimeToHireRow[] }
+    if (rows.length === 0) return <div className="py-8 text-center text-sm text-muted">No hired candidate data available</div>
+    return (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Candidate</TableHead>
+            <TableHead>Job</TableHead>
+            <TableHead>Department</TableHead>
+            <TableHead>Submitted</TableHead>
+            <TableHead>Hired</TableHead>
+            <TableHead className="text-right">Days to Hire</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((r) => (
+            <TableRow key={r.applicationId}>
+              <TableCell className="font-medium">{r.candidateName}</TableCell>
+              <TableCell>{r.jobTitle}</TableCell>
+              <TableCell className="text-xs">{r.department || "—"}</TableCell>
+              <TableCell className="text-xs">{formatDate(r.submittedAt)}</TableCell>
+              <TableCell className="text-xs">{formatDate(r.hiredAt)}</TableCell>
+              <TableCell className="text-right font-semibold">{r.daysToHire !== null ? `${r.daysToHire}d` : "—"}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    )
+  }
+
+  if (viewId === "activity") {
+    const { data: rows } = data as { data: ActivityRow[] }
+    if (rows.length === 0) return <div className="py-8 text-center text-sm text-muted">No activity data available</div>
+    return (
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Event</TableHead>
+              <TableHead>Entity</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead>Actor</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((r, i) => (
+              <TableRow key={i}>
+                <TableCell className="text-xs whitespace-nowrap">{formatDate(r.occurredAt)}</TableCell>
+                <TableCell><Badge variant="secondary" className="text-[10px]">{r.eventType}</Badge></TableCell>
+                <TableCell className="text-xs">{r.entityType}</TableCell>
+                <TableCell className="text-xs max-w-xs truncate">{r.description}</TableCell>
+                <TableCell className="text-xs">{r.actorName || r.actorType || "—"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    )
+  }
+
+  return null
 }
