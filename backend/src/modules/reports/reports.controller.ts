@@ -6,8 +6,11 @@ import { AuthenticatedPrincipal } from '../auth/interfaces/auth.interface';
 import { ReportsService } from './services/reports.service';
 import { CsvExportService } from './exporters/csv-export.service';
 import { ReportFilterDto } from './dto/report-filter.dto';
+import { validateDateRange, createExportFilter, toDateRange } from './services/report-utils';
 
 const EXPORT_MAX = 5000;
+
+type ExportableReport = 'candidate-evaluation' | 'interview-summary' | 'pipeline' | 'time-to-hire' | 'source-effectiveness' | 'job-summary' | 'activity';
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard)
@@ -18,18 +21,27 @@ export class ReportsController {
   ) {}
 
   private getActiveCompany(user: AuthenticatedPrincipal): string {
-    if (!user.activeCompanyId) {
-      throw new ForbiddenException('Active company required');
-    }
+    if (!user.activeCompanyId) throw new ForbiddenException('Active company required');
     return user.activeCompanyId;
   }
 
+  private prepareFilter(filter: ReportFilterDto): ReportFilterDto {
+    validateDateRange(filter.dateFrom, filter.dateTo);
+    const dateRange = toDateRange(filter.dateFrom, filter.dateTo);
+    const copy = new ReportFilterDto();
+    copy.dateFrom = filter.dateFrom;
+    copy.dateTo = filter.dateTo;
+    copy.jobIds = filter.jobIds ? [...filter.jobIds] : undefined;
+    copy.departmentIds = filter.departmentIds ? [...filter.departmentIds] : undefined;
+    copy.statuses = filter.statuses ? [...filter.statuses] : undefined;
+    copy.page = filter.page;
+    copy.limit = filter.limit;
+    return copy;
+  }
+
   private validateAndExport<T>(
-    res: Response,
-    data: T[],
-    headers: { key: keyof T & string; label: string }[],
-    filename: string,
-    total: number,
+    res: Response, data: T[], headers: { key: keyof T & string; label: string }[],
+    filename: string, total: number,
   ): void {
     if (total > EXPORT_MAX) {
       res.setHeader('X-Export-Truncated', 'true');
@@ -39,13 +51,6 @@ export class ReportsController {
     const csv = this.csvExportService.toCsv(headers, data.slice(0, EXPORT_MAX));
     res.setHeader('Content-Disposition', `attachment; filename="${this.csvExportService.getFilename(filename)}"`);
     res.send(csv);
-  }
-
-  private prepareFilter(filter: ReportFilterDto): ReportFilterDto {
-    if (filter.dateFrom && filter.dateTo && new Date(filter.dateFrom) > new Date(filter.dateTo)) {
-      throw new BadRequestException('dateFrom must not be after dateTo');
-    }
-    return filter.withEndOfDay();
   }
 
   // ── Candidate Evaluation ──
@@ -59,7 +64,7 @@ export class ReportsController {
   @Header('Content-Type', 'text/csv; charset=utf-8')
   async candidateEvaluationExport(@Query() filter: ReportFilterDto, @CurrentUser() user: AuthenticatedPrincipal, @Res() res: Response) {
     const { data, meta } = await this.reportsService.getCandidateEvaluation(
-      this.getActiveCompany(user), this.prepareFilter(filter).withExportDefaults(),
+      this.getActiveCompany(user), createExportFilter(this.prepareFilter(filter)),
     );
     this.validateAndExport(res, data, [
       { key: 'applicationId', label: 'Application ID' }, { key: 'candidateName', label: 'Candidate Name' },
@@ -81,7 +86,7 @@ export class ReportsController {
   @Header('Content-Type', 'text/csv; charset=utf-8')
   async interviewSummaryExport(@Query() filter: ReportFilterDto, @CurrentUser() user: AuthenticatedPrincipal, @Res() res: Response) {
     const { data, meta } = await this.reportsService.getInterviewSummary(
-      this.getActiveCompany(user), this.prepareFilter(filter).withExportDefaults(),
+      this.getActiveCompany(user), createExportFilter(this.prepareFilter(filter)),
     );
     this.validateAndExport(res, data, [
       { key: 'candidateName', label: 'Candidate Name' }, { key: 'jobTitle', label: 'Job Title' },
@@ -110,9 +115,7 @@ export class ReportsController {
       { metric: 'Rejected', value: report.rejectedCount },
       ...report.stages.map((s) => ({ metric: `Stage: ${s.stage}`, value: s.count })),
     ];
-    this.validateAndExport(res, data, [
-      { key: 'metric', label: 'Metric' }, { key: 'value', label: 'Value' },
-    ], 'pipeline', data.length);
+    this.validateAndExport(res, data, [{ key: 'metric', label: 'Metric' }, { key: 'value', label: 'Value' }], 'pipeline', data.length);
   }
 
   // ── Time-to-Hire ──
@@ -126,7 +129,7 @@ export class ReportsController {
   @Header('Content-Type', 'text/csv; charset=utf-8')
   async timeToHireExport(@Query() filter: ReportFilterDto, @CurrentUser() user: AuthenticatedPrincipal, @Res() res: Response) {
     const { data, meta } = await this.reportsService.getTimeToHire(
-      this.getActiveCompany(user), this.prepareFilter(filter).withExportDefaults(),
+      this.getActiveCompany(user), createExportFilter(this.prepareFilter(filter)),
     );
     this.validateAndExport(res, data, [
       { key: 'candidateName', label: 'Candidate Name' }, { key: 'jobTitle', label: 'Job Title' },
@@ -164,7 +167,7 @@ export class ReportsController {
   @Header('Content-Type', 'text/csv; charset=utf-8')
   async jobSummaryExport(@Query() filter: ReportFilterDto, @CurrentUser() user: AuthenticatedPrincipal, @Res() res: Response) {
     const { data, meta } = await this.reportsService.getJobSummary(
-      this.getActiveCompany(user), this.prepareFilter(filter).withExportDefaults(),
+      this.getActiveCompany(user), createExportFilter(this.prepareFilter(filter)),
     );
     this.validateAndExport(res, data, [
       { key: 'title', label: 'Job Title' }, { key: 'department', label: 'Department' },
@@ -185,7 +188,7 @@ export class ReportsController {
   @Header('Content-Type', 'text/csv; charset=utf-8')
   async activityExport(@Query() filter: ReportFilterDto, @CurrentUser() user: AuthenticatedPrincipal, @Res() res: Response) {
     const { data, meta } = await this.reportsService.getActivity(
-      this.getActiveCompany(user), this.prepareFilter(filter).withExportDefaults(),
+      this.getActiveCompany(user), createExportFilter(this.prepareFilter(filter)),
     );
     this.validateAndExport(res, data, [
       { key: 'occurredAt', label: 'Date' }, { key: 'eventType', label: 'Event Type' },

@@ -62,7 +62,7 @@ describe('ReportsService', () => {
       await service.getCandidateEvaluation(COMPANY_A, makeFilter({ dateFrom: '2026-01-01', dateTo: '2026-06-30' }));
       const where = prisma.application.findMany.mock.calls[0][0].where;
       expect(where.submittedAt.gte).toEqual(new Date('2026-01-01'));
-      expect(where.submittedAt.lte).toEqual(new Date('2026-06-30'));
+      expect(where.submittedAt.lt).toEqual(new Date('2026-07-01'));
     });
 
     it('applies jobId filter', async () => {

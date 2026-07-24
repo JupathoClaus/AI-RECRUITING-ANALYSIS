@@ -1,9 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { ApplicationStatus, Prisma } from '@prisma/client';
 import { ReportFilterDto } from '../dto/report-filter.dto';
-
-// ── Typed report results ──
+import { toDateRange, isRejected, isActive } from './report-utils';
 
 export interface CandidateEvaluationRow {
   applicationId: string;
@@ -33,11 +32,7 @@ export interface InterviewSummaryRow {
   interviewerName: string | null;
 }
 
-export interface PipelineStageMetric {
-  stage: string;
-  count: number;
-}
-
+export interface PipelineStageMetric { stage: string; count: number; }
 export interface PipelineReport {
   stages: PipelineStageMetric[];
   totalApplications: number;
@@ -84,43 +79,26 @@ export interface ActivityRow {
   actorType: string | null;
 }
 
-export interface ReportPaginationMeta {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+export interface ReportPaginationMeta { total: number; page: number; limit: number; totalPages: number; }
 
 @Injectable()
 export class ReportsService {
-  private readonly logger = new Logger(ReportsService.name);
-
   constructor(private readonly prisma: PrismaService) {}
-
-  private buildDateFilter(dateFrom?: string, dateTo?: string): { gte?: Date; lte?: Date } | undefined {
-    if (!dateFrom && !dateTo) return undefined;
-    const filter: { gte?: Date; lte?: Date } = {};
-    if (dateFrom) filter.gte = new Date(dateFrom);
-    if (dateTo) filter.lte = new Date(dateTo);
-    return filter;
-  }
 
   private buildAppWhere(companyId: string, filter: ReportFilterDto): Prisma.ApplicationWhereInput {
     const where: Prisma.ApplicationWhereInput = { companyId, deletedAt: null };
-    const submittedFilter = this.buildDateFilter(filter.dateFrom, filter.dateTo);
-    if (submittedFilter) where.submittedAt = submittedFilter;
+    const dateRange = toDateRange(filter.dateFrom, filter.dateTo);
+    if (dateRange) { where.submittedAt = dateRange; }
     if (filter.jobIds?.length) where.jobId = { in: filter.jobIds };
     if (filter.statuses?.length) where.status = { in: filter.statuses };
     if (filter.departmentIds?.length) where.job = { departmentId: { in: filter.departmentIds } };
     return where;
   }
 
-  // ── Candidate Evaluation Report ──
+  // ── Candidate Evaluation ──
 
-  async getCandidateEvaluation(
-    companyId: string,
-    filter: ReportFilterDto,
-  ): Promise<{ data: CandidateEvaluationRow[]; meta: ReportPaginationMeta }> {
+  async getCandidateEvaluation(companyId: string, filter: ReportFilterDto):
+    Promise<{ data: CandidateEvaluationRow[]; meta: ReportPaginationMeta }> {
     const where = this.buildAppWhere(companyId, filter);
     const page = filter.page || 1;
     const limit = filter.limit || 50;
@@ -141,33 +119,32 @@ export class ReportsService {
       this.prisma.application.count({ where }),
     ]);
 
-    const data: CandidateEvaluationRow[] = items.map((app) => ({
-      applicationId: app.id,
-      candidateId: app.candidate?.id || '',
-      candidateName: app.candidate ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim() : 'Unknown',
-      email: app.candidate?.email || '',
-      jobTitle: app.job?.title || '',
-      jobDepartment: app.job?.department?.name || null,
-      applicationStatus: app.status,
-      source: app.source,
-      submittedAt: app.submittedAt?.toISOString() || null,
-      interviewStatus: app.interviews[0]?.status || null,
-      interviewResult: app.interviews[0]?.result || null,
-      rejectionReason: app.rejectionReasonCode || null,
-    }));
-
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data: items.map((app) => ({
+        applicationId: app.id,
+        candidateId: app.candidate?.id || '',
+        candidateName: app.candidate ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim() : 'Unknown',
+        email: app.candidate?.email || '',
+        jobTitle: app.job?.title || '',
+        jobDepartment: app.job?.department?.name || null,
+        applicationStatus: app.status,
+        source: app.source,
+        submittedAt: app.submittedAt?.toISOString() || null,
+        interviewStatus: app.interviews[0]?.status || null,
+        interviewResult: app.interviews[0]?.result || null,
+        rejectionReason: app.rejectionReasonCode || null,
+      })),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
-  // ── Interview Summary Report ──
+  // ── Interview Summary ──
 
-  async getInterviewSummary(
-    companyId: string,
-    filter: ReportFilterDto,
-  ): Promise<{ data: InterviewSummaryRow[]; meta: ReportPaginationMeta }> {
+  async getInterviewSummary(companyId: string, filter: ReportFilterDto):
+    Promise<{ data: InterviewSummaryRow[]; meta: ReportPaginationMeta }> {
     const where: Prisma.InterviewWhereInput = { companyId };
-    const scheduledFilter = this.buildDateFilter(filter.dateFrom, filter.dateTo);
-    if (scheduledFilter) where.scheduledAt = scheduledFilter;
+    const dateRange = toDateRange(filter.dateFrom, filter.dateTo);
+    if (dateRange) where.scheduledAt = dateRange;
     if (filter.jobIds?.length) where.jobId = { in: filter.jobIds };
     if (filter.departmentIds?.length) where.job = { departmentId: { in: filter.departmentIds } };
 
@@ -189,29 +166,31 @@ export class ReportsService {
       this.prisma.interview.count({ where }),
     ]);
 
-    const data: InterviewSummaryRow[] = items.map((iv) => ({
-      interviewId: iv.id,
-      candidateName: iv.application?.candidate ? `${iv.application.candidate.firstName} ${iv.application.candidate.lastName}`.trim() : 'Unknown',
-      jobTitle: iv.application?.job?.title || '',
-      interviewType: iv.type,
-      status: iv.status,
-      result: iv.result,
-      scheduledAt: iv.scheduledAt.toISOString(),
-      completedAt: iv.completedAt?.toISOString() || null,
-      durationMinutes: iv.durationMinutes || null,
-      interviewerName: iv.participants[0]?.membership?.user
-        ? `${iv.participants[0].membership.user.firstName} ${iv.participants[0].membership.user.lastName}`.trim()
-        : null,
-    }));
-
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data: items.map((iv) => ({
+        interviewId: iv.id,
+        candidateName: iv.application?.candidate ? `${iv.application.candidate.firstName} ${iv.application.candidate.lastName}`.trim() : 'Unknown',
+        jobTitle: iv.application?.job?.title || '',
+        interviewType: iv.type,
+        status: iv.status,
+        result: iv.result,
+        scheduledAt: iv.scheduledAt.toISOString(),
+        completedAt: iv.completedAt?.toISOString() || null,
+        durationMinutes: iv.durationMinutes || null,
+        interviewerName: iv.participants[0]?.membership?.user
+          ? `${iv.participants[0].membership.user.firstName} ${iv.participants[0].membership.user.lastName}`.trim() : null,
+      })),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
-  // ── Pipeline Report ──
+  // ── Pipeline ──
 
   async getPipeline(companyId: string, filter: ReportFilterDto): Promise<PipelineReport> {
     const where = this.buildAppWhere(companyId, filter);
-    const activeWhere = { ...where, status: { notIn: [ApplicationStatus.DRAFT, ApplicationStatus.ARCHIVED] } };
+    const activeWhere: Prisma.ApplicationWhereInput = {
+      ...where, status: { notIn: [ApplicationStatus.DRAFT, ApplicationStatus.ARCHIVED] },
+    };
 
     const [grouped, hiredCount, rejectedCount, activeCount] = await Promise.all([
       this.prisma.application.groupBy({
@@ -220,27 +199,23 @@ export class ReportsService {
         _count: { id: true },
       }),
       this.prisma.application.count({ where: { ...where, status: ApplicationStatus.HIRED } }),
-      this.prisma.application.count({
-        where: { ...where, status: { in: [ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN, ApplicationStatus.DISQUALIFIED] } },
-      }),
-      this.prisma.application.count({
-        where: { ...where, status: { notIn: [ApplicationStatus.DRAFT, ApplicationStatus.ARCHIVED, ApplicationStatus.HIRED, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN, ApplicationStatus.DISQUALIFIED] } },
-      }),
+      this.prisma.application.count({ where: { ...where, status: { in: [ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN, ApplicationStatus.DISQUALIFIED] } } }),
+      this.prisma.application.count({ where: { ...where, status: { notIn: [ApplicationStatus.DRAFT, ApplicationStatus.ARCHIVED, ApplicationStatus.HIRED, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN, ApplicationStatus.DISQUALIFIED] } } }),
     ]);
 
     return {
-      stages: grouped.map((g) => ({ stage: g.status, count: g._count.id })),
-      totalApplications: grouped.reduce((acc, g) => acc + g._count.id, 0),
+      stages: grouped.map((g) => ({ stage: g.status, count: g._count?.id ?? 0 })),
+      totalApplications: grouped.reduce((acc, g) => acc + (g._count?.id ?? 0), 0),
       hiredCount, rejectedCount, activeCount,
     };
   }
 
-  // ── Time-to-Hire Report ──
+  // ── Time-to-Hire ──
 
-  async getTimeToHire(companyId: string, filter: ReportFilterDto): Promise<{ data: TimeToHireRow[]; meta: ReportPaginationMeta }> {
+  async getTimeToHire(companyId: string, filter: ReportFilterDto):
+    Promise<{ data: TimeToHireRow[]; meta: ReportPaginationMeta }> {
     const baseWhere = this.buildAppWhere(companyId, filter);
     const where: Prisma.ApplicationWhereInput = { ...baseWhere, status: ApplicationStatus.HIRED, hiredAt: { not: null } };
-
     const page = filter.page || 1;
     const limit = filter.limit || 50;
     const skip = (page - 1) * limit;
@@ -259,24 +234,25 @@ export class ReportsService {
       this.prisma.application.count({ where }),
     ]);
 
-    const data: TimeToHireRow[] = items.map((app) => {
-      const submitted = app.submittedAt?.getTime();
-      const hired = app.hiredAt?.getTime();
-      return {
-        applicationId: app.id,
-        candidateName: app.candidate ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim() : 'Unknown',
-        jobTitle: app.job?.title || '',
-        submittedAt: app.submittedAt?.toISOString() || '',
-        hiredAt: app.hiredAt?.toISOString() || null,
-        daysToHire: submitted && hired ? Math.round((hired - submitted) / (1000 * 60 * 60 * 24)) : null,
-        department: app.job?.department?.name || null,
-      };
-    });
-
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data: items.map((app) => {
+        const submitted = app.submittedAt?.getTime();
+        const hired = app.hiredAt?.getTime();
+        return {
+          applicationId: app.id,
+          candidateName: app.candidate ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim() : 'Unknown',
+          jobTitle: app.job?.title || '',
+          submittedAt: app.submittedAt?.toISOString() || '',
+          hiredAt: app.hiredAt?.toISOString() || null,
+          daysToHire: submitted && hired ? Math.round((hired - submitted) / (1000 * 60 * 60 * 24)) : null,
+          department: app.job?.department?.name || null,
+        };
+      }),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
-  // ── Source Effectiveness Report (2 fixed queries) ──
+  // ── Source Effectiveness (2 groupBy queries, merged via Map) ──
 
   async getSourceEffectiveness(companyId: string, filter: ReportFilterDto): Promise<SourceEffectivenessRow[]> {
     const where = this.buildAppWhere(companyId, filter);
@@ -295,15 +271,13 @@ export class ReportsService {
     ]);
 
     const sourceMap = new Map<string, { apps: number; interviewed: number; hired: number; rejected: number }>();
-
     for (const row of appBySource) {
       const entry = sourceMap.get(row.source) || { apps: 0, interviewed: 0, hired: 0, rejected: 0 };
       entry.apps += row._count.id;
       if (row.status === ApplicationStatus.HIRED) entry.hired += row._count.id;
-      if (row.status === ApplicationStatus.REJECTED || row.status === ApplicationStatus.WITHDRAWN) entry.rejected += row._count.id;
+      if (isRejected(row.status)) entry.rejected += row._count.id;
       sourceMap.set(row.source, entry);
     }
-
     for (const row of interviewedBySource) {
       const entry = sourceMap.get(row.source);
       if (entry) entry.interviewed += row._count.id;
@@ -318,52 +292,63 @@ export class ReportsService {
     }));
   }
 
-  // ── Job Summary Report (3 fixed queries, properly scoped) ──
+  // ── Job Summary (properly scoped to current page — 3 queries max) ──
 
-  async getJobSummary(companyId: string, filter: ReportFilterDto): Promise<{ data: JobSummaryRow[]; meta: ReportPaginationMeta }> {
+  async getJobSummary(companyId: string, filter: ReportFilterDto):
+    Promise<{ data: JobSummaryRow[]; meta: ReportPaginationMeta }> {
     const jobsWhere: Prisma.JobWhereInput = { companyId, deletedAt: null };
+    if (filter.jobIds?.length) jobsWhere.id = { in: filter.jobIds };
     if (filter.departmentIds?.length) jobsWhere.departmentId = { in: filter.departmentIds };
+
+    const total = await this.prisma.job.count({ where: jobsWhere });
 
     const page = filter.page || 1;
     const limit = filter.limit || 50;
     const skip = (page - 1) * limit;
 
-    // Build the application where scope including all filters
-    const appWhere = this.buildAppWhere(companyId, filter);
+    const jobs = await this.prisma.job.findMany({
+      where: jobsWhere,
+      select: { id: true, title: true, status: true, department: { select: { name: true } } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      skip, take: limit,
+    });
 
-    const [jobs, appByJobAndStatus, interviewByJob] = await Promise.all([
-      this.prisma.job.findMany({
-        where: jobsWhere,
-        select: { id: true, title: true, status: true, department: { select: { name: true } } },
-        skip, take: limit,
-      }),
-      // Scoped: only apps matching the full filter (date, job, dept, status) grouped by job+status
+    if (jobs.length === 0) {
+      return { data: [], meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    }
+
+    const pageJobIds = jobs.map((j) => j.id);
+
+    // Build application where, but override jobIds to only current page
+    const appWhere = this.buildAppWhere(companyId, filter);
+    appWhere.jobId = { in: pageJobIds };
+
+    // Interview aggregation — same page scope
+    const interviewWhere: Prisma.InterviewWhereInput = { companyId, jobId: { in: pageJobIds } };
+    const ivDateRange = toDateRange(filter.dateFrom, filter.dateTo);
+    if (ivDateRange) interviewWhere.scheduledAt = ivDateRange;
+    if (filter.departmentIds?.length) interviewWhere.job = { departmentId: { in: filter.departmentIds } };
+
+    const [appByJobAndStatus, interviewByJob] = await Promise.all([
       this.prisma.application.groupBy({
         by: ['jobId', 'status'],
         where: appWhere,
         _count: { id: true },
       }),
-      // Scoped: only interviews for jobs matching the department filter
       this.prisma.interview.groupBy({
         by: ['jobId'],
-        where: {
-          companyId,
-          ...(filter.jobIds?.length ? { jobId: { in: filter.jobIds } } : {}),
-          ...(filter.departmentIds?.length ? { job: { departmentId: { in: filter.departmentIds } } } : {}),
-        },
+        where: interviewWhere,
         _count: { id: true },
       }),
     ]);
-
-    const total = await this.prisma.job.count({ where: jobsWhere });
 
     const appMap = new Map<string, { total: number; hired: number; rejected: number; active: number }>();
     for (const row of appByJobAndStatus) {
       const entry = appMap.get(row.jobId) || { total: 0, hired: 0, rejected: 0, active: 0 };
       entry.total += row._count.id;
       if (row.status === ApplicationStatus.HIRED) entry.hired += row._count.id;
-      if (row.status === ApplicationStatus.REJECTED || row.status === ApplicationStatus.WITHDRAWN || row.status === ApplicationStatus.DISQUALIFIED) entry.rejected += row._count.id;
-      if (row.status !== ApplicationStatus.DRAFT && row.status !== ApplicationStatus.ARCHIVED && row.status !== ApplicationStatus.HIRED && row.status !== ApplicationStatus.REJECTED && row.status !== ApplicationStatus.WITHDRAWN && row.status !== ApplicationStatus.DISQUALIFIED) entry.active += row._count.id;
+      if (isRejected(row.status)) entry.rejected += row._count.id;
+      if (isActive(row.status)) entry.active += row._count.id;
       appMap.set(row.jobId, entry);
     }
 
@@ -372,30 +357,32 @@ export class ReportsService {
       interviewCounts.set(row.jobId, (interviewCounts.get(row.jobId) || 0) + (row._count?.id ?? 0));
     }
 
-    const data: JobSummaryRow[] = jobs.map((job) => {
-      const appEntry = appMap.get(job.id) || { total: 0, hired: 0, rejected: 0, active: 0 };
-      return {
-        jobId: job.id,
-        title: job.title,
-        department: job.department?.name || null,
-        status: job.status,
-        applicationCount: appEntry.total,
-        interviewCount: interviewCounts.get(job.id) || 0,
-        hiredCount: appEntry.hired,
-        rejectedCount: appEntry.rejected,
-        activeApplicationCount: appEntry.active,
-      };
-    });
-
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data: jobs.map((job) => {
+        const a = appMap.get(job.id) || { total: 0, hired: 0, rejected: 0, active: 0 };
+        return {
+          jobId: job.id,
+          title: job.title,
+          department: job.department?.name || null,
+          status: job.status,
+          applicationCount: a.total,
+          interviewCount: interviewCounts.get(job.id) || 0,
+          hiredCount: a.hired,
+          rejectedCount: a.rejected,
+          activeApplicationCount: a.active,
+        };
+      }),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
-  // ── Activity Report ──
+  // ── Activity ──
 
-  async getActivity(companyId: string, filter: ReportFilterDto): Promise<{ data: ActivityRow[]; meta: ReportPaginationMeta }> {
+  async getActivity(companyId: string, filter: ReportFilterDto):
+    Promise<{ data: ActivityRow[]; meta: ReportPaginationMeta }> {
     const where: Prisma.ApplicationAuditEventWhereInput = { companyId };
-    const occurredFilter = this.buildDateFilter(filter.dateFrom, filter.dateTo);
-    if (occurredFilter) where.occurredAt = occurredFilter;
+    const dateRange = toDateRange(filter.dateFrom, filter.dateTo);
+    if (dateRange) where.occurredAt = dateRange;
 
     const page = filter.page || 1;
     const limit = filter.limit || 50;
@@ -411,14 +398,15 @@ export class ReportsService {
       this.prisma.applicationAuditEvent.count({ where }),
     ]);
 
-    const data: ActivityRow[] = items.map((ev) => ({
-      occurredAt: ev.occurredAt.toISOString(),
-      eventType: ev.eventType,
-      entityType: ev.entityType,
-      description: ev.description,
-      actorType: ev.actorType || null,
-    }));
-
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data: items.map((ev) => ({
+        occurredAt: ev.occurredAt.toISOString(),
+        eventType: ev.eventType,
+        entityType: ev.entityType,
+        description: ev.description,
+        actorType: ev.actorType || null,
+      })),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 }
