@@ -112,14 +112,18 @@ export default function CompanyPage() {
               key={metric.label}
               className={cn("group relative overflow-hidden transition-all duration-200 hover:shadow-xl border-l-4 h-full flex flex-col", metric.accent)}
             >
-              <CardContent className="p-5 flex-1 flex flex-col">
-                <div className="flex items-start justify-between flex-1">
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted font-semibold uppercase tracking-wide min-h-[20px]">{metric.label}</p>
-                    <p className="text-3xl font-bold tracking-tight text-foreground">{metric.value}</p>
-                    <div className="h-5" />
+              <CardContent className="flex h-full flex-col p-5">
+                <div className="flex items-start justify-between">
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div className="min-h-[48px]">
+                      <p className="text-sm text-muted font-semibold uppercase tracking-wide">{metric.label}</p>
+                    </div>
+                    <div className="min-h-[56px] flex items-start">
+                      <p className="text-3xl font-bold leading-none tracking-tight text-foreground">{metric.value}</p>
+                    </div>
+                    <div className="min-h-[24px]" />
                   </div>
-                  <div className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110", metric.color)}>
+                  <div className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110 ml-3", metric.color)}>
                     <metric.icon className="h-5 w-5" />
                   </div>
                 </div>

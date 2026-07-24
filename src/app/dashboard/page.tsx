@@ -292,35 +292,39 @@ export default function DashboardPage() {
               key={card.label}
               className="relative overflow-hidden h-full flex flex-col"
             >
-              <CardContent className="p-5 flex-1 flex flex-col">
+              <CardContent className="flex h-full flex-col p-5">
                 <div className="flex items-start justify-between">
-                  <div className="space-y-2 flex-1">
-                    <p className="text-sm text-black font-bold uppercase tracking-wide min-h-[20px]">
-                      {card.label}
-                    </p>
-                    <p className="text-3xl font-bold tracking-tight text-foreground">
-                      {card.value}
-                    </p>
-                    <div className="flex items-center gap-1 mt-auto pt-2">
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div className="min-h-[48px]">
+                      <p className="text-sm text-black font-bold uppercase tracking-wide">
+                        {card.label}
+                      </p>
+                    </div>
+                    <div className="min-h-[56px] flex items-start">
+                      <p className="text-3xl font-bold leading-none tracking-tight text-foreground">
+                        {card.value}
+                      </p>
+                    </div>
+                    <div className="mt-auto flex min-h-[24px] items-center gap-1 whitespace-nowrap">
                       {card.up ? (
-                        <TrendUp className="h-3.5 w-3.5 text-success" />
+                        <TrendUp className="h-3.5 w-3.5 text-success shrink-0" />
                       ) : (
-                        <TrendDown className="h-3.5 w-3.5 text-error" />
+                        <TrendDown className="h-3.5 w-3.5 text-error shrink-0" />
                       )}
                       <span
                         className={cn(
-                          "text-xs font-semibold",
+                          "text-xs font-semibold leading-none",
                           card.up ? "text-success" : "text-error"
                         )}
                       >
                         {card.trend}
                       </span>
-                      <span className="text-xs text-muted">
+                      <span className="text-xs text-muted leading-none">
                         {card.trendLabel}
                       </span>
                     </div>
                   </div>
-                  <div className={cn("shrink-0", card.color)}>
+                  <div className={cn("shrink-0 ml-3", card.color)}>
                     {card.icon}
                   </div>
                 </div>

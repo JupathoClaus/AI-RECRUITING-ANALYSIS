@@ -213,24 +213,28 @@ export default function AnalyticsPage() {
               key={metric.label}
               className={cn("group relative overflow-hidden transition-all duration-200 hover:shadow-xl border-l-4 h-full flex flex-col", metric.accent)}
             >
-              <CardContent className="p-5 flex-1 flex flex-col">
-                <div className="flex items-start justify-between flex-1">
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted font-semibold uppercase tracking-wide min-h-[20px]">{metric.label}</p>
-                    <p className="text-3xl font-bold tracking-tight text-foreground">{metric.value}</p>
-                    <div className="flex items-center gap-1 mt-auto pt-2">
+              <CardContent className="flex h-full flex-col p-5">
+                <div className="flex items-start justify-between">
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div className="min-h-[48px]">
+                      <p className="text-sm text-muted font-semibold uppercase tracking-wide">{metric.label}</p>
+                    </div>
+                    <div className="min-h-[56px] flex items-start">
+                      <p className="text-3xl font-bold leading-none tracking-tight text-foreground">{metric.value}</p>
+                    </div>
+                    <div className="mt-auto flex min-h-[24px] items-center gap-1 whitespace-nowrap">
                       {metric.up ? (
-                        <TrendUp className="h-3.5 w-3.5 text-success" />
+                        <TrendUp className="h-3.5 w-3.5 text-success shrink-0" />
                       ) : (
-                        <TrendDown className="h-3.5 w-3.5 text-error" />
+                        <TrendDown className="h-3.5 w-3.5 text-error shrink-0" />
                       )}
-                      <span className={cn("text-xs font-semibold", metric.up ? "text-success" : "text-error")}>
+                      <span className={cn("text-xs font-semibold leading-none", metric.up ? "text-success" : "text-error")}>
                         {metric.trend}
                       </span>
-                      <span className="text-xs text-muted">{metric.trendLabel}</span>
+                      <span className="text-xs text-muted leading-none">{metric.trendLabel}</span>
                     </div>
                   </div>
-                  <div className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110", metric.color)}>
+                  <div className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110 ml-3", metric.color)}>
                     <metric.icon className="h-5 w-5" />
                   </div>
                 </div>
