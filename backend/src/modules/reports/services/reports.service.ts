@@ -113,7 +113,7 @@ export class ReportsService {
           job: { select: { title: true, department: { select: { name: true } } } },
           interviews: { select: { status: true, result: true }, take: 1, orderBy: { createdAt: 'desc' } },
         },
-        orderBy: { submittedAt: 'desc' },
+        orderBy: [{ submittedAt: 'desc' }, { id: 'asc' }],
         skip, take: limit,
       }),
       this.prisma.application.count({ where }),
@@ -160,7 +160,7 @@ export class ReportsService {
           application: { select: { job: { select: { title: true } }, candidate: { select: { id: true, firstName: true, lastName: true } } } },
           participants: { select: { membership: { select: { user: { select: { firstName: true, lastName: true } } } } }, take: 1 },
         },
-        orderBy: { scheduledAt: 'desc' },
+        orderBy: [{ scheduledAt: 'desc' }, { id: 'asc' }],
         skip, take: limit,
       }),
       this.prisma.interview.count({ where }),
@@ -215,7 +215,15 @@ export class ReportsService {
   async getTimeToHire(companyId: string, filter: ReportFilterDto):
     Promise<{ data: TimeToHireRow[]; meta: ReportPaginationMeta }> {
     const baseWhere = this.buildAppWhere(companyId, filter);
-    const where: Prisma.ApplicationWhereInput = { ...baseWhere, status: ApplicationStatus.HIRED, hiredAt: { not: null } };
+    // Time-to-Hire filters by hiredAt date, not submittedAt
+    const hiredDateRange = toDateRange(filter.dateFrom, filter.dateTo);
+    const where: Prisma.ApplicationWhereInput = {
+      companyId, deletedAt: null, status: ApplicationStatus.HIRED, hiredAt: { not: null },
+      ...(hiredDateRange ? { hiredAt: hiredDateRange } : {}),
+    };
+    if (filter.jobIds?.length) where.jobId = { in: filter.jobIds };
+    if (filter.departmentIds?.length) where.job = { departmentId: { in: filter.departmentIds } };
+
     const page = filter.page || 1;
     const limit = filter.limit || 50;
     const skip = (page - 1) * limit;
@@ -228,7 +236,7 @@ export class ReportsService {
           candidate: { select: { firstName: true, lastName: true } },
           job: { select: { title: true, department: { select: { name: true } } } },
         },
-        orderBy: { hiredAt: 'desc' },
+        orderBy: [{ hiredAt: 'desc' }, { id: 'asc' }],
         skip, take: limit,
       }),
       this.prisma.application.count({ where }),
@@ -236,15 +244,21 @@ export class ReportsService {
 
     return {
       data: items.map((app) => {
-        const submitted = app.submittedAt?.getTime();
-        const hired = app.hiredAt?.getTime();
+        const submittedMs = app.submittedAt?.getTime();
+        const hiredMs = app.hiredAt?.getTime();
+        let durationHours: number | null = null;
+        let daysToHire: number | null = null;
+        if (submittedMs && hiredMs && hiredMs >= submittedMs) {
+          durationHours = Math.round((hiredMs - submittedMs) / (1000 * 60 * 60) * 100) / 100;
+          daysToHire = Math.round(durationHours / 24 * 100) / 100;
+        }
         return {
           applicationId: app.id,
           candidateName: app.candidate ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim() : 'Unknown',
           jobTitle: app.job?.title || '',
           submittedAt: app.submittedAt?.toISOString() || '',
           hiredAt: app.hiredAt?.toISOString() || null,
-          daysToHire: submitted && hired ? Math.round((hired - submitted) / (1000 * 60 * 60 * 24)) : null,
+          daysToHire,
           department: app.job?.department?.name || null,
         };
       }),
@@ -392,7 +406,7 @@ export class ReportsService {
       this.prisma.applicationAuditEvent.findMany({
         where,
         select: { eventType: true, entityType: true, description: true, actorType: true, occurredAt: true },
-        orderBy: { occurredAt: 'desc' },
+        orderBy: [{ occurredAt: 'desc' }, { id: 'asc' }],
         skip, take: limit,
       }),
       this.prisma.applicationAuditEvent.count({ where }),
