@@ -195,4 +195,16 @@ export class ReportsController {
       { key: 'entityType', label: 'Entity Type' }, { key: 'description', label: 'Description' },
     ], 'activity', meta.total);
   }
+
+  // ── Filter Options ──
+
+  @Get('filter-options/jobs')
+  async filterJobs(@Query('search') search: string | undefined, @Query('page') page: string | undefined, @Query('limit') limit: string | undefined, @CurrentUser() user: AuthenticatedPrincipal) {
+    return this.reportsService.getJobOptions(this.getActiveCompany(user), search, page ? Number(page) : 1, limit ? Number(limit) : 50);
+  }
+
+  @Get('filter-options/departments')
+  async filterDepartments(@Query('search') search: string | undefined, @Query('page') page: string | undefined, @Query('limit') limit: string | undefined, @CurrentUser() user: AuthenticatedPrincipal) {
+    return this.reportsService.getDepartmentOptions(this.getActiveCompany(user), search, page ? Number(page) : 1, limit ? Number(limit) : 50);
+  }
 }

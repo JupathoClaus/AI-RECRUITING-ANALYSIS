@@ -423,4 +423,42 @@ export class ReportsService {
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
+
+  // ── Filter Options ──
+
+  async getJobOptions(companyId: string, search?: string, page = 1, limit = 50) {
+    const where: Prisma.JobWhereInput = { companyId, deletedAt: null };
+    if (search?.trim()) where.title = { contains: search.trim(), mode: 'insensitive' };
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.prisma.job.findMany({
+        where, select: { id: true, title: true },
+        orderBy: [{ title: 'asc' }, { id: 'asc' }],
+        skip, take: limit,
+      }),
+      this.prisma.job.count({ where }),
+    ]);
+    return {
+      data: items.map((j) => ({ id: j.id, label: j.title })),
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit), hasMore: skip + items.length < total },
+    };
+  }
+
+  async getDepartmentOptions(companyId: string, search?: string, page = 1, limit = 50) {
+    const where: Prisma.DepartmentWhereInput = { companyId, deletedAt: null, status: 'ACTIVE' };
+    if (search?.trim()) where.name = { contains: search.trim(), mode: 'insensitive' };
+    const skip = (page - 1) * limit;
+    const [items, total] = await Promise.all([
+      this.prisma.department.findMany({
+        where, select: { id: true, name: true },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip, take: limit,
+      }),
+      this.prisma.department.count({ where }),
+    ]);
+    return {
+      data: items.map((d) => ({ id: d.id, label: d.name })),
+      meta: { page, limit, total, totalPages: Math.ceil(total / limit), hasMore: skip + items.length < total },
+    };
+  }
 }

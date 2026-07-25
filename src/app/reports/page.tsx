@@ -16,10 +16,7 @@ import {
   ArrowLeft, ArrowRight2, TickCircle, SearchNormal1,
 } from "iconsax-react"
 import * as reportsApi from "@/lib/api/reports.api"
-import * as jobsApi from "@/lib/api/jobs.api"
-import * as companyApi from "@/lib/api/company.api"
 import type { ReportParams, CandidateEvaluationRow, InterviewSummaryRow, TimeToHireRow, SourceEffectivenessRow, JobSummaryRow, ActivityRow, PipelineReport, ReportPaginationMeta } from "@/lib/api/reports.api"
-import type { DepartmentDto } from "@/lib/api/types"
 
 const REPORT_VIEWS = [
   { id: "candidate-evaluation", title: "Candidate Evaluation Report", description: "Candidate details, application status, source, and interview outcomes.", icon: <People className="h-5 w-5" />, color: "text-primary", bgColor: "bg-primary-muted", category: "Candidates", hasExport: true },
@@ -169,7 +166,8 @@ export default function ReportsPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [page, setPage] = React.useState(1)
   const [exportLoading, setExportLoading] = React.useState(false)
-  const [requestSeq, setRequestSeq] = React.useState(0)
+  const abortRef = React.useRef<AbortController | null>(null)
+  const exportAbortRef = React.useRef<AbortController | null>(null)
 
   // Draft filters (edited but not yet applied)
   const [draftDateFrom, setDraftDateFrom] = React.useState("")
@@ -197,8 +195,8 @@ export default function ReportsPage() {
     setOptionsLoading(true)
     setOptionsError(null)
     Promise.all([
-      jobsApi.getJobs({ limit: 200 }).then((r) => r.data.map((j: { id: string; title: string }) => ({ id: j.id, label: j.title }))),
-      companyApi.getDepartments({ limit: 100 }).then((r) => r.data.map((d: DepartmentDto) => ({ id: d.id, label: d.name }))),
+      reportsApi.getJobFilterOptions(undefined, 1, 50).then((r) => r.data),
+      reportsApi.getDepartmentFilterOptions(undefined, 1, 50).then((r) => r.data),
     ]).then(([jobs, depts]) => {
       if (cancelled) return
       setJobOptions(jobs)
@@ -224,7 +222,7 @@ export default function ReportsPage() {
     return params
   }, [])
 
-  const loadReport = React.useCallback(async (viewId: string, p: number, seq: number, df: string, dt: string, jid: string, did: string, sts: string[]) => {
+  const loadReport = React.useCallback(async (viewId: string, p: number, df: string, dt: string, jid: string, did: string, sts: string[], signal: AbortSignal) => {
     setLoading(true)
     setError(null)
     try {
@@ -232,38 +230,36 @@ export default function ReportsPage() {
       let result: unknown
       let paginationMeta: ReportPaginationMeta | null = null
       switch (viewId) {
-        case "candidate-evaluation": { const r = await reportsApi.getCandidateEvaluation(params); result = r.data; paginationMeta = r.meta; break }
-        case "interview-summary": { const r = await reportsApi.getInterviewSummary(params); result = r.data; paginationMeta = r.meta; break }
-        case "pipeline": { result = await reportsApi.getPipeline(params); break }
-        case "time-to-hire": { const r = await reportsApi.getTimeToHire(params); result = r.data; paginationMeta = r.meta; break }
-        case "source-effectiveness": { result = await reportsApi.getSourceEffectiveness(params); break }
-        case "job-summary": { const r = await reportsApi.getJobSummary(params); result = r.data; paginationMeta = r.meta; break }
-        case "activity": { const r = await reportsApi.getActivity(params); result = r.data; paginationMeta = r.meta; break }
+        case "candidate-evaluation": { const r = await reportsApi.getCandidateEvaluation(params, signal); result = r.data; paginationMeta = r.meta; break }
+        case "interview-summary": { const r = await reportsApi.getInterviewSummary(params, signal); result = r.data; paginationMeta = r.meta; break }
+        case "pipeline": { result = await reportsApi.getPipeline(params, signal); break }
+        case "time-to-hire": { const r = await reportsApi.getTimeToHire(params, signal); result = r.data; paginationMeta = r.meta; break }
+        case "source-effectiveness": { result = await reportsApi.getSourceEffectiveness(params, signal); break }
+        case "job-summary": { const r = await reportsApi.getJobSummary(params, signal); result = r.data; paginationMeta = r.meta; break }
+        case "activity": { const r = await reportsApi.getActivity(params, signal); result = r.data; paginationMeta = r.meta; break }
       }
-      // Stale request check
-      if (seq < requestSeq) return
+      if (signal.aborted) return
       setData(result)
       setMeta(paginationMeta)
     } catch (err: unknown) {
-      if (seq < requestSeq) return
+      if (signal.aborted) return
+      const isAbort = err instanceof DOMException && err.name === 'AbortError'
+      if (isAbort) return
       setError(getErrorMessage(err, "Failed to load report"))
     } finally {
-      if (seq >= requestSeq) setLoading(false)
+      if (!signal.aborted) setLoading(false)
     }
-  }, [buildParams, requestSeq])
-
-  const triggerLoad = React.useCallback((p: number) => {
-    const seq = Date.now()
-    setRequestSeq(seq)
-    if (activeView && activeView !== "diversity") {
-      loadReport(activeView, p, seq, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses)
-    }
-    if (activeView === "diversity") { setData(null); setMeta(null) }
-  }, [activeView, loadReport, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses])
+  }, [buildParams])
 
   React.useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    triggerLoad(page)
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    if (activeView && activeView !== "diversity") {
+      loadReport(activeView, page, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses, controller.signal)
+    }
+    if (activeView === "diversity") { setData(null); setMeta(null) }
+    return () => { controller.abort() }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadKey, activeView, page])
 
@@ -301,17 +297,24 @@ export default function ReportsPage() {
 
   const handleExport = async () => {
     if (!activeView || !activeReport?.hasExport) return
+    exportAbortRef.current?.abort()
+    const controller = new AbortController()
+    exportAbortRef.current = controller
     setExportLoading(true)
     try {
       const params = buildParams(1, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses)
-      const result = await reportsApi.downloadReportCsv(activeView, params)
+      const result = await reportsApi.downloadReportCsv(activeView, params, controller.signal)
+      if (controller.signal.aborted) return
       if (result.truncated) {
         setError(`Export completed with ${result.returnedCount?.toLocaleString()} of ${result.totalCount?.toLocaleString()} records. Narrow the filters to export the remaining records.`)
+      } else {
+        setError(null)
       }
     } catch (err: unknown) {
+      if (controller.signal.aborted) return
       setError(getErrorMessage(err, "Export failed"))
     } finally {
-      setExportLoading(false)
+      if (!controller.signal.aborted) setExportLoading(false)
     }
   }
 

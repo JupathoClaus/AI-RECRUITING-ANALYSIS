@@ -128,6 +128,18 @@ export async function getActivity(params?: ReportParams, signal?: AbortSignal) {
   return apiRequest<{ data: ActivityRow[]; meta: ReportPaginationMeta }>("/reports/activity", { params, signal })
 }
 
+export async function getJobFilterOptions(search?: string, page = 1, limit = 50, signal?: AbortSignal) {
+  const params: Record<string, string | number> = { page, limit }
+  if (search) params.search = search
+  return apiRequest<{ data: { id: string; label: string }[]; meta: { page: number; limit: number; total: number; totalPages: number; hasMore: boolean } }>("/reports/filter-options/jobs", { params, signal })
+}
+
+export async function getDepartmentFilterOptions(search?: string, page = 1, limit = 50, signal?: AbortSignal) {
+  const params: Record<string, string | number> = { page, limit }
+  if (search) params.search = search
+  return apiRequest<{ data: { id: string; label: string }[]; meta: { page: number; limit: number; total: number; totalPages: number; hasMore: boolean } }>("/reports/filter-options/departments", { params, signal })
+}
+
 /** Download a report CSV through the shared authenticated API client. */
 export async function downloadReportCsv(reportName: string, params?: ReportParams, signal?: AbortSignal): Promise<ReportExportResult> {
   const searchParams = new URLSearchParams()
