@@ -42,6 +42,8 @@ interface RequestOptions {
   body?: unknown
   params?: Record<string, string | number | string[] | undefined>
   skipAuth?: boolean
+  responseType?: 'json' | 'blob'
+  signal?: AbortSignal
 }
 
 export class ApiErrorResponse extends Error {
@@ -57,15 +59,25 @@ export class ApiErrorResponse extends Error {
   }
 }
 
-async function doFetch(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+async function doFetch(url: string, options: RequestInit, timeoutMs: number, externalSignal?: AbortSignal): Promise<Response> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const combinedSignal = externalSignal ? combineAbortSignals(controller.signal, externalSignal) : controller.signal
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal })
+    const res = await fetch(url, { ...options, signal: combinedSignal })
     return res
   } finally {
     clearTimeout(timer)
   }
+}
+
+function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
+  const controller = new AbortController()
+  for (const signal of signals) {
+    if (signal.aborted) { controller.abort(); return controller.signal }
+    signal.addEventListener('abort', () => controller.abort(), { once: true })
+  }
+  return controller.signal
 }
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -109,8 +121,13 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+export interface BlobResponse {
+  blob: Blob
+  headers: Headers
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, params, skipAuth = false } = options
+  const { method = "GET", body, params, skipAuth = false, responseType = 'json', signal } = options
 
   let url = `${getBaseUrl()}${path}`
   if (params) {
@@ -130,15 +147,17 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (qs) url += `?${qs}`
   }
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Accept: "application/json",
+  const headers: Record<string, string> = {}
+  const acceptType = responseType === 'blob' ? 'text/csv' : 'application/json'
+  headers['Accept'] = acceptType
+  if (responseType !== 'blob') {
+    headers['Content-Type'] = 'application/json'
   }
 
   if (!skipAuth) {
     const token = getAccessToken()
     if (token) {
-      headers["Authorization"] = `Bearer ${token}`
+      headers['Authorization'] = `Bearer ${token}`
     }
   }
 
@@ -148,24 +167,26 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
-      credentials: "include",
+      credentials: 'include',
     },
     REQUEST_TIMEOUT_MS,
+    signal,
   )
 
   if (res.status === 401 && !skipAuth) {
     const newToken = await refreshAccessToken()
     if (newToken) {
-      headers["Authorization"] = `Bearer ${newToken}`
+      headers['Authorization'] = `Bearer ${newToken}`
       res = await doFetch(
         url,
         {
           method,
           headers,
           body: body ? JSON.stringify(body) : undefined,
-          credentials: "include",
+          credentials: 'include',
         },
         REQUEST_TIMEOUT_MS,
+        signal,
       )
     }
   }
@@ -173,16 +194,26 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (!res.ok) {
     let errorBody: { errorCode?: string; message?: string } | null = null
     try {
-      errorBody = (await res.json()) as { errorCode?: string; message?: string }
+      if (responseType === 'blob') {
+        const text = await res.text()
+        try { errorBody = JSON.parse(text) as { errorCode?: string; message?: string } } catch { /* ignore */ }
+      } else {
+        errorBody = (await res.json()) as { errorCode?: string; message?: string }
+      }
     } catch {
       // ignore parse errors
     }
     throw new ApiErrorResponse(
       res.status,
-      errorBody?.errorCode || "REQUEST_FAILED",
+      errorBody?.errorCode || 'REQUEST_FAILED',
       errorBody?.message || `Request failed with status ${res.status}`,
       (errorBody as { errors?: string[] })?.errors || [],
     )
+  }
+
+  if (responseType === 'blob') {
+    const blob = await res.blob()
+    return { blob, headers: res.headers } as T
   }
 
   if (res.status === 204) {

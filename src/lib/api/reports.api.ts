@@ -1,4 +1,4 @@
-import { apiRequest } from "./client"
+import { apiRequest, BlobResponse } from "./client"
 
 export interface CandidateEvaluationRow {
   applicationId: string
@@ -50,7 +50,7 @@ export interface TimeToHireRow {
 export interface SourceEffectivenessRow {
   source: string
   applicationCount: number
-  interviewedCount: number
+  applicationsInterviewed: number
   hiredCount: number
   rejectedCount: number
 }
@@ -93,75 +93,72 @@ export interface ReportParams {
   [key: string]: string | number | string[] | undefined
 }
 
-export async function getCandidateEvaluation(params?: ReportParams) {
-  return apiRequest<{ data: CandidateEvaluationRow[]; meta: ReportPaginationMeta }>("/reports/candidate-evaluation", { params })
+export interface ReportExportResult {
+  filename: string
+  truncated: boolean
+  totalCount: number | null
+  returnedCount: number | null
 }
 
-export async function getInterviewSummary(params?: ReportParams) {
-  return apiRequest<{ data: InterviewSummaryRow[]; meta: ReportPaginationMeta }>("/reports/interview-summary", { params })
+export async function getCandidateEvaluation(params?: ReportParams, signal?: AbortSignal) {
+  return apiRequest<{ data: CandidateEvaluationRow[]; meta: ReportPaginationMeta }>("/reports/candidate-evaluation", { params, signal })
 }
 
-export async function getPipeline(params?: ReportParams) {
-  return apiRequest<PipelineReport>("/reports/pipeline", { params })
+export async function getInterviewSummary(params?: ReportParams, signal?: AbortSignal) {
+  return apiRequest<{ data: InterviewSummaryRow[]; meta: ReportPaginationMeta }>("/reports/interview-summary", { params, signal })
 }
 
-export async function getTimeToHire(params?: ReportParams) {
-  return apiRequest<{ data: TimeToHireRow[]; meta: ReportPaginationMeta }>("/reports/time-to-hire", { params })
+export async function getPipeline(params?: ReportParams, signal?: AbortSignal) {
+  return apiRequest<PipelineReport>("/reports/pipeline", { params, signal })
 }
 
-export async function getSourceEffectiveness(params?: ReportParams) {
-  return apiRequest<SourceEffectivenessRow[]>("/reports/source-effectiveness", { params })
+export async function getTimeToHire(params?: ReportParams, signal?: AbortSignal) {
+  return apiRequest<{ data: TimeToHireRow[]; meta: ReportPaginationMeta }>("/reports/time-to-hire", { params, signal })
 }
 
-export async function getJobSummary(params?: ReportParams) {
-  return apiRequest<{ data: JobSummaryRow[]; meta: ReportPaginationMeta }>("/reports/job-summary", { params })
+export async function getSourceEffectiveness(params?: ReportParams, signal?: AbortSignal) {
+  return apiRequest<SourceEffectivenessRow[]>("/reports/source-effectiveness", { params, signal })
 }
 
-export async function getActivity(params?: ReportParams) {
-  return apiRequest<{ data: ActivityRow[]; meta: ReportPaginationMeta }>("/reports/activity", { params })
+export async function getJobSummary(params?: ReportParams, signal?: AbortSignal) {
+  return apiRequest<{ data: JobSummaryRow[]; meta: ReportPaginationMeta }>("/reports/job-summary", { params, signal })
 }
 
-function buildExportQuery(params?: ReportParams): string {
-  const sp = new URLSearchParams()
-  if (params?.dateFrom) sp.set('dateFrom', params.dateFrom)
-  if (params?.dateTo) sp.set('dateTo', params.dateTo)
+export async function getActivity(params?: ReportParams, signal?: AbortSignal) {
+  return apiRequest<{ data: ActivityRow[]; meta: ReportPaginationMeta }>("/reports/activity", { params, signal })
+}
+
+/** Download a report CSV through the shared authenticated API client. */
+export async function downloadReportCsv(reportName: string, params?: ReportParams, signal?: AbortSignal): Promise<ReportExportResult> {
+  const searchParams = new URLSearchParams()
+  if (params?.dateFrom) searchParams.set('dateFrom', params.dateFrom)
+  if (params?.dateTo) searchParams.set('dateTo', params.dateTo)
   if (params?.jobIds) {
     const ids = Array.isArray(params.jobIds) ? params.jobIds : [params.jobIds]
-    ids.forEach((id) => sp.append('jobIds', id))
+    ids.forEach((id) => searchParams.append('jobIds', id))
   }
   if (params?.departmentIds) {
     const ids = Array.isArray(params.departmentIds) ? params.departmentIds : [params.departmentIds]
-    ids.forEach((id) => sp.append('departmentIds', id))
+    ids.forEach((id) => searchParams.append('departmentIds', id))
   }
   if (params?.statuses) {
     const sts = Array.isArray(params.statuses) ? params.statuses : [params.statuses]
-    sts.forEach((s) => sp.append('statuses', s))
+    sts.forEach((s) => searchParams.append('statuses', s))
   }
-  const qs = sp.toString()
-  return qs ? `?${qs}` : ''
-}
+  const qs = searchParams.toString()
+  const path = `/reports/${reportName}/export${qs ? `?${qs}` : ''}`
 
-/** Download a report CSV through authenticated fetch matching apiRequest pattern. */
-export async function downloadReportCsv(reportName: string, params?: ReportParams): Promise<void> {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || ''
-  const url = `${baseUrl}/api/v1/reports/${reportName}/export${buildExportQuery(params)}`
-  const { getAccessToken } = await import('./client')
-  const token = getAccessToken()
-  const headers: Record<string, string> = { Accept: 'text/csv' }
-  if (token) headers['Authorization'] = `Bearer ${token}`
+  const result = await apiRequest<BlobResponse>(path, { responseType: 'blob', signal })
 
-  const res = await fetch(url, { credentials: 'include', headers })
-  if (!res.ok) {
-    await res.text().catch(() => {})
-    throw new Error(`Export failed (${res.status})`)
-  }
-
-  const blob = await res.blob()
-  const disposition = res.headers.get('Content-Disposition') || ''
+  const disposition = result.headers.get('Content-Disposition') || ''
   const match = disposition.match(/filename="?([^";\n]+)"?/)
   const filename = match ? match[1] : `${reportName}.csv`
 
-  const objectUrl = URL.createObjectURL(blob)
+  const truncated = result.headers.get('X-Export-Truncated') === 'true'
+  const totalCount = parseInt(result.headers.get('X-Export-Total-Count') || '', 10) || null
+  const returnedCount = parseInt(result.headers.get('X-Export-Returned-Count') || '', 10) || null
+
+  const objectUrl = URL.createObjectURL(result.blob)
   const a = document.createElement('a')
   a.href = objectUrl
   a.download = filename
@@ -169,4 +166,6 @@ export async function downloadReportCsv(reportName: string, params?: ReportParam
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(objectUrl)
+
+  return { filename, truncated, totalCount, returnedCount }
 }

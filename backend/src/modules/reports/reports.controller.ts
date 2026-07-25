@@ -150,8 +150,8 @@ export class ReportsController {
   async sourceEffectivenessExport(@Query() filter: ReportFilterDto, @CurrentUser() user: AuthenticatedPrincipal, @Res() res: Response) {
     const data = await this.reportsService.getSourceEffectiveness(this.getActiveCompany(user), this.prepareFilter(filter));
     this.validateAndExport(res, data, [
-      { key: 'source', label: 'Source Channel' }, { key: 'applicationCount', label: 'Applications' },
-      { key: 'interviewedCount', label: 'Interviewed' }, { key: 'hiredCount', label: 'Hired' },
+      { key: 'source', label: 'Source Channel' },       { key: 'applicationCount', label: 'Applications' },
+      { key: 'applicationsInterviewed', label: 'Applications Interviewed' }, { key: 'hiredCount', label: 'Hired' },
       { key: 'rejectedCount', label: 'Rejected' },
     ], 'source-effectiveness', data.length);
   }

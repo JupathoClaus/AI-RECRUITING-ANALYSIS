@@ -54,7 +54,7 @@ export interface TimeToHireRow {
 export interface SourceEffectivenessRow {
   source: string;
   applicationCount: number;
-  interviewedCount: number;
+  applicationsInterviewed: number;
   hiredCount: number;
   rejectedCount: number;
 }
@@ -300,7 +300,7 @@ export class ReportsService {
     return Array.from(sourceMap.entries()).map(([source, vals]) => ({
       source,
       applicationCount: vals.apps,
-      interviewedCount: vals.interviewed,
+      applicationsInterviewed: vals.interviewed,
       hiredCount: vals.hired,
       rejectedCount: vals.rejected,
     }));

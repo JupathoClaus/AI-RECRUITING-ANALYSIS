@@ -154,7 +154,7 @@ describe('ReportsService', () => {
       const linkedin = result.find((r: any) => r.source === 'LINKEDIN')!;
       expect(linkedin).toBeDefined();
       expect(linkedin.applicationCount).toBe(12);
-      expect(linkedin.interviewedCount).toBe(3);
+      expect(linkedin.applicationsInterviewed).toBe(3);
       expect(linkedin.hiredCount).toBe(2);
     });
   });

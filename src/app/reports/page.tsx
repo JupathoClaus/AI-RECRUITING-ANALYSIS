@@ -304,7 +304,10 @@ export default function ReportsPage() {
     setExportLoading(true)
     try {
       const params = buildParams(1, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses)
-      await reportsApi.downloadReportCsv(activeView, params)
+      const result = await reportsApi.downloadReportCsv(activeView, params)
+      if (result.truncated) {
+        setError(`Export completed with ${result.returnedCount?.toLocaleString()} of ${result.totalCount?.toLocaleString()} records. Narrow the filters to export the remaining records.`)
+      }
     } catch (err: unknown) {
       setError(getErrorMessage(err, "Export failed"))
     } finally {
@@ -444,7 +447,7 @@ function ReportTable({ viewId, data }: { viewId: string; data: unknown }) {
     const rows = data as SourceEffectivenessRow[]
     if (!rows.length) return <div className="py-8 text-center text-sm text-muted">No source data available</div>
     return (<Table><TableHeader><TableRow><TableHead>Source</TableHead><TableHead className="text-right">Apps</TableHead><TableHead className="text-right">Interviewed</TableHead><TableHead className="text-right">Hired</TableHead><TableHead className="text-right">Rejected</TableHead></TableRow></TableHeader>
-      <TableBody>{rows.map((r) => (<TableRow key={r.source}><TableCell className="font-medium">{r.source}</TableCell><TableCell className="text-right">{r.applicationCount}</TableCell><TableCell className="text-right">{r.interviewedCount}</TableCell><TableCell className="text-right">{r.hiredCount}</TableCell><TableCell className="text-right">{r.rejectedCount}</TableCell></TableRow>))}</TableBody></Table>)
+        <TableBody>{rows.map((r) => (<TableRow key={r.source}><TableCell className="font-medium">{r.source}</TableCell><TableCell className="text-right">{r.applicationCount}</TableCell><TableCell className="text-right">{r.applicationsInterviewed}</TableCell><TableCell className="text-right">{r.hiredCount}</TableCell><TableCell className="text-right">{r.rejectedCount}</TableCell></TableRow>))}</TableBody></Table>)
   }
 
   if (viewId === "job-summary") {
