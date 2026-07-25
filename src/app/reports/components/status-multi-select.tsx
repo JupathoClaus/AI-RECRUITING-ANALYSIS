@@ -2,7 +2,13 @@
 
 import * as React from "react"
 
-const STATUSES = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'SCREENING', 'SHORTLISTED', 'ASSESSMENT', 'INTERVIEW', 'OFFER', 'HIRED', 'REJECTED', 'WITHDRAWN', 'DISQUALIFIED', 'ON_HOLD', 'ARCHIVED'] as const
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Draft', SUBMITTED: 'Submitted', UNDER_REVIEW: 'Under review', SCREENING: 'Screening',
+  SHORTLISTED: 'Shortlisted', ASSESSMENT: 'Assessment', INTERVIEW: 'Interview',
+  OFFER: 'Offer', HIRED: 'Hired', REJECTED: 'Rejected', WITHDRAWN: 'Withdrawn',
+  DISQUALIFIED: 'Disqualified', ON_HOLD: 'On hold', ARCHIVED: 'Archived',
+}
+const STATUSES = Object.keys(STATUS_LABELS)
 
 interface StatusMultiSelectProps {
   selected: string[]
@@ -11,34 +17,28 @@ interface StatusMultiSelectProps {
 
 export function StatusMultiSelect({ selected, onChange }: StatusMultiSelectProps) {
   const [open, setOpen] = React.useState(false)
-  const triggerRef = React.useRef<HTMLButtonElement>(null)
   const popupRef = React.useRef<HTMLDivElement>(null)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
   const id = React.useId()
-  const popupId = `${id}-status-popup`
 
   // Close on outside click
   React.useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (popupRef.current && !popupRef.current.contains(target) && triggerRef.current && !triggerRef.current.contains(target)) {
+      const t = e.target as Node
+      if (popupRef.current && !popupRef.current.contains(t) && triggerRef.current && !triggerRef.current.contains(t)) {
         setOpen(false)
-        triggerRef.current?.focus()
       }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  // Handle Escape from anywhere in popup
+  // Escape handler
   React.useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        setOpen(false)
-        triggerRef.current?.focus()
-      }
+      if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); triggerRef.current?.focus() }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
@@ -50,8 +50,7 @@ export function StatusMultiSelect({ selected, onChange }: StatusMultiSelectProps
         ref={triggerRef}
         type="button"
         aria-expanded={open}
-        aria-controls={popupId}
-        aria-haspopup="true"
+        aria-controls={`${id}-popup`}
         onClick={() => setOpen(!open)}
         className="flex h-9 w-40 items-center justify-between rounded-lg border border-border bg-background px-3 text-xs outline-none hover:border-primary focus:border-primary focus:ring-1 focus:ring-primary"
       >
@@ -60,7 +59,7 @@ export function StatusMultiSelect({ selected, onChange }: StatusMultiSelectProps
       {open && (
         <div
           ref={popupRef}
-          id={popupId}
+          id={`${id}-popup`}
           role="group"
           aria-label="Application status"
           className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-surface shadow-xl p-2 max-h-60 overflow-y-auto"
@@ -73,7 +72,7 @@ export function StatusMultiSelect({ selected, onChange }: StatusMultiSelectProps
                 onChange={() => onChange(selected.includes(status) ? selected.filter((s) => s !== status) : [...selected, status])}
                 className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
               />
-              <span>{status}</span>
+              <span>{STATUS_LABELS[status] || status}</span>
             </label>
           ))}
           {selected.length > 0 && (

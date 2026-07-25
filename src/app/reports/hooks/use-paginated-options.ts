@@ -22,45 +22,39 @@ export function usePaginatedOptions(
   const [initialLoading, setInitialLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [failedRequest, setFailedRequest] = useState<{ query: string; page: number; mode: 'replace' | 'append' } | null>(null)
-  const [selectedLabel, setSelectedLabel] = useState<string | null>(selectedOption?.label || null)
+  const [failedReq, setFailedReq] = useState<{ query: string; page: number; mode: 'replace' | 'append' } | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
   const versionRef = useRef(0)
-  const isMounted = useRef(true)
+  const loadingMoreRef = useRef(false)
 
-  // Store the selected label from options cache
-  const optionsCache = useRef<Map<string, PaginatedOption>>(new Map())
+  // Debounce
   useEffect(() => {
-    for (const opt of options) optionsCache.current.set(opt.id, opt)
-    // Update selected label if we have a better one
-    if (selectedOption) {
-      const cached = optionsCache.current.get(selectedOption.id)
-      if (cached?.label) setSelectedLabel(cached.label)
-    }
-  }, [options, selectedOption])
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), debounceMs)
+    return () => clearTimeout(timer)
+  }, [query, debounceMs])
 
-  const fetchOptions = useCallback(async (q: string, p: number, mode: 'replace' | 'append') => {
+  const doFetch = useCallback(async (q: string, p: number, mode: 'replace' | 'append') => {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
     const version = ++versionRef.current
 
     if (mode === 'replace') { setInitialLoading(true); setOptions([]); setPage(1) }
-    else { setLoadingMore(true) }
+    else { setLoadingMore(true); loadingMoreRef.current = true }
 
     setError(null)
-    setFailedRequest(null)
+    setFailedReq(null)
 
     try {
       const result = await fetchPage(q, p, pageSize, controller.signal)
-      if (!isMounted.current || controller.signal.aborted || version !== versionRef.current) return
+      if (controller.signal.aborted || version !== versionRef.current) return
 
       if (mode === 'append') {
         setOptions((prev) => {
-          const ids = new Map(prev.map((o) => [o.id, o]))
-          for (const item of result.data) ids.set(item.id, item)
-          return [...ids.values()]
+          const seen = new Map(prev.map((o) => [o.id, o]))
+          for (const item of result.data) seen.set(item.id, item)
+          return [...seen.values()]
         })
       } else {
         setOptions(result.data)
@@ -70,54 +64,48 @@ export function usePaginatedOptions(
     } catch (err: unknown) {
       if (controller.signal.aborted || version !== versionRef.current) return
       setError(err instanceof Error ? err.message : "Failed to load options")
-      setFailedRequest({ query: q, page: p, mode })
+      setFailedReq({ query: q, page: p, mode })
     } finally {
       if (controller.signal.aborted || version !== versionRef.current) return
       if (mode === 'replace') setInitialLoading(false)
-      else setLoadingMore(false)
+      else { setLoadingMore(false); loadingMoreRef.current = false }
     }
   }, [fetchPage, pageSize])
 
-  // Debounce query
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(query.trim()), debounceMs)
-    return () => clearTimeout(timer)
-  }, [query, debounceMs])
-
-  // Initial mount fetch
+  // Single authoritative effect: fetches on mount and on every debounced query change
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchOptions("", 1, 'replace')
-    return () => { isMounted.current = false }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // React to debounced query changes
-  useEffect(() => {
-    if (debouncedQuery === "") return // handled by mount
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchOptions(debouncedQuery, 1, 'replace')
-  }, [debouncedQuery]) // eslint-disable-line react-hooks/exhaustive-deps
+    doFetch(debouncedQuery, 1, 'replace')
+    return () => { abortRef.current?.abort() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedQuery])
 
   const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore) return
-    fetchOptions(debouncedQuery, page + 1, 'append')
-  }, [loadingMore, hasMore, fetchOptions, debouncedQuery, page])
+    if (loadingMore || loadingMoreRef.current || !hasMore) return
+    loadingMoreRef.current = true
+    doFetch(debouncedQuery, page + 1, 'append')
+  }, [loadingMore, hasMore, doFetch, debouncedQuery, page])
 
   const retry = useCallback(() => {
-    if (!failedRequest) return
-    fetchOptions(failedRequest.query, failedRequest.page, failedRequest.mode)
-  }, [failedRequest, fetchOptions])
+    if (!failedReq) return
+    doFetch(failedReq.query, failedReq.page, failedReq.mode)
+  }, [failedReq, doFetch])
 
-  const clearQueryFn = useCallback(() => {
-    setQuery("")
-    setDebouncedQuery("")
-    fetchOptions("", 1, 'replace')
-  }, [fetchOptions])
+  // Selected option label persistence (stored as state to avoid ref-in-render)
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (selectedOption?.label) setSelectedLabel(selectedOption.label)
+    else if (selectedOption) {
+      const cached = new Map(options.map((o) => [o.id, o.label]))
+      setSelectedLabel(cached.get(selectedOption.id) || null)
+    } else setSelectedLabel(null)
+  }, [options, selectedOption])
 
   return {
     query, setQuery, options, page, hasMore,
-    initialLoading, loadingMore, error, failedRequest,
-    retry, loadMore, clearQuery: clearQueryFn,
-    selectedLabel, selectedOption,
+    initialLoading, loadingMore, error, failedReq,
+    retry, loadMore,
+    selectedLabel,
   }
 }

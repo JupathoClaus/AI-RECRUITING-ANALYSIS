@@ -13,10 +13,14 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn, getErrorMessage } from "@/lib/utils"
 import {
   Document, Chart2, People, Clock, DocumentDownload, MagicStar, Flag, TrendUp, Chart, Briefcase,
-  ArrowLeft, ArrowRight2, TickCircle, SearchNormal1,
+  ArrowLeft, ArrowRight2,
 } from "iconsax-react"
 import * as reportsApi from "@/lib/api/reports.api"
 import type { ReportParams, CandidateEvaluationRow, InterviewSummaryRow, TimeToHireRow, SourceEffectivenessRow, JobSummaryRow, ActivityRow, PipelineReport, ReportPaginationMeta } from "@/lib/api/reports.api"
+import { AsyncCombobox } from "./components/async-combobox"
+import { StatusMultiSelect } from "./components/status-multi-select"
+import type { PaginatedOption } from "./hooks/use-paginated-options"
+import { getJobFilterOptions, getDepartmentFilterOptions } from "@/lib/api/reports.api"
 
 const REPORT_VIEWS = [
   { id: "candidate-evaluation", title: "Candidate Evaluation Report", description: "Candidate details, application status, source, and interview outcomes.", icon: <People className="h-5 w-5" />, color: "text-primary", bgColor: "bg-primary-muted", category: "Candidates", hasExport: true },
@@ -28,8 +32,6 @@ const REPORT_VIEWS = [
   { id: "diversity", title: "Diversity & Inclusion Report", description: "Requires explicitly collected candidate data — not available.", icon: <Chart className="h-5 w-5" />, color: "text-muted", bgColor: "bg-surface-elevated", category: "Compliance", hasExport: false },
   { id: "activity", title: "Recruitment Activity Report", description: "Audit trail of application events.", icon: <MagicStar className="h-5 w-5" />, color: "text-warning", bgColor: "bg-warning-muted", category: "Audit", hasExport: true },
 ]
-
-const APPLICATION_STATUSES = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'SCREENING', 'SHORTLISTED', 'ASSESSMENT', 'INTERVIEW', 'OFFER', 'HIRED', 'REJECTED', 'WITHDRAWN', 'DISQUALIFIED', 'ON_HOLD', 'ARCHIVED'] as const
 
 // Filter semantics: which filters each report type displays
 const REPORT_FILTER_CONFIG: Record<string, { date: boolean; job: boolean; department: boolean; status: boolean }> = {
@@ -48,6 +50,9 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString()
 }
 
+const fetchJobOptions: (q: string, p: number, l: number, s: AbortSignal) => Promise<{ data: { id: string; label: string }[]; meta: { page: number; limit: number; total: number; totalPages: number; hasMore: boolean } }> = (q, p, l, s) => getJobFilterOptions(q || undefined, p, l, s)
+const fetchDeptOptions: (q: string, p: number, l: number, s: AbortSignal) => Promise<{ data: { id: string; label: string }[]; meta: { page: number; limit: number; total: number; totalPages: number; hasMore: boolean } }> = (q, p, l, s) => getDepartmentFilterOptions(q || undefined, p, l, s)
+
 function Pagination({ meta, page, onPageChange, loading }: { meta: ReportPaginationMeta | null; page: number; onPageChange: (p: number) => void; loading: boolean }) {
   if (!meta || meta.totalPages <= 1) return null
   return (
@@ -57,114 +62,6 @@ function Pagination({ meta, page, onPageChange, loading }: { meta: ReportPaginat
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={page <= 1 || loading} onClick={() => onPageChange(page - 1)}><ArrowLeft className="h-4 w-4" /></Button>
         <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={page >= meta.totalPages || loading} onClick={() => onPageChange(page + 1)}><ArrowRight2 className="h-4 w-4" /></Button>
       </div>
-    </div>
-  )
-}
-
-function SearchableSelect({ options, value, onChange, placeholder, searchPlaceholder, loading: optionsLoading, error: optionsError, allLabel }: {
-  options: { id: string; label: string }[]
-  value: string
-  onChange: (v: string) => void
-  placeholder: string
-  searchPlaceholder: string
-  loading?: boolean
-  error?: string | null
-  allLabel: string
-}) {
-  const [open, setOpen] = React.useState(false)
-  const [search, setSearch] = React.useState("")
-  const ref = React.useRef<HTMLDivElement>(null)
-
-  React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    if (open) document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [open])
-
-  const filtered = search ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase())) : options
-  const selectedLabel = value ? options.find((o) => o.id === value)?.label : null
-
-  return (
-    <div ref={ref} className="relative">
-      <Button variant="outline" onClick={() => setOpen(!open)} className="h-9 w-44 justify-between text-xs font-normal">
-        <span className="truncate">{selectedLabel || placeholder}</span>
-        <SearchNormal1 className="h-3 w-3 shrink-0 opacity-50" />
-      </Button>
-      {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-surface shadow-xl">
-          <div className="p-2">
-            <input
-              type="text"
-              placeholder={searchPlaceholder}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs outline-none focus:border-primary"
-              autoFocus
-            />
-          </div>
-          <div className="max-h-48 overflow-y-auto">
-            {optionsLoading && <div className="p-3 text-xs text-muted text-center">Loading...</div>}
-            {optionsError && <div className="p-3 text-xs text-error text-center">{optionsError}</div>}
-            {!optionsLoading && !optionsError && filtered.length === 0 && <div className="p-3 text-xs text-muted text-center">No results</div>}
-            {!optionsLoading && !optionsError && (
-              <>
-                <button onClick={() => { onChange(""); setOpen(false); setSearch("") }} className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-hover transition-colors">
-                  <TickCircle className={cn("h-3 w-3", !value ? "text-primary" : "text-muted")} />
-                  {allLabel}
-                </button>
-                {filtered.map((opt) => (
-                  <button key={opt.id} onClick={() => { onChange(opt.id); setOpen(false); setSearch("") }} className="flex w-full items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-hover transition-colors">
-                    <TickCircle className={cn("h-3 w-3", value === opt.id ? "text-primary" : "text-muted")} />
-                    <span>{opt.label}</span>
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function StatusMultiSelect({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
-  const [open, setOpen] = React.useState(false)
-  const ref = React.useRef<HTMLDivElement>(null)
-
-  React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    if (open) document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [open])
-
-  return (
-    <div ref={ref} className="relative">
-      <Button variant="outline" onClick={() => setOpen(!open)} className="h-9 w-40 justify-between text-xs font-normal">
-        <span className="truncate">{selected.length ? `${selected.length} selected` : 'All Statuses'}</span>
-      </Button>
-      {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-surface shadow-xl p-2 max-h-60 overflow-y-auto">
-          {APPLICATION_STATUSES.map((status) => {
-            const isSelected = selected.includes(status)
-            return (
-              <button
-                key={status}
-                onClick={() => onChange(selected.includes(status) ? selected.filter((s) => s !== status) : [...selected, status])}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-surface-hover transition-colors"
-              >
-                <div className={cn("flex h-4 w-4 shrink-0 items-center justify-center rounded border", isSelected ? "bg-primary border-primary" : "border-border")}>
-                  {isSelected && <TickCircle className="h-3 w-3 text-white" />}
-                </div>
-                <span>{status}</span>
-              </button>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }
@@ -185,8 +82,8 @@ export default function ReportsPage() {
   // Draft filters (edited but not yet applied)
   const [draftDateFrom, setDraftDateFrom] = React.useState("")
   const [draftDateTo, setDraftDateTo] = React.useState("")
-  const [draftJobId, setDraftJobId] = React.useState("")
-  const [draftDeptId, setDraftDeptId] = React.useState("")
+  const [draftJob, setDraftJob] = React.useState<PaginatedOption | null>(null)
+  const [draftDept, setDraftDept] = React.useState<PaginatedOption | null>(null)
   const [draftStatuses, setDraftStatuses] = React.useState<string[]>([])
 
   // Applied filters (actively used for queries)
@@ -196,31 +93,8 @@ export default function ReportsPage() {
   const [appliedDeptId, setAppliedDeptId] = React.useState("")
   const [appliedStatuses, setAppliedStatuses] = React.useState<string[]>([])
 
-  // Options state
-  const [jobOptions, setJobOptions] = React.useState<{ id: string; label: string }[]>([])
-  const [deptOptions, setDeptOptions] = React.useState<{ id: string; label: string }[]>([])
-  const [optionsLoading, setOptionsLoading] = React.useState(true)
-  const [optionsError, setOptionsError] = React.useState<string | null>(null)
-
   React.useEffect(() => {
-    let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOptionsLoading(true)
-    setOptionsError(null)
-    Promise.all([
-      reportsApi.getJobFilterOptions(undefined, 1, 50).then((r) => r.data),
-      reportsApi.getDepartmentFilterOptions(undefined, 1, 50).then((r) => r.data),
-    ]).then(([jobs, depts]) => {
-      if (cancelled) return
-      setJobOptions(jobs)
-      setDeptOptions(depts)
-      setOptionsLoading(false)
-    }).catch((err: Error) => {
-      if (cancelled) return
-      setOptionsError(err.message)
-      setOptionsLoading(false)
-    })
-    return () => { cancelled = true }
+    // Options loading is handled by AsyncCombobox internally
   }, [])
 
   const activeReport = REPORT_VIEWS.find((r) => r.id === activeView)
@@ -235,6 +109,9 @@ export default function ReportsPage() {
     if (sts.length > 0 && cfg?.status !== false) params.statuses = sts
     return params
   }, [])
+
+  const appliedJobIdStr = appliedJobId
+  const appliedDeptIdStr = appliedDeptId
 
   const loadReport = React.useCallback(async (viewId: string, p: number, df: string, dt: string, jid: string, did: string, sts: string[], signal: AbortSignal) => {
     setLoading(true)
@@ -271,7 +148,7 @@ export default function ReportsPage() {
     abortRef.current = controller
     if (activeView && activeView !== "diversity") {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      loadReport(activeView, page, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses, controller.signal)
+      loadReport(activeView, page, appliedDateFrom, appliedDateTo, appliedJobIdStr, appliedDeptIdStr, appliedStatuses, controller.signal)
     }
     if (activeView === "diversity") { setData(null); setMeta(null) }
     return () => { controller.abort() }
@@ -288,8 +165,8 @@ export default function ReportsPage() {
   const handleApplyFilters = () => {
     setAppliedDateFrom(draftDateFrom)
     setAppliedDateTo(draftDateTo)
-    setAppliedJobId(draftJobId)
-    setAppliedDeptId(draftDeptId)
+    setAppliedJobId(draftJob?.id || "")
+    setAppliedDeptId(draftDept?.id || "")
     setAppliedStatuses(draftStatuses)
     setPage(1)
     setLoadKey((k) => k + 1)
@@ -298,8 +175,8 @@ export default function ReportsPage() {
   const handleClearFilters = () => {
     setDraftDateFrom("")
     setDraftDateTo("")
-    setDraftJobId("")
-    setDraftDeptId("")
+    setDraftJob(null)
+    setDraftDept(null)
     setDraftStatuses([])
     setAppliedDateFrom("")
     setAppliedDateTo("")
@@ -318,7 +195,7 @@ export default function ReportsPage() {
     setExportLoading(true)
     setExportMessage(null)
     try {
-      const params = buildParams(1, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses, activeView)
+      const params = buildParams(1, appliedDateFrom, appliedDateTo, appliedJobIdStr, appliedDeptIdStr, appliedStatuses, activeView)
       const result = await reportsApi.downloadReportCsv(activeView, params, controller.signal)
       if (controller.signal.aborted) return
       if (result.truncated) {
@@ -395,27 +272,34 @@ export default function ReportsPage() {
                 )}
                 {REPORT_FILTER_CONFIG[activeView!]?.job && (
                   <div className="space-y-0.5">
-                    <label className="text-[10px] font-medium text-muted">Job</label>
-                    <SearchableSelect options={jobOptions} value={draftJobId} onChange={setDraftJobId} placeholder="All Jobs" searchPlaceholder="Search jobs..." loading={optionsLoading} error={optionsError} allLabel="All Jobs" />
+                    <AsyncCombobox
+                      fetchPage={fetchJobOptions}
+                      selectedOption={draftJob}
+                      onChange={(opt) => setDraftJob(opt?.id === '' ? null : opt)}
+                      label="Job"
+                      placeholder="All Jobs"
+                    />
                   </div>
                 )}
                 {REPORT_FILTER_CONFIG[activeView!]?.department && (
                   <div className="space-y-0.5">
-                    <label className="text-[10px] font-medium text-muted">Department</label>
-                    <SearchableSelect options={deptOptions} value={draftDeptId} onChange={setDraftDeptId} placeholder="All Depts" searchPlaceholder="Search departments..." loading={optionsLoading} error={optionsError} allLabel="All Departments" />
+                    <AsyncCombobox
+                      fetchPage={fetchDeptOptions}
+                      selectedOption={draftDept}
+                      onChange={(opt) => setDraftDept(opt?.id === '' ? null : opt)}
+                      label="Department"
+                      placeholder="All Depts"
+                    />
                   </div>
                 )}
                 {REPORT_FILTER_CONFIG[activeView!]?.status && (
                   <div className="space-y-0.5">
-                    <label className="text-[10px] font-medium text-muted">Status</label>
                     <StatusMultiSelect selected={draftStatuses} onChange={setDraftStatuses} />
                   </div>
                 )}
                 <Button variant="outline" size="sm" className="h-9 text-xs" onClick={handleApplyFilters}>Apply</Button>
                 <Button variant="ghost" size="sm" className="h-9 text-xs" onClick={handleClearFilters}>Clear</Button>
               </div>
-              {optionsError && <p className="text-xs text-error">{optionsError}</p>}
-
               {/* Export feedback */}
               {exportMessage && (
                 <div role={exportMessage.type === 'success' ? 'status' : 'alert'} className={cn("flex items-center justify-between rounded-md px-3 py-2 text-xs", exportMessage.type === 'success' ? 'bg-success/5 text-success' : exportMessage.type === 'warning' ? 'bg-warning/5 text-warning' : 'bg-error/5 text-error')}>
