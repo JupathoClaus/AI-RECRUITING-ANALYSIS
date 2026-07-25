@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
 import { getJobPipeline, createPipelineStage, updatePipelineStage, deletePipelineStage, reorderPipelineStages } from "@/lib/api/jobs.api"
+import { rejectApplication, moveApplication } from "@/lib/api/applications.api"
 import type { PipelineStageDto, JobPipelineDto } from "@/lib/api/jobs.api"
 import {
   SearchNormal,
@@ -195,7 +196,7 @@ function CandidateCard({
 }
 
 export default function PipelinePage() {
-  const { candidates, jobs, candidatesError, advanceCandidateApplication, rejectCandidateApplication } = useStore()
+  const { candidates, jobs, candidatesError } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
   const [jobFilter, setJobFilter] = React.useState<string>("all")
   const [selectedCandidate, setSelectedCandidate] = React.useState<Candidate | null>(null)
@@ -238,14 +239,13 @@ export default function PipelinePage() {
 
   const stageCandidates = React.useMemo(() => {
     const map: Record<string, Candidate[]> = {}
-    const activeStages = stages.length > 0 ? stages : []
-    for (const stage of activeStages) {
+    for (const stage of stages) {
       map[stage.id] = []
     }
     for (const c of filteredCandidates) {
-      const ds = getDisplayStatus(c)
-      if (ds && map[ds]) {
-        map[ds].push(c)
+      const stageId = c.applicationSummary?.current?.stageId
+      if (stageId && map[stageId]) {
+        map[stageId].push(c)
       }
     }
     return map as Record<string, Candidate[]>
@@ -253,18 +253,18 @@ export default function PipelinePage() {
 
   const handleMove = React.useCallback(
     async (candidate: Candidate, direction: "left" | "right") => {
-      const stageOrder: string[] = stages.map((s) => s.id)
+      const currentApp = candidate.applicationSummary?.current
+      if (!currentApp || !currentApp.stageId || !currentApp.id) return
+      const stageOrder = stages.map((s) => s.id)
       if (stageOrder.length === 0) return
-      const currentDs = getDisplayStatus(candidate)
-      if (!currentDs) return
-      const currentIdx = stageOrder.indexOf(currentDs)
-      if (direction === "right" && currentIdx >= 0 && currentIdx < stageOrder.length - 1) {
-        await advanceCandidateApplication(candidate.id, stageOrder[currentIdx + 1])
-      } else if (direction === "left" && currentIdx > 0) {
-        await advanceCandidateApplication(candidate.id, stageOrder[currentIdx - 1])
-      }
+      const currentIdx = stageOrder.indexOf(currentApp.stageId)
+      if (currentIdx < 0) return
+      const targetIdx = direction === "right" ? currentIdx + 1 : currentIdx - 1
+      if (targetIdx < 0 || targetIdx >= stageOrder.length) return
+      await moveApplication(currentApp.id, { toStageId: stageOrder[targetIdx], expectedVersion: currentApp.version })
+      setSelectedCandidate(null)
     },
-    [advanceCandidateApplication, stages]
+    [stages]
   )
 
   const handleSaveStage = React.useCallback(async (e: React.FormEvent) => {
@@ -603,47 +603,35 @@ export default function PipelinePage() {
 
               <DialogFooter>
                 <div className="flex items-center gap-2 w-full flex-wrap">
-                  {displayStatus && displayStatus !== "Hired" && (
-                    <>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={async () => {
-                          await rejectCandidateApplication(s.id)
-                          setSelectedCandidate(null)
-                        }}
-                      >
-                        <CloseSquare className="h-4 w-4" />
-                        Reject
-                      </Button>
-                      {stages.length > 0 && (() => {
-                        const idx = stages.findIndex((st) => st.id === displayStatus)
-                        if (idx >= 0 && idx < stages.length - 2) {
-                          return (
-                            <Button size="sm" onClick={async () => {
-                              await advanceCandidateApplication(s.id, stages[idx + 1].id)
-                              setSelectedCandidate(null)
-                            }}>
-                              <ArrowRight className="h-4 w-4" />
-                              Move to {stages[idx + 1].label}
-                            </Button>
-                          )
-                        }
-                        if (idx >= 0 && idx === stages.length - 2) {
-                          return (
-                            <Button size="sm" onClick={async () => {
-                              await advanceCandidateApplication(s.id, stages[idx + 1].id)
-                              setSelectedCandidate(null)
-                            }}>
-                              <TickCircle className="h-4 w-4" />
-                              Complete
-                            </Button>
-                          )
-                        }
-                        return null
-                      })()}
-                    </>
-                  )}
+                  {(() => {
+                    const currentApp = s.applicationSummary?.current
+                    if (!currentApp || !currentApp.stageId || displayStatus === "Hired") return null
+                    const idx = stages.findIndex((st) => st.id === currentApp.stageId)
+                    return (
+                      <>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={async () => {
+                            await rejectApplication(currentApp.id, { expectedVersion: currentApp.version })
+                            setSelectedCandidate(null)
+                          }}
+                        >
+                          <CloseSquare className="h-4 w-4" />
+                          Reject
+                        </Button>
+                        {idx >= 0 && idx < stages.length - 1 && (
+                          <Button size="sm" onClick={async () => {
+                            await moveApplication(currentApp.id, { toStageId: stages[idx + 1].id, expectedVersion: currentApp.version })
+                            setSelectedCandidate(null)
+                          }}>
+                            <ArrowRight className="h-4 w-4" />
+                            Move to {stages[idx + 1].label}
+                          </Button>
+                        )}
+                      </>
+                    )
+                  })()}
                 </div>
               </DialogFooter>
             </>
