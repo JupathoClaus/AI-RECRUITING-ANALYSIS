@@ -1,8 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 
 const STATUSES = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'SCREENING', 'SHORTLISTED', 'ASSESSMENT', 'INTERVIEW', 'OFFER', 'HIRED', 'REJECTED', 'WITHDRAWN', 'DISQUALIFIED', 'ON_HOLD', 'ARCHIVED'] as const
 
@@ -13,94 +11,71 @@ interface StatusMultiSelectProps {
 
 export function StatusMultiSelect({ selected, onChange }: StatusMultiSelectProps) {
   const [open, setOpen] = React.useState(false)
-  const ref = React.useRef<HTMLDivElement>(null)
-  const [focusIndex, setFocusIndex] = React.useState(0)
+  const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const popupRef = React.useRef<HTMLDivElement>(null)
+  const id = React.useId()
+  const popupId = `${id}-status-popup`
 
+  // Close on outside click
   React.useEffect(() => {
     if (!open) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    const handler = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (popupRef.current && !popupRef.current.contains(target) && triggerRef.current && !triggerRef.current.contains(target)) {
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const toggle = (status: string) => {
-    onChange(selected.includes(status) ? selected.filter((s) => s !== status) : [...selected, status])
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault()
-        setFocusIndex((prev) => Math.min(prev + 1, STATUSES.length - 1))
-        break
-      case 'ArrowUp':
-        e.preventDefault()
-        setFocusIndex((prev) => Math.max(prev - 1, 0))
-        break
-      case 'Home':
-        e.preventDefault()
-        setFocusIndex(0)
-        break
-      case 'End':
-        e.preventDefault()
-        setFocusIndex(STATUSES.length - 1)
-        break
-      case ' ':
-      case 'Enter':
-        e.preventDefault()
-        if (open) toggle(STATUSES[focusIndex])
-        else setOpen(true)
-        break
-      case 'Escape':
-        e.preventDefault()
+  // Handle Escape from anywhere in popup
+  React.useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
         setOpen(false)
-        break
+        triggerRef.current?.focus()
+      }
     }
-  }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [open])
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         aria-expanded={open}
-        aria-controls="status-popup"
-        aria-haspopup="dialog"
+        aria-controls={popupId}
+        aria-haspopup="true"
         onClick={() => setOpen(!open)}
-        onKeyDown={handleKeyDown}
         className="flex h-9 w-40 items-center justify-between rounded-lg border border-border bg-background px-3 text-xs outline-none hover:border-primary focus:border-primary focus:ring-1 focus:ring-primary"
       >
-        <span className="truncate">{selected.length > 0 ? `${selected.length} selected` : 'Application status'}</span>
+        <span>{selected.length > 0 ? `${selected.length} selected` : 'Application status'}</span>
       </button>
       {open && (
         <div
-          id="status-popup"
-          role="dialog"
+          ref={popupRef}
+          id={popupId}
+          role="group"
           aria-label="Application status"
-          onKeyDown={handleKeyDown}
           className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-surface shadow-xl p-2 max-h-60 overflow-y-auto"
         >
-          {STATUSES.map((status, idx) => {
-            const isSelected = selected.includes(status)
-            return (
-              <label
-                key={status}
-                className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-surface-hover transition-colors",
-                  focusIndex === idx && "bg-primary-muted"
-                )}
-              >
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => toggle(status)}
-                  className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
-                />
-                <span>{status}</span>
-              </label>
-            )
-          })}
+          {STATUSES.map((status) => (
+            <label key={status} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-surface-hover transition-colors">
+              <input
+                type="checkbox"
+                checked={selected.includes(status)}
+                onChange={() => onChange(selected.includes(status) ? selected.filter((s) => s !== status) : [...selected, status])}
+                className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
+              />
+              <span>{status}</span>
+            </label>
+          ))}
           {selected.length > 0 && (
             <button
               onClick={() => onChange([])}

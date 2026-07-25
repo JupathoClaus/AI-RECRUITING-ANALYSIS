@@ -14,29 +14,34 @@ describe("usePaginatedOptions", () => {
     expect(result.current.options).toHaveLength(1)
   })
 
+  function createDeferredResult<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((r) => { resolve = r })
+    return { promise, resolve }
+  }
+
   it("stale query B cannot be replaced by resolved query A", async () => {
-    let resolveA: any, resolveB: any
-    const promiseA = new Promise<any>((r) => { resolveA = r })
-    const promiseB = new Promise<any>((r) => { resolveB = r })
+    const deferredA = createDeferredResult<{ data: { id: string; label: string }[]; meta: { page: number; limit: number; total: number; totalPages: number; hasMore: boolean } }>()
+    const deferredB = createDeferredResult<{ data: { id: string; label: string }[]; meta: { page: number; limit: number; total: number; totalPages: number; hasMore: boolean } }>()
     fetchPage
-      .mockReturnValueOnce(promiseA)
-      .mockReturnValueOnce(promiseB)
+      .mockReturnValueOnce(deferredA.promise)
+      .mockReturnValueOnce(deferredB.promise)
 
     const { result } = renderHook(() => usePaginatedOptions(fetchPage, { selectedOption: null }))
     await waitFor(() => expect(result.current.initialLoading).toBe(true))
 
     // Start query B
     result.current.setQuery("B")
-    await new Promise(r => setTimeout(r, 10))
+    await new Promise(r => setTimeout(r, 50))
 
     // Resolve B first
-    resolveB({ data: [{ id: "b1", label: "B-One" }], meta: { page: 1, limit: 50, total: 1, totalPages: 1, hasMore: false } })
-    await new Promise(r => setTimeout(r, 10))
+    deferredB.resolve({ data: [{ id: "b1", label: "B-One" }], meta: { page: 1, limit: 50, total: 1, totalPages: 1, hasMore: false } })
+    await new Promise(r => setTimeout(r, 50))
     await waitFor(() => expect(result.current.options[0]?.label).toBe("B-One"))
 
     // Resolve A (stale) — should not overwrite
-    resolveA({ data: [{ id: "a1", label: "A-Stale" }], meta: { page: 1, limit: 50, total: 1, totalPages: 1, hasMore: false } })
-    await new Promise(r => setTimeout(r, 10))
+    deferredA.resolve({ data: [{ id: "a1", label: "A-Stale" }], meta: { page: 1, limit: 50, total: 1, totalPages: 1, hasMore: false } })
+    await new Promise(r => setTimeout(r, 50))
     expect(result.current.options[0]?.label).toBe("B-One")
   })
 })

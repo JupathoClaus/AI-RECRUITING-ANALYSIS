@@ -1,30 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 
-export interface PaginatedOption {
-  id: string
-  label: string
-}
+export interface PaginatedOption { id: string; label: string }
 
 export type FetchOptionPage = (
-  query: string,
-  page: number,
-  limit: number,
-  signal: AbortSignal,
+  query: string, page: number, limit: number, signal: AbortSignal,
 ) => Promise<{
   data: PaginatedOption[]
   meta: { page: number; limit: number; total: number; totalPages: number; hasMore: boolean }
 }>
-
-export interface PaginatedOptionsState {
-  options: PaginatedOption[]
-  query: string
-  page: number
-  hasMore: boolean
-  initialLoading: boolean
-  loadingMore: boolean
-  error: string | null
-  failedRequest: { query: string; page: number } | null
-}
 
 export function usePaginatedOptions(
   fetchPage: FetchOptionPage,
@@ -39,51 +22,45 @@ export function usePaginatedOptions(
   const [initialLoading, setInitialLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [failedRequest, setFailedRequest] = useState<{ query: string; page: number } | null>(null)
+  const [failedRequest, setFailedRequest] = useState<{ query: string; page: number; mode: 'replace' | 'append' } | null>(null)
+  const [selectedLabel, setSelectedLabel] = useState<string | null>(selectedOption?.label || null)
 
   const abortRef = useRef<AbortController | null>(null)
   const versionRef = useRef(0)
-  const selectedCache = useRef<PaginatedOption | null>(selectedOption)
-  selectedCache.current = selectedOption
+  const isMounted = useRef(true)
 
-  // Debounce query
+  // Store the selected label from options cache
+  const optionsCache = useRef<Map<string, PaginatedOption>>(new Map())
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(query.trim()), debounceMs)
-    return () => clearTimeout(timer)
-  }, [query, debounceMs])
+    for (const opt of options) optionsCache.current.set(opt.id, opt)
+    // Update selected label if we have a better one
+    if (selectedOption) {
+      const cached = optionsCache.current.get(selectedOption.id)
+      if (cached?.label) setSelectedLabel(cached.label)
+    }
+  }, [options, selectedOption])
 
-  // Initial fetch on mount
-  useEffect(() => {
-    fetchOptions(debouncedQuery, 1, false)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Fetch when debouncedQuery changes
-  useEffect(() => {
-    if (page === 1) fetchOptions(debouncedQuery, 1, false)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedQuery])
-
-  const fetchOptions = useCallback(async (q: string, p: number, append: boolean) => {
+  const fetchOptions = useCallback(async (q: string, p: number, mode: 'replace' | 'append') => {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
     const version = ++versionRef.current
 
-    if (!append) setInitialLoading(true)
-    else setLoadingMore(true)
+    if (mode === 'replace') { setInitialLoading(true); setOptions([]); setPage(1) }
+    else { setLoadingMore(true) }
+
     setError(null)
     setFailedRequest(null)
 
     try {
       const result = await fetchPage(q, p, pageSize, controller.signal)
-      if (controller.signal.aborted || version !== versionRef.current) return
+      if (!isMounted.current || controller.signal.aborted || version !== versionRef.current) return
 
-      if (append) {
+      if (mode === 'append') {
         setOptions((prev) => {
-          const seen = new Set(prev.map((o) => o.id))
-          const deduped = result.data.filter((o) => !seen.has(o.id))
-          return [...prev, ...deduped]
+          const ids = new Map(prev.map((o) => [o.id, o]))
+          for (const item of result.data) ids.set(item.id, item)
+          return [...ids.values()]
         })
       } else {
         setOptions(result.data)
@@ -93,49 +70,54 @@ export function usePaginatedOptions(
     } catch (err: unknown) {
       if (controller.signal.aborted || version !== versionRef.current) return
       setError(err instanceof Error ? err.message : "Failed to load options")
-      setFailedRequest({ query: q, page: p })
+      setFailedRequest({ query: q, page: p, mode })
     } finally {
       if (controller.signal.aborted || version !== versionRef.current) return
-      if (!append) setInitialLoading(false)
+      if (mode === 'replace') setInitialLoading(false)
       else setLoadingMore(false)
     }
   }, [fetchPage, pageSize])
 
+  // Debounce query
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query.trim()), debounceMs)
+    return () => clearTimeout(timer)
+  }, [query, debounceMs])
+
+  // Initial mount fetch
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchOptions("", 1, 'replace')
+    return () => { isMounted.current = false }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // React to debounced query changes
+  useEffect(() => {
+    if (debouncedQuery === "") return // handled by mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchOptions(debouncedQuery, 1, 'replace')
+  }, [debouncedQuery]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore) return
-    fetchOptions(debouncedQuery, page + 1, true)
+    fetchOptions(debouncedQuery, page + 1, 'append')
   }, [loadingMore, hasMore, fetchOptions, debouncedQuery, page])
 
   const retry = useCallback(() => {
-    if (failedRequest) {
-      const append = failedRequest.page > 1
-      fetchOptions(failedRequest.query, failedRequest.page, append)
-    }
+    if (!failedRequest) return
+    fetchOptions(failedRequest.query, failedRequest.page, failedRequest.mode)
   }, [failedRequest, fetchOptions])
 
-  const clearQuery = useCallback(() => {
+  const clearQueryFn = useCallback(() => {
     setQuery("")
     setDebouncedQuery("")
-  }, [])
-
-  // Expose selected option display
-  const currentSelectedLabel = selectedOption?.label || selectedCache.current?.label || null
+    fetchOptions("", 1, 'replace')
+  }, [fetchOptions])
 
   return {
-    query,
-    setQuery,
-    options,
-    page,
-    hasMore,
-    initialLoading,
-    loadingMore,
-    error,
-    failedRequest,
-    retry,
-    loadMore,
-    clearQuery,
-    currentSelectedLabel,
-    selectedOption,
-    debouncedQuery,
+    query, setQuery, options, page, hasMore,
+    initialLoading, loadingMore, error, failedRequest,
+    retry, loadMore, clearQuery: clearQueryFn,
+    selectedLabel, selectedOption,
   }
 }
