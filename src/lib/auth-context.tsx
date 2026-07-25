@@ -36,7 +36,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    if (!isAuthenticated()) return
+    if (!isAuthenticated()) {
+      queueMicrotask(() => setLoading(false))
+      return
+    }
 
     let cancelled = false
     authApi
