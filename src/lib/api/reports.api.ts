@@ -43,6 +43,7 @@ export interface TimeToHireRow {
   jobTitle: string
   submittedAt: string
   hiredAt: string | null
+  durationHours: number | null
   daysToHire: number | null
   department: string | null
 }

@@ -47,6 +47,7 @@ export interface TimeToHireRow {
   jobTitle: string;
   submittedAt: string;
   hiredAt: string | null;
+  durationHours: number | null;
   daysToHire: number | null;
   department: string | null;
 }
@@ -257,7 +258,8 @@ export class ReportsService {
           candidateName: app.candidate ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim() : 'Unknown',
           jobTitle: app.job?.title || '',
           submittedAt: app.submittedAt?.toISOString() || '',
-          hiredAt: app.hiredAt?.toISOString() || null,
+          hiredAt: app.hiredAt?.toISOString() || '',
+          durationHours,
           daysToHire,
           department: app.job?.department?.name || null,
         };

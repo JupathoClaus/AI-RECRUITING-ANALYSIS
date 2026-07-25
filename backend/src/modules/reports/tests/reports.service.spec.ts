@@ -157,6 +157,23 @@ describe('ReportsService', () => {
       expect(linkedin.applicationsInterviewed).toBe(3);
       expect(linkedin.hiredCount).toBe(2);
     });
+
+    it('counts applications with at least one interview, not total interviews', async () => {
+      // Application A has 3 interviews, Application B has 1 interview
+      // applicationsInterviewed should be 2, not 4
+      prisma.application.groupBy
+        .mockResolvedValueOnce([
+          { source: 'LINKEDIN', status: 'SUBMITTED', _count: { id: 2 } },
+        ])
+        .mockResolvedValueOnce([
+          { source: 'LINKEDIN', _count: { id: 2 } },
+        ]);
+      const result = await service.getSourceEffectiveness(COMPANY_A, makeFilter());
+      const linkedin = result.find((r: any) => r.source === 'LINKEDIN')!;
+      expect(linkedin).toBeDefined();
+      expect(linkedin.applicationCount).toBe(2);
+      expect(linkedin.applicationsInterviewed).toBe(2);
+    });
   });
 
   // ── Job Summary ──

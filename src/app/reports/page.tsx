@@ -31,6 +31,18 @@ const REPORT_VIEWS = [
 
 const APPLICATION_STATUSES = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'SCREENING', 'SHORTLISTED', 'ASSESSMENT', 'INTERVIEW', 'OFFER', 'HIRED', 'REJECTED', 'WITHDRAWN', 'DISQUALIFIED', 'ON_HOLD', 'ARCHIVED'] as const
 
+// Filter semantics: which filters each report type displays
+const REPORT_FILTER_CONFIG: Record<string, { date: boolean; job: boolean; department: boolean; status: boolean }> = {
+  "candidate-evaluation": { date: true, job: true, department: true, status: true },
+  "interview-summary": { date: true, job: true, department: true, status: false },
+  pipeline: { date: true, job: true, department: true, status: false },
+  "time-to-hire": { date: true, job: true, department: true, status: false },
+  "source-effectiveness": { date: true, job: true, department: true, status: false },
+  "job-summary": { date: true, job: true, department: true, status: false },
+  activity: { date: true, job: false, department: false, status: false },
+  diversity: { date: false, job: false, department: false, status: false },
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return "—"
   return new Date(iso).toLocaleDateString()
@@ -166,6 +178,7 @@ export default function ReportsPage() {
   const [error, setError] = React.useState<string | null>(null)
   const [page, setPage] = React.useState(1)
   const [exportLoading, setExportLoading] = React.useState(false)
+  const [exportMessage, setExportMessage] = React.useState<{ text: string; type: 'success' | 'warning' | 'error' } | null>(null)
   const abortRef = React.useRef<AbortController | null>(null)
   const exportAbortRef = React.useRef<AbortController | null>(null)
 
@@ -212,13 +225,14 @@ export default function ReportsPage() {
 
   const activeReport = REPORT_VIEWS.find((r) => r.id === activeView)
 
-  const buildParams = React.useCallback((p: number, df: string, dt: string, jid: string, did: string, sts: string[]): ReportParams => {
+  const buildParams = React.useCallback((p: number, df: string, dt: string, jid: string, did: string, sts: string[], viewId?: string): ReportParams => {
+    const cfg = viewId ? REPORT_FILTER_CONFIG[viewId] : null
     const params: ReportParams = { page: p, limit: 50 }
-    if (df) params.dateFrom = df
-    if (dt) params.dateTo = dt
-    if (jid) params.jobIds = jid
-    if (did) params.departmentIds = did
-    if (sts.length > 0) params.statuses = sts
+    if (df && cfg?.date !== false) params.dateFrom = df
+    if (dt && cfg?.date !== false) params.dateTo = dt
+    if (jid && cfg?.job !== false) params.jobIds = jid
+    if (did && cfg?.department !== false) params.departmentIds = did
+    if (sts.length > 0 && cfg?.status !== false) params.statuses = sts
     return params
   }, [])
 
@@ -226,7 +240,7 @@ export default function ReportsPage() {
     setLoading(true)
     setError(null)
     try {
-      const params = buildParams(p, df, dt, jid, did, sts)
+      const params = buildParams(p, df, dt, jid, did, sts, viewId)
       let result: unknown
       let paginationMeta: ReportPaginationMeta | null = null
       switch (viewId) {
@@ -256,6 +270,7 @@ export default function ReportsPage() {
     const controller = new AbortController()
     abortRef.current = controller
     if (activeView && activeView !== "diversity") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadReport(activeView, page, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses, controller.signal)
     }
     if (activeView === "diversity") { setData(null); setMeta(null) }
@@ -301,18 +316,21 @@ export default function ReportsPage() {
     const controller = new AbortController()
     exportAbortRef.current = controller
     setExportLoading(true)
+    setExportMessage(null)
     try {
-      const params = buildParams(1, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses)
+      const params = buildParams(1, appliedDateFrom, appliedDateTo, appliedJobId, appliedDeptId, appliedStatuses, activeView)
       const result = await reportsApi.downloadReportCsv(activeView, params, controller.signal)
       if (controller.signal.aborted) return
       if (result.truncated) {
-        setError(`Export completed with ${result.returnedCount?.toLocaleString()} of ${result.totalCount?.toLocaleString()} records. Narrow the filters to export the remaining records.`)
+        const total = result.totalCount?.toLocaleString() ?? 'many'
+        const returned = result.returnedCount?.toLocaleString() ?? 'some'
+        setExportMessage({ text: `Export completed with ${returned} of ${total} records. Narrow the filters to export the remaining records.`, type: 'warning' })
       } else {
-        setError(null)
+        setExportMessage({ text: `Export complete: ${result.filename}`, type: 'success' })
       }
     } catch (err: unknown) {
       if (controller.signal.aborted) return
-      setError(getErrorMessage(err, "Export failed"))
+      setExportMessage({ text: getErrorMessage(err, "Export failed"), type: 'error' })
     } finally {
       if (!controller.signal.aborted) setExportLoading(false)
     }
@@ -363,30 +381,48 @@ export default function ReportsPage() {
             <CardContent className="space-y-3">
               {/* Filters */}
               <div className="flex flex-wrap items-end gap-2">
-                <div className="space-y-0.5">
-                  <label className="text-[10px] font-medium text-muted">Date From</label>
-                  <Input type="date" value={draftDateFrom} onChange={(e) => setDraftDateFrom(e.target.value)} className="h-9 w-36 text-xs" />
-                </div>
-                <div className="space-y-0.5">
-                  <label className="text-[10px] font-medium text-muted">Date To</label>
-                  <Input type="date" value={draftDateTo} onChange={(e) => setDraftDateTo(e.target.value)} className="h-9 w-36 text-xs" />
-                </div>
-                <div className="space-y-0.5">
-                  <label className="text-[10px] font-medium text-muted">Job</label>
-                  <SearchableSelect options={jobOptions} value={draftJobId} onChange={setDraftJobId} placeholder="All Jobs" searchPlaceholder="Search jobs..." loading={optionsLoading} error={optionsError} allLabel="All Jobs" />
-                </div>
-                <div className="space-y-0.5">
-                  <label className="text-[10px] font-medium text-muted">Department</label>
-                  <SearchableSelect options={deptOptions} value={draftDeptId} onChange={setDraftDeptId} placeholder="All Depts" searchPlaceholder="Search departments..." loading={optionsLoading} error={optionsError} allLabel="All Departments" />
-                </div>
-                <div className="space-y-0.5">
-                  <label className="text-[10px] font-medium text-muted">Status</label>
-                  <StatusMultiSelect selected={draftStatuses} onChange={setDraftStatuses} />
-                </div>
+                {REPORT_FILTER_CONFIG[activeView!]?.date && (
+                  <>
+                    <div className="space-y-0.5">
+                      <label className="text-[10px] font-medium text-muted">Date From</label>
+                      <Input type="date" value={draftDateFrom} onChange={(e) => setDraftDateFrom(e.target.value)} className="h-9 w-36 text-xs" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <label className="text-[10px] font-medium text-muted">Date To</label>
+                      <Input type="date" value={draftDateTo} onChange={(e) => setDraftDateTo(e.target.value)} className="h-9 w-36 text-xs" />
+                    </div>
+                  </>
+                )}
+                {REPORT_FILTER_CONFIG[activeView!]?.job && (
+                  <div className="space-y-0.5">
+                    <label className="text-[10px] font-medium text-muted">Job</label>
+                    <SearchableSelect options={jobOptions} value={draftJobId} onChange={setDraftJobId} placeholder="All Jobs" searchPlaceholder="Search jobs..." loading={optionsLoading} error={optionsError} allLabel="All Jobs" />
+                  </div>
+                )}
+                {REPORT_FILTER_CONFIG[activeView!]?.department && (
+                  <div className="space-y-0.5">
+                    <label className="text-[10px] font-medium text-muted">Department</label>
+                    <SearchableSelect options={deptOptions} value={draftDeptId} onChange={setDraftDeptId} placeholder="All Depts" searchPlaceholder="Search departments..." loading={optionsLoading} error={optionsError} allLabel="All Departments" />
+                  </div>
+                )}
+                {REPORT_FILTER_CONFIG[activeView!]?.status && (
+                  <div className="space-y-0.5">
+                    <label className="text-[10px] font-medium text-muted">Status</label>
+                    <StatusMultiSelect selected={draftStatuses} onChange={setDraftStatuses} />
+                  </div>
+                )}
                 <Button variant="outline" size="sm" className="h-9 text-xs" onClick={handleApplyFilters}>Apply</Button>
                 <Button variant="ghost" size="sm" className="h-9 text-xs" onClick={handleClearFilters}>Clear</Button>
               </div>
               {optionsError && <p className="text-xs text-error">{optionsError}</p>}
+
+              {/* Export feedback */}
+              {exportMessage && (
+                <div role={exportMessage.type === 'success' ? 'status' : 'alert'} className={cn("flex items-center justify-between rounded-md px-3 py-2 text-xs", exportMessage.type === 'success' ? 'bg-success/5 text-success' : exportMessage.type === 'warning' ? 'bg-warning/5 text-warning' : 'bg-error/5 text-error')}>
+                  <span>{exportMessage.text}</span>
+                  <button onClick={() => setExportMessage(null)} className="ml-2 shrink-0 hover:opacity-70" aria-label="Dismiss">✕</button>
+                </div>
+              )}
 
               {/* Content */}
               {activeView === "diversity" ? (
