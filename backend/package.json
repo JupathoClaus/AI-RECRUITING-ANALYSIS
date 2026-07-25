@@ -6,7 +6,7 @@
   "private": true,
   "license": "MIT",
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "ts-node prisma/seed-all.ts"
   },
   "scripts": {
     "build": "nest build",
@@ -26,6 +26,8 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
+    "prisma:seed:dev": "ts-node prisma/seed-dev.ts",
+    "prisma:reset": "prisma migrate reset --force",
     "prisma:format": "prisma format",
     "prisma:validate": "prisma validate",
     "prisma:studio": "prisma studio",

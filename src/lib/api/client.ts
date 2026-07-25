@@ -136,7 +136,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       if (value !== undefined && value !== null) {
         if (Array.isArray(value)) {
           for (const v of value) {
-            searchParams.append(`${key}[]`, String(v))
+            searchParams.append(key, String(v))
           }
         } else {
           searchParams.set(key, String(value))

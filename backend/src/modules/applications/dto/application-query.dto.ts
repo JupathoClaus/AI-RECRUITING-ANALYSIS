@@ -38,13 +38,13 @@ export class ApplicationQueryDto {
   @ApiPropertyOptional({ isArray: true })
   @IsOptional()
   @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : []))
-  @IsUUID(undefined, { each: true })
+  @IsString({ each: true })
   jobId?: string[];
 
   @ApiPropertyOptional({ isArray: true })
   @IsOptional()
   @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : []))
-  @IsUUID(undefined, { each: true })
+  @IsString({ each: true })
   candidateId?: string[];
 
   @ApiPropertyOptional({ enum: ApplicationStatus, isArray: true })
