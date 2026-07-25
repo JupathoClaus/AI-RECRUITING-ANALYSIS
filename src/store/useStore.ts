@@ -28,8 +28,9 @@ import {
   mapInterviewListItem,
   mapFrontendToBackendType,
 } from "@/lib/api/interviews.api"
-import type { CreateInterviewRequest, FrontendInterviewType } from "@/lib/api/interviews.api"
+import type { CreateInterviewRequest, FrontendInterviewType, RescheduleInterviewRequest, RecordResultRequest, BackendInterviewResult } from "@/lib/api/interviews.api"
 import { startInterview as startInterviewApi, confirmInterview as confirmInterviewApi } from "@/lib/api/interviews.api"
+import { rescheduleInterview as rescheduleInterviewApi, recordResult as recordResultApi } from "@/lib/api/interviews.api"
 import {
   getAnalyticsOverview,
   getAnalyticsFunnel,
@@ -128,6 +129,8 @@ interface AppState {
     timezone: string
   }) => Promise<void>
   cancelInterviewById: (id: string) => Promise<void>
+  rescheduleInterviewById: (id: string, dto: { scheduledAt: string; durationMinutes?: number; timezone?: string; reason?: string }) => Promise<void>
+  recordResultById: (id: string, dto: { result: BackendInterviewResult; resultNotes?: string }) => Promise<void>
   completeInterviewById: (id: string) => Promise<void>
   fetchAnalytics: (dateFrom?: string) => Promise<void>
 }
@@ -446,6 +449,34 @@ export const useStore = create<AppState>((set, get) => ({
       await get().fetchInterviews()
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to cancel interview"
+      set({ interviewsError: message, interviewsLoading: false })
+    }
+  },
+  rescheduleInterviewById: async (id, dto) => {
+    const state = get()
+    const interview = state.interviews.find((i) => i.id === id)
+    if (!interview) return
+
+    set({ interviewsLoading: true, interviewsError: null })
+    try {
+      await rescheduleInterviewApi(id, { ...dto, expectedVersion: interview.version ?? 1 })
+      await get().fetchInterviews()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to reschedule interview"
+      set({ interviewsError: message, interviewsLoading: false })
+    }
+  },
+  recordResultById: async (id, dto) => {
+    const state = get()
+    const interview = state.interviews.find((i) => i.id === id)
+    if (!interview) return
+
+    set({ interviewsLoading: true, interviewsError: null })
+    try {
+      await recordResultApi(id, { ...dto, expectedVersion: interview.version ?? 1 })
+      await get().fetchInterviews()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to record result"
       set({ interviewsError: message, interviewsLoading: false })
     }
   },

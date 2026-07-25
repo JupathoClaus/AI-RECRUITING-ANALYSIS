@@ -123,6 +123,8 @@ export default function CandidatesPage() {
   const [actionInProgress, setActionInProgress] = React.useState(false)
   const [addFeedback, setAddFeedback] = React.useState<{ type: "error"; message: string } | null>(null)
   const [pageFeedback, setPageFeedback] = React.useState<{ type: "success" | "warning"; message: string } | null>(null)
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  const [bulkActionLoading, setBulkActionLoading] = React.useState(false)
 
   const [newCandidate, setNewCandidate] = React.useState({
     name: "",
@@ -160,6 +162,55 @@ export default function CandidatesPage() {
       return matchesSearch && matchesStatus && matchesJob && matchesRating
     })
   }, [candidates, searchQuery, statusFilter, jobFilter, ratingFilter])
+
+  const allFilteredIds = React.useMemo(() => filteredCandidates.map((c) => c.id), [filteredCandidates])
+  const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id))
+
+  const toggleSelect = React.useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleSelectAll = React.useCallback(() => {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(allFilteredIds))
+    }
+  }, [allSelected, allFilteredIds])
+
+  const handleBulkAction = React.useCallback(async (action: string) => {
+    setBulkActionLoading(true)
+    try {
+      for (const id of selectedIds) {
+        const candidate = candidates.find((c) => c.id === id)
+        if (!candidate) continue
+        const currentApp = candidate.applicationSummary?.current
+        if (!currentApp) continue
+
+        switch (action) {
+          case "reject":
+            await rejectCandidateApplication(id)
+            break
+          case "screening":
+            await advanceCandidateApplication(id, "Screening")
+            break
+          case "interview":
+            await advanceCandidateApplication(id, "Interview")
+            break
+        }
+      }
+      setSelectedIds(new Set())
+      setPageFeedback({ type: "success", message: `Bulk action "${action}" completed for ${selectedIds.size} candidate(s).` })
+    } catch {
+      setPageFeedback({ type: "warning", message: "Some bulk actions failed." })
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }, [selectedIds, candidates, rejectCandidateApplication, advanceCandidateApplication])
 
   const handleAddCandidate = async () => {
     if (!newCandidate.name || !newCandidate.email) return
@@ -422,11 +473,43 @@ export default function CandidatesPage() {
             }
           />
         ) : (
+          <>
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-3 mb-3 px-4 py-2 rounded-lg bg-primary/5 border border-primary/20 animate-fade-in">
+                <span className="text-sm font-medium text-foreground">{selectedIds.size} selected</span>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" disabled={bulkActionLoading} onClick={() => handleBulkAction("screening")}>
+                    <SearchNormal className="h-4 w-4 mr-1" />
+                    Move to Screening
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={bulkActionLoading} onClick={() => handleBulkAction("interview")}>
+                    <Calendar className="h-4 w-4 mr-1" />
+                    Move to Interview
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={bulkActionLoading} onClick={() => handleBulkAction("reject")} className="text-error hover:text-error">
+                    <CloseSquare className="h-4 w-4 mr-1" />
+                    Reject
+                  </Button>
+                </div>
+                <div className="flex-1" />
+                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+                  Clear
+                </Button>
+              </div>
+            )}
           <Card>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                        checked={allSelected}
+                        onChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>Candidate</TableHead>
                     <TableHead className="hidden md:table-cell">Position</TableHead>
                     <TableHead className="hidden lg:table-cell">Experience</TableHead>
@@ -447,6 +530,14 @@ export default function CandidatesPage() {
                         className="cursor-pointer"
                         onClick={() => setDetailsCandidate(candidate)}
                       >
+                        <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                            checked={selectedIds.has(candidate.id)}
+                            onChange={() => toggleSelect(candidate.id)}
+                          />
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <Avatar className="h-9 w-9" fallback={getInitials(candidate.displayName)}>
@@ -541,6 +632,7 @@ export default function CandidatesPage() {
               </Table>
             </div>
           </Card>
+          </>
         )}
       </div>
 

@@ -3,7 +3,7 @@
 import * as React from "react"
 import { useStore } from "@/store/useStore"
 import type { Interview } from "@/types"
-import type { FrontendInterviewType } from "@/lib/api/interviews.api"
+import type { FrontendInterviewType, BackendInterviewResult } from "@/lib/api/interviews.api"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -95,7 +95,7 @@ function isCompleted(interview: Interview): boolean {
 }
 
 export default function InterviewsPage() {
-  const { interviews, candidates, jobs, interviewsLoading, interviewsError, fetchInterviews: loadInterviews, scheduleInterview, cancelInterviewById, completeInterviewById } = useStore()
+  const { interviews, candidates, jobs, interviewsLoading, interviewsError, fetchInterviews: loadInterviews, scheduleInterview, cancelInterviewById, completeInterviewById, rescheduleInterviewById, recordResultById } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
   React.useEffect(() => {
     loadInterviews()
@@ -104,6 +104,10 @@ export default function InterviewsPage() {
   const [activeTab, setActiveTab] = React.useState("upcoming")
   const [scheduleDialogOpen, setScheduleDialogOpen] = React.useState(false)
   const [detailsInterview, setDetailsInterview] = React.useState<Interview | null>(null)
+  const [rescheduleDialogOpen, setRescheduleDialogOpen] = React.useState(false)
+  const [completeDialogOpen, setCompleteDialogOpen] = React.useState(false)
+  const [completeForm, setCompleteForm] = React.useState({ resultNotes: "", result: "PASS" as BackendInterviewResult })
+  const [rescheduleForm, setRescheduleForm] = React.useState({ date: "", time: "", reason: "" })
 
   const [newInterview, setNewInterview] = React.useState({
     candidateId: "",
@@ -740,15 +744,20 @@ export default function InterviewsPage() {
                       }}
                     >
                       <CloseSquare className="h-4 w-4" />
-                      Cancel Interview
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setRescheduleForm({ date: "", time: "", reason: "" }); setRescheduleDialogOpen(true) }}
+                    >
+                      <Calendar className="h-4 w-4" />
+                      Reschedule
                     </Button>
                     <div className="flex-1" />
                     <Button
                       size="sm"
-                      onClick={async () => {
-                        await completeInterviewById(detailsInterview.id)
-                        setDetailsInterview(null)
-                      }}
+                      onClick={() => { setCompleteForm({ resultNotes: "", result: "PASS" }); setCompleteDialogOpen(true) }}
                     >
                       <TickCircle className="h-4 w-4" />
                       Mark Complete
@@ -780,6 +789,94 @@ export default function InterviewsPage() {
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Reschedule Interview Dialog */}
+      <Dialog open={rescheduleDialogOpen} onOpenChange={setRescheduleDialogOpen}>
+        <DialogContent className="max-w-md">
+          <ModalHeader>
+            <DialogTitle>Reschedule Interview</DialogTitle>
+            <DialogDescription>Select a new date and time for this interview.</DialogDescription>
+          </ModalHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">New Date *</label>
+                <Input type="date" value={rescheduleForm.date} onChange={(e) => setRescheduleForm((f) => ({ ...f, date: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">New Time *</label>
+                <Input type="time" value={rescheduleForm.time} onChange={(e) => setRescheduleForm((f) => ({ ...f, time: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Reason (optional)</label>
+              <Input value={rescheduleForm.reason} onChange={(e) => setRescheduleForm((f) => ({ ...f, reason: e.target.value }))} placeholder="e.g. Interviewer availability" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRescheduleDialogOpen(false)}>Cancel</Button>
+            <Button disabled={!rescheduleForm.date || !rescheduleForm.time} onClick={async () => {
+              if (!detailsInterview) return
+              const dateTime = `${rescheduleForm.date}T${rescheduleForm.time}:00`
+              const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+              await rescheduleInterviewById(detailsInterview.id, { scheduledAt: dateTime, timezone, reason: rescheduleForm.reason || undefined })
+              setRescheduleDialogOpen(false)
+              setDetailsInterview(null)
+            }}>
+              <Calendar className="h-4 w-4" />
+              Reschedule
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Complete Interview Dialog */}
+      <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
+        <DialogContent className="max-w-md">
+          <ModalHeader>
+            <DialogTitle>Complete Interview</DialogTitle>
+            <DialogDescription>Record the interview result and add notes.</DialogDescription>
+          </ModalHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Result *</label>
+              <Select value={completeForm.result} onValueChange={(v) => setCompleteForm((f) => ({ ...f, result: v as BackendInterviewResult }))}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PASS">Pass</SelectItem>
+                  <SelectItem value="HOLD">Hold</SelectItem>
+                  <SelectItem value="FAIL">Fail</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Notes</label>
+              <textarea
+                placeholder="Add interview feedback, observations, or notes..."
+                value={completeForm.resultNotes}
+                onChange={(e) => setCompleteForm((f) => ({ ...f, resultNotes: e.target.value }))}
+                rows={4}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>Cancel</Button>
+            <Button onClick={async () => {
+              if (!detailsInterview) return
+              await completeInterviewById(detailsInterview.id)
+              await recordResultById(detailsInterview.id, { result: completeForm.result, resultNotes: completeForm.resultNotes || undefined })
+              setCompleteDialogOpen(false)
+              setDetailsInterview(null)
+            }}>
+              <TickCircle className="h-4 w-4" />
+              Save & Complete
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </AppLayout>
