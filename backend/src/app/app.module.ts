@@ -29,6 +29,7 @@ import { InterviewsModule } from '../modules/interviews/interviews.module';
 import { AnalyticsModule } from '../modules/analytics/analytics.module';
 import { ReportsModule } from '../modules/reports/reports.module';
 import { NotificationsModule } from '../modules/notifications/notifications.module';
+import { FilesModule } from '../modules/files/files.module';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -143,6 +144,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
     AnalyticsModule,
     ReportsModule,
     NotificationsModule,
+    FilesModule,
   ],
 })
 export class AppModule {}

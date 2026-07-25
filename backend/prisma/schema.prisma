@@ -1698,6 +1698,9 @@ enum ApplicationAuditEventType {
   APPLICATION_SCREENING_ANSWERS_UPDATED
   APPLICATION_ARCHIVED
   APPLICATION_RESTORED_FROM_ARCHIVE
+  APPLICATION_RESUME_UPLOADED
+  APPLICATION_RESUME_REPLACED
+  APPLICATION_RESUME_DELETED
 }
 
 // ─── CompanyCandidate ────────────────────────────────────────────────────────
@@ -1885,6 +1888,9 @@ model Application {
   // Phase 2.3
   interviews Interview[]
 
+  // Phase 2B
+  resumeFiles StoredFile[]
+
   @@unique([companyId, applicationNumber])
   @@index([companyId])
   @@index([jobId])
@@ -1896,6 +1902,50 @@ model Application {
   @@index([publicReference])
   @@index([submittedAt])
   @@index([createdAt])
+}
+
+// ─── StoredFile ───────────────────────────────────────────────────────────────
+
+enum FileCategory {
+  RESUME
+  COMPANY_LOGO
+  COVER_IMAGE
+  SCREENING_ANSWER
+}
+
+enum FileStatus {
+  ACTIVE
+  SUPERSEDED
+  DELETED
+}
+
+model StoredFile {
+  id               String       @id @default(uuid())
+  companyId        String
+  applicationId    String?
+  uploadedByUserId String
+  storageKey       String       @unique
+  originalName     String
+  storedName       String
+  extension        String
+  mimeType         String
+  sizeBytes        Int
+  checksumSha256   String
+  category         FileCategory
+  status           FileStatus   @default(ACTIVE)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  application Application? @relation(fields: [applicationId], references: [id])
+
+  @@index([companyId])
+  @@index([applicationId])
+  @@index([category])
+  @@index([status])
+  @@index([checksumSha256])
+  @@index([createdAt])
+  @@index([deletedAt])
 }
 
 // ─── ApplicationTagAssignment ─────────────────────────────────────────────────
