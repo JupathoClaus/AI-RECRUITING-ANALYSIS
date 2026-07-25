@@ -6,6 +6,9 @@ import { ReportsService } from '../services/reports.service';
 import { CsvExportService } from '../exporters/csv-export.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
+// Real CSV exporter for safety tests
+const realCsvExportService = new CsvExportService();
+
 const UUID_A = '11111111-1111-1111-1111-111111111111';
 const UUID_B = '22222222-2222-2222-2222-222222222222';
 const BASE = '/api/v1';
@@ -201,6 +204,54 @@ describe('ReportsController (HTTP integration)', () => {
       expect(res.headers['x-export-truncated']).toBe('true');
       expect(res.headers['x-export-total-count']).toBe('5001');
       expect(res.headers['x-export-returned-count']).toBe('5000');
+    });
+  });
+
+  // ── Strict date validation ──
+
+  describe('strict date validation', () => {
+    it('accepts 2024-02-29 (leap year)', async () => {
+      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2024-02-29`).set('Authorization', 'Bearer test-token').expect(200);
+    });
+
+    it('rejects 2025-02-29 (non-leap)', async () => {
+      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2025-02-29`).set('Authorization', 'Bearer test-token').expect(400);
+    });
+
+    it('rejects 2026-02-30', async () => {
+      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-02-30`).set('Authorization', 'Bearer test-token').expect(400);
+    });
+
+    it('rejects ISO timestamp', async () => {
+      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-07-24T00:00:00Z`).set('Authorization', 'Bearer test-token').expect(400);
+    });
+  });
+
+  // ── Tenant isolation ──
+
+  describe('tenant isolation', () => {
+    it('unknown query param is rejected by whitelist', async () => {
+      const res = await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?companyId=company-b`).set('Authorization', 'Bearer test-token');
+      expect(res.status).toBe(400);
+    });
+
+    it('service always receives company-a from principal', async () => {
+      // No tenant override possible — whitelist blocks unknown params
+      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation`).set('Authorization', 'Bearer test-token').expect(200);
+      expect(mockReportsService.getCandidateEvaluation).toHaveBeenCalledWith('company-a', expect.anything());
+    });
+  });
+
+  // ── CSV safety (unit-tested in csv-export.service.spec.ts) ──
+
+  describe('CSV safety', () => {
+    it('export returns CSV content type', async () => {
+      mockReportsService.getCandidateEvaluation.mockResolvedValue({
+        data: [{ applicationId: 'a1', candidateName: '=SUM(A1:A10)', email: 'a@b.com', jobTitle: 'Dev', jobDepartment: null, applicationStatus: 'HIRED', source: 'LINKEDIN', submittedAt: null, interviewStatus: null, interviewResult: null, rejectionReason: null }],
+        meta: { total: 1, page: 1, limit: 5000, totalPages: 1 },
+      });
+      const res = await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation/export`).set('Authorization', 'Bearer test-token').expect(200);
+      expect(res.headers['content-type']).toContain('text/csv');
     });
   });
 });
