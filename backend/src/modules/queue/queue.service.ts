@@ -110,6 +110,10 @@ export class QueueService implements OnModuleDestroy {
     return this.interviewNotificationQueue.add(name, data);
   }
 
+  async addInterviewReminderJob(name: string, data: Record<string, unknown>) {
+    return this.interviewReminderQueue.add(name, data);
+  }
+
   async addAnalyticsJob(name: string, data: Record<string, unknown>) {
     return this.analyticsQueue.add(name, data);
   }
