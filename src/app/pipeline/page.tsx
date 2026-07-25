@@ -14,6 +14,8 @@ import { ModalHeader } from "@/components/ui/modal-header"
 import { Separator } from "@/components/ui/separator"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
+import { getJobPipeline, createPipelineStage, updatePipelineStage, deletePipelineStage, reorderPipelineStages } from "@/lib/api/jobs.api"
+import type { PipelineStageDto, JobPipelineDto } from "@/lib/api/jobs.api"
 import {
   SearchNormal,
   People,
@@ -28,6 +30,10 @@ import {
   CloseSquare,
   Calendar,
   MessageSquare,
+  Add,
+  Trash,
+  Edit2,
+  TickCircle,
 } from "iconsax-react"
 
 function getDisplayStatus(c: Candidate): DisplayApplicationStatus | undefined {
@@ -51,7 +57,7 @@ function getSkillNames(c: Candidate): string[] {
 }
 
 interface PipelineStage {
-  id: DisplayApplicationStatus
+  id: string
   label: string
   color: string
   colorClass: string
@@ -60,64 +66,35 @@ interface PipelineStage {
   borderClass: string
 }
 
-const pipelineStages: PipelineStage[] = [
-  {
-    id: "Applied",
-    label: "Applied",
-    color: "#6366f1",
-    colorClass: "bg-indigo-500",
-    bgClass: "bg-indigo-500/10",
-    textClass: "text-indigo-400",
-    borderClass: "border-t-indigo-500",
-  },
-  {
-    id: "Screening",
-    label: "Screening",
-    color: "#f59e0b",
-    colorClass: "bg-amber-500",
-    bgClass: "bg-amber-500/10",
-    textClass: "text-amber-400",
-    borderClass: "border-t-amber-500",
-  },
-  {
-    id: "Interview",
-    label: "Interview",
-    color: "#8b5cf6",
-    colorClass: "bg-violet-500",
-    bgClass: "bg-violet-500/10",
-    textClass: "text-violet-400",
-    borderClass: "border-t-violet-500",
-  },
-  {
-    id: "Offer",
-    label: "Offer",
-    color: "#10b981",
-    colorClass: "bg-emerald-500",
-    bgClass: "bg-emerald-500/10",
-    textClass: "text-emerald-400",
-    borderClass: "border-t-emerald-500",
-  },
-  {
-    id: "Hired",
-    label: "Hired",
-    color: "#22c55e",
-    colorClass: "bg-green-500",
-    bgClass: "bg-green-500/10",
-    textClass: "text-green-400",
-    borderClass: "border-t-green-500",
-  },
-  {
-    id: "Rejected",
-    label: "Rejected",
-    color: "#ef4444",
-    colorClass: "bg-red-500",
-    bgClass: "bg-red-500/10",
-    textClass: "text-red-400",
-    borderClass: "border-t-red-500",
-  },
+const DEFAULT_STAGE_COLORS = [
+  { colorClass: "bg-indigo-500", bgClass: "bg-indigo-500/10", textClass: "text-indigo-400", borderClass: "border-t-indigo-500" },
+  { colorClass: "bg-amber-500", bgClass: "bg-amber-500/10", textClass: "text-amber-400", borderClass: "border-t-amber-500" },
+  { colorClass: "bg-violet-500", bgClass: "bg-violet-500/10", textClass: "text-violet-400", borderClass: "border-t-violet-500" },
+  { colorClass: "bg-emerald-500", bgClass: "bg-emerald-500/10", textClass: "text-emerald-400", borderClass: "border-t-emerald-500" },
+  { colorClass: "bg-green-500", bgClass: "bg-green-500/10", textClass: "text-green-400", borderClass: "border-t-green-500" },
+  { colorClass: "bg-red-500", bgClass: "bg-red-500/10", textClass: "text-red-400", borderClass: "border-t-red-500" },
+  { colorClass: "bg-cyan-500", bgClass: "bg-cyan-500/10", textClass: "text-cyan-400", borderClass: "border-t-cyan-500" },
+  { colorClass: "bg-orange-500", bgClass: "bg-orange-500/10", textClass: "text-orange-400", borderClass: "border-t-orange-500" },
+  { colorClass: "bg-pink-500", bgClass: "bg-pink-500/10", textClass: "text-pink-400", borderClass: "border-t-pink-500" },
+  { colorClass: "bg-teal-500", bgClass: "bg-teal-500/10", textClass: "text-teal-400", borderClass: "border-t-teal-500" },
 ]
 
-const statusBadgeVariant: Record<DisplayApplicationStatus, "default" | "success" | "warning" | "error" | "secondary" | "info"> = {
+function mapStageToPipeline(stage: PipelineStageDto, idx: number): PipelineStage {
+  const c = DEFAULT_STAGE_COLORS[idx % DEFAULT_STAGE_COLORS.length]
+  return {
+    id: stage.id,
+    label: stage.name,
+    color: `#${c.colorClass.replace('bg-', '')}`,
+    colorClass: c.colorClass,
+    bgClass: c.bgClass,
+    textClass: c.textClass,
+    borderClass: c.borderClass,
+  }
+}
+
+let defaultPipeline: PipelineStage[] = []
+
+const statusBadgeVariant: Record<string, "default" | "success" | "warning" | "error" | "secondary" | "info"> = {
   Applied: "info",
   Screening: "warning",
   Interview: "default",
@@ -141,11 +118,13 @@ function getScoreBg(score: number) {
 function CandidateCard({
   candidate,
   stageIndex,
+  stageCount,
   onMove,
   onOpenDetail,
 }: {
   candidate: Candidate
   stageIndex: number
+  stageCount: number
   onMove: (candidateId: Candidate, direction: "left" | "right") => void
   onOpenDetail: (candidate: Candidate) => void
 }) {
@@ -204,7 +183,7 @@ function CandidateCard({
             variant="ghost"
             size="sm"
             className="h-6 px-1.5 text-[10px] text-muted hover:text-foreground hover:bg-surface-hover opacity-0 group-hover:opacity-100 transition-opacity"
-            disabled={stageIndex >= pipelineStages.length - 1}
+            disabled={stageIndex >= stageCount - 1}
             onClick={() => onMove(candidate, "right")}
           >
             <ArrowRight className="h-3 w-3" />
@@ -220,6 +199,30 @@ export default function PipelinePage() {
   const [searchQuery, setSearchQuery] = React.useState("")
   const [jobFilter, setJobFilter] = React.useState<string>("all")
   const [selectedCandidate, setSelectedCandidate] = React.useState<Candidate | null>(null)
+  const [pipeline, setPipeline] = React.useState<JobPipelineDto | null>(null)
+  const [stages, setStages] = React.useState<PipelineStage[]>([])
+  const [pipelineLoading, setPipelineLoading] = React.useState(false)
+
+  const [showStageDialog, setShowStageDialog] = React.useState(false)
+  const [editingStage, setEditingStage] = React.useState<PipelineStageDto | null>(null)
+  const [stageForm, setStageForm] = React.useState({ name: "", description: "" })
+  const [stageSaving, setStageSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    if (jobFilter && jobFilter !== "all") {
+      setPipelineLoading(true)
+      getJobPipeline(jobFilter).then((p) => {
+        setPipeline(p)
+        setStages((p.stages || []).sort((a, b) => a.sortOrder - b.sortOrder).map((s, i) => mapStageToPipeline(s, i)))
+      }).catch(() => {
+        setPipeline(null)
+        setStages([])
+      }).finally(() => setPipelineLoading(false))
+    } else {
+      setPipeline(null)
+      setStages([])
+    }
+  }, [jobFilter])
 
   const filteredCandidates = React.useMemo(() => {
     return candidates.filter((candidate) => {
@@ -235,7 +238,8 @@ export default function PipelinePage() {
 
   const stageCandidates = React.useMemo(() => {
     const map: Record<string, Candidate[]> = {}
-    for (const stage of pipelineStages) {
+    const activeStages = stages.length > 0 ? stages : []
+    for (const stage of activeStages) {
       map[stage.id] = []
     }
     for (const c of filteredCandidates) {
@@ -244,23 +248,60 @@ export default function PipelinePage() {
         map[ds].push(c)
       }
     }
-    return map as Record<DisplayApplicationStatus, Candidate[]>
-  }, [filteredCandidates])
+    return map as Record<string, Candidate[]>
+  }, [filteredCandidates, stages])
 
   const handleMove = React.useCallback(
     async (candidate: Candidate, direction: "left" | "right") => {
-      const stageOrder: DisplayApplicationStatus[] = ["Applied", "Screening", "Interview", "Offer", "Hired", "Rejected"]
+      const stageOrder: string[] = stages.map((s) => s.id)
+      if (stageOrder.length === 0) return
       const currentDs = getDisplayStatus(candidate)
       if (!currentDs) return
       const currentIdx = stageOrder.indexOf(currentDs)
-      if (direction === "right" && currentIdx < stageOrder.length - 1) {
+      if (direction === "right" && currentIdx >= 0 && currentIdx < stageOrder.length - 1) {
         await advanceCandidateApplication(candidate.id, stageOrder[currentIdx + 1])
       } else if (direction === "left" && currentIdx > 0) {
         await advanceCandidateApplication(candidate.id, stageOrder[currentIdx - 1])
       }
     },
-    [advanceCandidateApplication]
+    [advanceCandidateApplication, stages]
   )
+
+  const handleSaveStage = React.useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pipeline || !jobFilter) return
+    setStageSaving(true)
+    try {
+      if (editingStage) {
+        await updatePipelineStage(jobFilter, editingStage.id, stageForm)
+      } else {
+        const maxOrder = pipeline.stages.reduce((max, s) => Math.max(max, s.sortOrder), -1)
+        await createPipelineStage(jobFilter, { name: stageForm.name, description: stageForm.description || undefined, sortOrder: maxOrder + 1, type: "CUSTOM" })
+      }
+      const updated = await getJobPipeline(jobFilter)
+      setPipeline(updated)
+      setStages(updated.stages.sort((a, b) => a.sortOrder - b.sortOrder).map((s, i) => mapStageToPipeline(s, i)))
+      setShowStageDialog(false)
+      setEditingStage(null)
+      setStageForm({ name: "", description: "" })
+    } catch {
+      // handled
+    } finally {
+      setStageSaving(false)
+    }
+  }, [pipeline, jobFilter, editingStage, stageForm])
+
+  const handleDeleteStage = React.useCallback(async (stageId: string) => {
+    if (!jobFilter) return
+    try {
+      await deletePipelineStage(jobFilter, stageId)
+      const updated = await getJobPipeline(jobFilter)
+      setPipeline(updated)
+      setStages(updated.stages.sort((a, b) => a.sortOrder - b.sortOrder).map((s, i) => mapStageToPipeline(s, i)))
+    } catch {
+      // handled
+    }
+  }, [jobFilter])
 
   const totalCandidates = filteredCandidates.length
   const inPipeline = filteredCandidates.filter((c) => {
@@ -273,30 +314,39 @@ export default function PipelinePage() {
       title="Pipeline"
       description={`${totalCandidates} candidates · ${inPipeline} in active pipeline`}
     >
-      <div className="flex flex-col gap-4 mb-6 animate-fade-in">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
-            <Input
-              placeholder="Search candidates by name, email, or position..."
-              className="pl-9"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+        <div className="flex flex-col gap-4 mb-6 animate-fade-in">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+              <Input
+                placeholder="Search candidates by name, email, or position..."
+                className="pl-9"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <Select value={jobFilter} onValueChange={(v) => { setJobFilter(v); setStages([]); setPipeline(null) }}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Filter by position" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Positions</SelectItem>
+                {jobs.map((j) => (
+                  <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={jobFilter} onValueChange={setJobFilter}>
-            <SelectTrigger className="w-full sm:w-[200px]">
-              <SelectValue placeholder="Filter by position" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Positions</SelectItem>
-              {jobs.map((j) => (
-                <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {pipeline && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setEditingStage(null); setStageForm({ name: "", description: "" }); setShowStageDialog(true) }}>
+                <Add className="h-4 w-4 mr-1" />
+                Add Stage
+              </Button>
+              <span className="text-xs text-muted">{pipeline.stages.length} stages</span>
+            </div>
+          )}
         </div>
-      </div>
 
       {candidatesError && (
         <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error mb-6 animate-fade-in">
@@ -305,7 +355,7 @@ export default function PipelinePage() {
       )}
 
       <div className="animate-fade-in">
-        {totalCandidates === 0 ? (
+        {totalCandidates === 0 && jobFilter === "all" ? (
           <EmptyState
             icon={<People className="h-8 w-8 text-muted" />}
             title="No candidates in pipeline"
@@ -328,10 +378,26 @@ export default function PipelinePage() {
               ) : undefined
             }
           />
+        ) : pipelineLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <p className="text-sm text-muted">Loading pipeline...</p>
+          </div>
+        ) : stages.length === 0 && jobFilter !== "all" ? (
+          <EmptyState
+            icon={<People className="h-8 w-8 text-muted" />}
+            title="No pipeline stages"
+            description="This job has no pipeline stages configured yet. Add a stage to get started."
+            action={
+              <Button size="sm" onClick={() => { setEditingStage(null); setStageForm({ name: "", description: "" }); setShowStageDialog(true) }}>
+                <Add className="h-4 w-4 mr-1" />
+                Add Stage
+              </Button>
+            }
+          />
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-4 -mx-2 px-2 snap-x snap-mandatory">
-            {pipelineStages.map((stage, stageIdx) => {
-              const stageCands = stageCandidates[stage.id]
+            {stages.map((stage, stageIdx) => {
+              const stageCands = stageCandidates[stage.id] || []
               return (
                 <div
                   key={stage.id}
@@ -349,6 +415,17 @@ export default function PipelinePage() {
                         {stageCands.length}
                       </span>
                     </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
+                        const dto = pipeline?.stages.find((s) => s.id === stage.id)
+                        if (dto) { setEditingStage(dto); setStageForm({ name: dto.name, description: dto.description || "" }); setShowStageDialog(true) }
+                      }}>
+                        <Edit2 className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-error" onClick={() => handleDeleteStage(stage.id)}>
+                        <Trash className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2.5 min-h-[120px] max-h-[calc(100vh-320px)] scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
@@ -365,6 +442,7 @@ export default function PipelinePage() {
                           key={candidate.id}
                           candidate={candidate}
                           stageIndex={stageIdx}
+                          stageCount={stages.length}
                           onMove={handleMove}
                           onOpenDetail={setSelectedCandidate}
                         />
@@ -525,7 +603,7 @@ export default function PipelinePage() {
 
               <DialogFooter>
                 <div className="flex items-center gap-2 w-full flex-wrap">
-                  {displayStatus && displayStatus !== "Rejected" && displayStatus !== "Hired" && (
+                  {displayStatus && displayStatus !== "Hired" && (
                     <>
                       <Button
                         variant="destructive"
@@ -538,61 +616,77 @@ export default function PipelinePage() {
                         <CloseSquare className="h-4 w-4" />
                         Reject
                       </Button>
-                      {displayStatus === "Applied" && (
-                        <Button
-                          size="sm"
-                          onClick={async () => {
-                            await advanceCandidateApplication(s.id, "Screening")
-                            setSelectedCandidate(null)
-                          }}
-                        >
-                          <SearchNormal className="h-4 w-4" />
-                          Start Screening
-                        </Button>
-                      )}
-                      {displayStatus === "Screening" && (
-                        <Button
-                          size="sm"
-                          onClick={async () => {
-                            await advanceCandidateApplication(s.id, "Interview")
-                            setSelectedCandidate(null)
-                          }}
-                        >
-                          <Calendar className="h-4 w-4" />
-                          Move to Interview
-                        </Button>
-                      )}
-                      {displayStatus === "Interview" && (
-                        <Button
-                          size="sm"
-                          onClick={async () => {
-                            await advanceCandidateApplication(s.id, "Offer")
-                            setSelectedCandidate(null)
-                          }}
-                        >
-                          <MessageSquare className="h-4 w-4" />
-                          Extend Offer
-                        </Button>
-                      )}
+                      {stages.length > 0 && (() => {
+                        const idx = stages.findIndex((st) => st.id === displayStatus)
+                        if (idx >= 0 && idx < stages.length - 2) {
+                          return (
+                            <Button size="sm" onClick={async () => {
+                              await advanceCandidateApplication(s.id, stages[idx + 1].id)
+                              setSelectedCandidate(null)
+                            }}>
+                              <ArrowRight className="h-4 w-4" />
+                              Move to {stages[idx + 1].label}
+                            </Button>
+                          )
+                        }
+                        if (idx >= 0 && idx === stages.length - 2) {
+                          return (
+                            <Button size="sm" onClick={async () => {
+                              await advanceCandidateApplication(s.id, stages[idx + 1].id)
+                              setSelectedCandidate(null)
+                            }}>
+                              <TickCircle className="h-4 w-4" />
+                              Complete
+                            </Button>
+                          )
+                        }
+                        return null
+                      })()}
                     </>
-                  )}
-                  {displayStatus === "Offer" && (
-                    <Button
-                      size="sm"
-                      onClick={async () => {
-                        await advanceCandidateApplication(s.id, "Hired")
-                        setSelectedCandidate(null)
-                      }}
-                    >
-                      <People className="h-4 w-4" />
-                      Mark as Hired
-                    </Button>
                   )}
                 </div>
               </DialogFooter>
             </>
             )
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Stage Management Dialog */}
+      <Dialog open={showStageDialog} onOpenChange={(open) => { if (!open) { setShowStageDialog(false); setEditingStage(null); setStageForm({ name: "", description: "" }) } }}>
+        <DialogContent className="max-w-md">
+          <ModalHeader>
+            <DialogTitle>{editingStage ? "Edit Stage" : "Add Stage"}</DialogTitle>
+            <DialogDescription>
+              {editingStage ? "Update the pipeline stage details." : "Create a new stage for this job pipeline."}
+            </DialogDescription>
+          </ModalHeader>
+          <form onSubmit={handleSaveStage} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Stage Name *</label>
+              <Input
+                placeholder="e.g. Phone Screen"
+                value={stageForm.name}
+                onChange={(e) => setStageForm((f) => ({ ...f, name: e.target.value }))}
+                required
+                maxLength={100}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Description</label>
+              <textarea
+                placeholder="Optional description for this stage"
+                value={stageForm.description}
+                onChange={(e) => setStageForm((f) => ({ ...f, description: e.target.value }))}
+                rows={3}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => { setShowStageDialog(false); setEditingStage(null); setStageForm({ name: "", description: "" }) }}>Cancel</Button>
+              <Button type="submit" disabled={stageSaving}>{stageSaving ? "Saving..." : editingStage ? "Save Changes" : "Add Stage"}</Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </AppLayout>

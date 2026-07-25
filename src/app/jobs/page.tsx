@@ -13,10 +13,11 @@ import { ModalHeader } from "@/components/ui/modal-header"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { formatCurrency, timeAgo } from "@/lib/utils"
-import { getJobs, getJobById, createJob } from "@/lib/api/jobs.api"
+import { getJobs, getJobById, createJob, updateJob, publishJob, closeJob, pauseJob, resumeJob, archiveJob } from "@/lib/api/jobs.api"
 import type { JobListDto } from "@/lib/api/types"
-import type { CreateJobRequest } from "@/lib/api/jobs.api"
+import type { CreateJobRequest, UpdateJobRequest } from "@/lib/api/jobs.api"
 import {
   SearchNormal,
   Add,
@@ -32,6 +33,12 @@ import {
   DirectRight,
   RotateLeft,
   InfoCircle,
+  More,
+  TickCircle,
+  CloseCircle,
+  Pause,
+  Edit2,
+  Archive,
 } from "iconsax-react"
 
 const statusConfig: Record<string, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" }> = {
@@ -135,6 +142,59 @@ export default function JobsPage() {
   })
   const [createSubmitting, setCreateSubmitting] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
+
+  const [editMode, setEditMode] = React.useState(false)
+  const [editForm, setEditForm] = React.useState<UpdateJobRequest>({})
+  const [actionLoading, setActionLoading] = React.useState<string | null>(null)
+
+  const handleJobAction = React.useCallback(async (jobId: string, action: string) => {
+    setActionLoading(`${jobId}-${action}`)
+    try {
+      switch (action) {
+        case "publish":
+          await publishJob(jobId)
+          break
+        case "close":
+          await closeJob(jobId)
+          break
+        case "pause":
+          await pauseJob(jobId)
+          break
+        case "resume":
+          await resumeJob(jobId)
+          break
+        case "archive":
+          await archiveJob(jobId)
+          break
+      }
+      setDetailsJobId(null)
+      setDetailsJob(null)
+      setEditMode(false)
+      setFetchKey((k) => k + 1)
+    } catch {
+      // action errors are handled by the API
+    } finally {
+      setActionLoading(null)
+    }
+  }, [])
+
+  const handleUpdateJob = React.useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!detailsJobId) return
+    setActionLoading(`${detailsJobId}-update`)
+    try {
+      await updateJob(detailsJobId, editForm)
+      setEditMode(false)
+      setEditForm({})
+      const updated = await getJobById(detailsJobId)
+      setDetailsJob(updated)
+      setFetchKey((k) => k + 1)
+    } catch {
+      // handled by API
+    } finally {
+      setActionLoading(null)
+    }
+  }, [detailsJobId, editForm])
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -442,10 +502,9 @@ export default function JobsPage() {
                   {displayJobs.map((job) => (
                     <Card
                       key={job.id}
-                      className="group hover:border-primary/30 transition-all duration-200 cursor-pointer"
-                      onClick={() => openDetails(job.id)}
+                      className="group hover:border-primary/30 transition-all duration-200"
                     >
-                      <CardHeader className="pb-3">
+                      <CardHeader className="pb-3" onClick={() => openDetails(job.id)}>
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <CardTitle className="text-base truncate">{job.title}</CardTitle>
@@ -459,7 +518,7 @@ export default function JobsPage() {
                           </Badge>
                         </div>
                       </CardHeader>
-                      <CardContent className="pb-3">
+                      <CardContent className="pb-3 cursor-pointer" onClick={() => openDetails(job.id)}>
                         <div className="space-y-2 text-sm">
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <Location className="h-3.5 w-3.5 shrink-0" />
@@ -485,9 +544,59 @@ export default function JobsPage() {
                         <Badge variant={typeConfig[job.employmentType]?.variant ?? "secondary"}>
                           {typeConfig[job.employmentType]?.label ?? job.employmentType}
                         </Badge>
-                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                          <People className="h-3.5 w-3.5" />
-                          <span>{job.numberOfOpenings} opening{job.numberOfOpenings !== 1 ? "s" : ""}</span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground mr-2">
+                            <People className="h-3.5 w-3.5" />
+                            <span>{job.numberOfOpenings} opening{job.numberOfOpenings !== 1 ? "s" : ""}</span>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
+                                <More className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openDetails(job.id)}>
+                                <InfoCircle className="h-4 w-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                              {(job.status === "DRAFT" || job.status === "APPROVED" || job.status === "SCHEDULED") && (
+                                <DropdownMenuItem onClick={() => handleJobAction(job.id, "publish")} disabled={actionLoading === `${job.id}-publish`}>
+                                  <TickCircle className="h-4 w-4 mr-2" />
+                                  Publish
+                                </DropdownMenuItem>
+                              )}
+                              {job.status === "PUBLISHED" && (
+                                <>
+                                  <DropdownMenuItem onClick={() => handleJobAction(job.id, "pause")} disabled={actionLoading === `${job.id}-pause`}>
+                                    <Pause className="h-4 w-4 mr-2" />
+                                    Pause
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleJobAction(job.id, "close")} disabled={actionLoading === `${job.id}-close`}>
+                                    <CloseCircle className="h-4 w-4 mr-2" />
+                                    Close
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                              {job.status === "PAUSED" && (
+                                <DropdownMenuItem onClick={() => handleJobAction(job.id, "resume")} disabled={actionLoading === `${job.id}-resume`}>
+                                  <TickCircle className="h-4 w-4 mr-2" />
+                                  Resume
+                                </DropdownMenuItem>
+                              )}
+                              {(job.status === "CLOSED" || job.status === "CANCELLED" || job.status === "FILLED" || job.status === "ARCHIVED") && (
+                                <DropdownMenuItem onClick={() => handleJobAction(job.id, "archive")} disabled={actionLoading === `${job.id}-archive`}>
+                                  <Archive className="h-4 w-4 mr-2" />
+                                  Archive
+                                </DropdownMenuItem>
+                              )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => { openDetails(job.id); setEditMode(true); setEditForm({ title: job.title, description: job.description || "", numberOfOpenings: job.numberOfOpenings, salaryMin: job.salaryMin ?? undefined, salaryMax: job.salaryMax ?? undefined }) }}>
+                                <Edit2 className="h-4 w-4 mr-2" />
+                                Edit
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </CardFooter>
                     </Card>
@@ -586,6 +695,45 @@ export default function JobsPage() {
                             <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
                               {timeAgo(new Date(job.createdAt))}
                             </TableCell>
+                            <TableCell>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
+                                    <More className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => openDetails(job.id)}>
+                                    <InfoCircle className="h-4 w-4 mr-2" />
+                                    View
+                                  </DropdownMenuItem>
+                                  {(job.status === "DRAFT" || job.status === "APPROVED" || job.status === "SCHEDULED") && (
+                                    <DropdownMenuItem onClick={() => handleJobAction(job.id, "publish")}>
+                                      <TickCircle className="h-4 w-4 mr-2" />
+                                      Publish
+                                    </DropdownMenuItem>
+                                  )}
+                                  {job.status === "PUBLISHED" && (
+                                    <>
+                                      <DropdownMenuItem onClick={() => handleJobAction(job.id, "pause")}>
+                                        <Pause className="h-4 w-4 mr-2" />
+                                        Pause
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleJobAction(job.id, "close")}>
+                                        <CloseCircle className="h-4 w-4 mr-2" />
+                                        Close
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  {job.status === "PAUSED" && (
+                                    <DropdownMenuItem onClick={() => handleJobAction(job.id, "resume")}>
+                                      <TickCircle className="h-4 w-4 mr-2" />
+                                      Resume
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -618,7 +766,7 @@ export default function JobsPage() {
       )}
 
       {/* Job Details Dialog */}
-      <Dialog open={!!detailsJobId} onOpenChange={(open) => { if (!open) { setDetailsJobId(null); setDetailsJob(null); setDetailsError(null) } }}>
+      <Dialog open={!!detailsJobId} onOpenChange={(open) => { if (!open) { setDetailsJobId(null); setDetailsJob(null); setDetailsError(null); setEditMode(false); setEditForm({}) } }}>
         <DialogContent className="max-w-xl">
           {detailsError ? (
             <div className="py-6 text-center">
@@ -639,6 +787,45 @@ export default function JobsPage() {
                 ))}
               </div>
             </div>
+          ) : editMode ? (
+            <>
+              <ModalHeader>
+                <DialogTitle>Edit Job</DialogTitle>
+                <DialogDescription>Update the job details below.</DialogDescription>
+              </ModalHeader>
+              <form onSubmit={handleUpdateJob} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Job Title</label>
+                  <Input value={editForm.title ?? detailsJob.title} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} maxLength={200} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Openings</label>
+                    <Input type="number" min={1} value={editForm.numberOfOpenings ?? detailsJob.numberOfOpenings} onChange={(e) => setEditForm((f) => ({ ...f, numberOfOpenings: parseInt(e.target.value) || 1 }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Salary Currency</label>
+                    <Input value={editForm.salaryCurrency ?? detailsJob.salaryCurrency ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, salaryCurrency: e.target.value }))} placeholder="USD" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Salary Min</label>
+                    <Input type="number" min={0} value={editForm.salaryMin ?? detailsJob.salaryMin ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, salaryMin: e.target.value ? parseInt(e.target.value) : undefined }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Salary Max</label>
+                    <Input type="number" min={0} value={editForm.salaryMax ?? detailsJob.salaryMax ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, salaryMax: e.target.value ? parseInt(e.target.value) : undefined }))} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Description</label>
+                  <textarea className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none" rows={5} value={editForm.description ?? detailsJob.description ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button type="button" variant="outline" onClick={() => { setEditMode(false); setEditForm({}) }}>Cancel</Button>
+                  <Button type="submit" disabled={actionLoading === `${detailsJobId}-update`}>{actionLoading === `${detailsJobId}-update` ? "Saving..." : "Save Changes"}</Button>
+                </div>
+              </form>
+            </>
           ) : (
             <>
               <ModalHeader>
@@ -686,6 +873,36 @@ export default function JobsPage() {
                     <p className="text-sm font-medium text-foreground mb-2">Description</p>
                     <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">{detailsJob.description}</p>
                   </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 pt-4 border-t border-border mt-4">
+                <Button variant="outline" size="sm" onClick={() => { setEditMode(true); setEditForm({ title: detailsJob.title, description: detailsJob.description || "", numberOfOpenings: detailsJob.numberOfOpenings, salaryMin: detailsJob.salaryMin ?? undefined, salaryMax: detailsJob.salaryMax ?? undefined }) }}>
+                  <Edit2 className="h-4 w-4 mr-1.5" />
+                  Edit
+                </Button>
+                {(detailsJob.status === "DRAFT" || detailsJob.status === "APPROVED" || detailsJob.status === "SCHEDULED") && (
+                  <Button size="sm" onClick={() => handleJobAction(detailsJob.id, "publish")} disabled={actionLoading === `${detailsJob.id}-publish`}>
+                    <TickCircle className="h-4 w-4 mr-1.5" />
+                    {actionLoading === `${detailsJob.id}-publish` ? "Publishing..." : "Publish"}
+                  </Button>
+                )}
+                {detailsJob.status === "PUBLISHED" && (
+                  <>
+                    <Button variant="outline" size="sm" onClick={() => handleJobAction(detailsJob.id, "pause")} disabled={actionLoading === `${detailsJob.id}-pause`}>
+                      <Pause className="h-4 w-4 mr-1.5" />
+                      Pause
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => handleJobAction(detailsJob.id, "close")} disabled={actionLoading === `${detailsJob.id}-close`}>
+                      <CloseCircle className="h-4 w-4 mr-1.5" />
+                      Close
+                    </Button>
+                  </>
+                )}
+                {detailsJob.status === "PAUSED" && (
+                  <Button size="sm" onClick={() => handleJobAction(detailsJob.id, "resume")} disabled={actionLoading === `${detailsJob.id}-resume`}>
+                    <TickCircle className="h-4 w-4 mr-1.5" />
+                    Resume
+                  </Button>
                 )}
               </div>
             </>
