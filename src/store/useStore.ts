@@ -193,6 +193,8 @@ async function loadCandidatesWithApplications(): Promise<Candidate[]> {
       jobTitle: app.job?.title || "",
       status: app.status,
       version: app.version,
+      stageId: app.currentStage?.id,
+      stageName: app.currentStage?.name,
       createdAt: app.createdAt,
       updatedAt: app.updatedAt,
     }))

@@ -181,6 +181,8 @@ interface RawApplicationInput {
   jobTitle: string
   status: ApplicationStatus
   version: number
+  stageId?: string
+  stageName?: string
   createdAt: string
   updatedAt: string
 }
@@ -244,6 +246,8 @@ function buildApplicationSummary(app: RawApplicationInput): CandidateApplication
     jobTitle: app.jobTitle,
     status: app.status,
     displayStatus: mapToDisplayStatus(app.status),
+    stageId: app.stageId,
+    stageName: app.stageName,
     version: app.version,
     createdAt: parseDate(app.createdAt),
     updatedAt: parseDate(app.updatedAt),

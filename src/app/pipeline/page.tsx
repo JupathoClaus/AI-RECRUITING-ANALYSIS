@@ -196,13 +196,23 @@ function CandidateCard({
 }
 
 export default function PipelinePage() {
-  const { candidates, jobs, candidatesError } = useStore()
+  const { candidates, jobs, candidatesError, fetchJobs, fetchCandidates } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
   const [jobFilter, setJobFilter] = React.useState<string>("all")
   const [selectedCandidate, setSelectedCandidate] = React.useState<Candidate | null>(null)
   const [pipeline, setPipeline] = React.useState<JobPipelineDto | null>(null)
   const [stages, setStages] = React.useState<PipelineStage[]>([])
   const [pipelineLoading, setPipelineLoading] = React.useState(false)
+
+  const dataLoadedRef = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!dataLoadedRef.current) {
+      dataLoadedRef.current = true
+      if (candidates.length === 0) fetchCandidates()
+      if (jobs.length === 0) fetchJobs()
+    }
+  }, [fetchCandidates, fetchJobs, candidates.length, jobs.length])
 
   const [showStageDialog, setShowStageDialog] = React.useState(false)
   const [editingStage, setEditingStage] = React.useState<PipelineStageDto | null>(null)
