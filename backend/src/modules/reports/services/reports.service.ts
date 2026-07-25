@@ -3,6 +3,7 @@ import { PrismaService } from '@database/prisma/prisma.service';
 import { ApplicationStatus, Prisma } from '@prisma/client';
 import { ReportFilterDto } from '../dto/report-filter.dto';
 import { toDateRange, isRejected, isActive } from './report-utils';
+import { calculateTimeToHire } from './time-to-hire';
 
 export interface CandidateEvaluationRow {
   applicationId: string;
@@ -245,14 +246,7 @@ export class ReportsService {
 
     return {
       data: items.map((app) => {
-        const submittedMs = app.submittedAt?.getTime();
-        const hiredMs = app.hiredAt?.getTime();
-        let durationHours: number | null = null;
-        let daysToHire: number | null = null;
-        if (submittedMs && hiredMs && hiredMs >= submittedMs) {
-          durationHours = Math.round((hiredMs - submittedMs) / (1000 * 60 * 60) * 100) / 100;
-          daysToHire = Math.round(durationHours / 24 * 100) / 100;
-        }
+        const { durationHours, daysToHire } = calculateTimeToHire(app.submittedAt, app.hiredAt);
         return {
           applicationId: app.id,
           candidateName: app.candidate ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim() : 'Unknown',
