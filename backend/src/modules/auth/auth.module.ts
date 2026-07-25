@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { DatabaseModule } from '@database/database.module';
 import { EmailModule } from '@modules/email';
+import { UsersModule } from '@modules/users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -20,6 +21,7 @@ import {
   imports: [
     DatabaseModule,
     EmailModule,
+    UsersModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => {

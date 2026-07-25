@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest"
 
 const store = new Map<string, string>()
 const mockFetch = vi.fn()
@@ -78,6 +78,56 @@ describe("apiRequest", () => {
     })
     const { apiRequest } = await import("../client")
     await expect(apiRequest("/protected")).rejects.toThrow()
+  })
+
+  it("concurrent 401 calls refresh only once", async () => {
+    let refreshCount = 0
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url.includes('/auth/refresh')) { refreshCount++; return mockResponse(200, { data: { accessToken: 'new-token', refreshToken: 'new-refresh' } }) }
+      return mockResponse(401, { message: 'Unauthorized' })
+    })
+    const { apiRequest } = await import("../client")
+    await Promise.all([apiRequest("/a"), apiRequest("/b")]).catch(() => {})
+    expect(refreshCount).toBe(1)
+  })
+
+  it("second 401 after refresh throws immediately", async () => {
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url.includes('/auth/refresh')) return mockResponse(200, { data: { accessToken: 't2', refreshToken: 'r2' } })
+      return mockResponse(401, { message: 'Unauthorized' })
+    })
+    const { apiRequest } = await import("../client")
+    const p1 = apiRequest("/a")
+    const p2 = apiRequest("/b")
+    await expect(p1).rejects.toThrow()
+    await expect(p2).rejects.toThrow()
+  })
+
+  it("caller AbortSignal cancels pending request", async () => {
+    mockFetch.mockImplementation(async (_url: string, opts: RequestInit) => {
+      return new Promise<void>((resolve) => { if (opts.signal) opts.signal.addEventListener('abort', () => resolve()) })
+    })
+    const { apiRequest } = await import("../client")
+    const controller = new AbortController()
+    setTimeout(() => controller.abort(), 50)
+    await expect(apiRequest("/test", { signal: controller.signal })).rejects.toThrow()
+  })
+
+  it("internal timeout aborts after configured ms", async () => {
+    vi.useFakeTimers()
+    mockFetch.mockImplementation(async (_url: string, opts: RequestInit) => {
+      return new Promise<never>((_resolve, reject) => {
+        if (opts.signal) {
+          if (opts.signal.aborted) reject(new DOMException('Aborted', 'AbortError'))
+          opts.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
+        }
+      })
+    })
+    const { apiRequest } = await import("../client")
+    const promise = apiRequest("/test")
+    vi.advanceTimersByTime(15000)
+    await expect(promise).rejects.toThrow(/abort/i)
+    vi.useRealTimers()
   })
 
   it("AbortSignal cancels pending request", async () => {

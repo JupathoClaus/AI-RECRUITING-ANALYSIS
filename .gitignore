@@ -45,3 +45,6 @@ backend/serve.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# frontend runtime logs
+frontend-output.log
