@@ -27,6 +27,7 @@ const ALLOWED_TRANSITIONS: Partial<Record<ApplicationStatus, ApplicationStatus[]
     ApplicationStatus.ON_HOLD,
   ],
   UNDER_REVIEW: [
+    ApplicationStatus.UNDER_REVIEW,
     ApplicationStatus.SCREENING,
     ApplicationStatus.SHORTLISTED,
     ApplicationStatus.REJECTED,

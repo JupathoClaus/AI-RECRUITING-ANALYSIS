@@ -1,10 +1,10 @@
-import { IsString, IsOptional, IsInt, Min, MaxLength, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class MoveApplicationDto {
   @ApiProperty({ description: 'Target pipeline stage ID' })
-  @IsUUID()
+  @IsString()
   toStageId: string;
 
   @ApiPropertyOptional()

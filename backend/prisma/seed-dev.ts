@@ -61,118 +61,45 @@ async function main() {
   console.log('  User sarah@airecruiter.com ready');
 
   // 2. Company
-  await prisma.company.upsert({
-    where: { slug: 'ai-recruiter-dev' },
-    update: {},
-    create: {
-      id: COMPANY_ID,
-      name: 'AI Recruiter Co',
-      slug: 'ai-recruiter-dev',
-      status: 'ACTIVE',
-      city: 'San Francisco',
-      countryCode: 'US',
-    },
-  });
+  const companyData: any = { id: COMPANY_ID, name: 'AI Recruiter Co', slug: 'ai-recruiter-dev', status: 'ACTIVE', city: 'San Francisco', countryCode: 'US' };
+  await prisma.company.upsert({ where: { slug: 'ai-recruiter-dev' }, update: companyData, create: companyData });
   console.log('  Company ai-recruiter-dev ready');
 
   // 3. Company settings — key: allow publishing without approval
-  await prisma.companySettings.upsert({
-    where: { companyId: COMPANY_ID },
-    update: {},
-    create: {
-      companyId: COMPANY_ID,
-      requireJobApproval: false,
-      recruitersCanPublish: true,
-    },
-  });
+  const settingsData: any = { companyId: COMPANY_ID, requireJobApproval: false, recruitersCanPublish: true };
+  await prisma.companySettings.upsert({ where: { companyId: COMPANY_ID }, update: settingsData, create: settingsData });
   console.log('  Company settings ready (requireJobApproval=false)');
 
   // 4. Membership
-  await prisma.companyMembership.upsert({
-    where: { userId_companyId: { userId: USER_ID, companyId: COMPANY_ID } },
-    update: {},
-    create: {
-      id: MEMBERSHIP_ID,
-      userId: USER_ID,
-      companyId: COMPANY_ID,
-      roleId: adminRole.id,
-      status: 'ACTIVE',
-      jobTitle: 'Company Admin',
-      joinedAt: new Date(),
-    },
-  });
+  const membershipData: any = { id: MEMBERSHIP_ID, userId: USER_ID, companyId: COMPANY_ID, roleId: adminRole.id, status: 'ACTIVE', jobTitle: 'Company Admin', joinedAt: new Date() };
+  await prisma.companyMembership.upsert({ where: { userId_companyId: { userId: USER_ID, companyId: COMPANY_ID } }, update: membershipData, create: membershipData });
   console.log('  Membership ready');
 
   // 5. Department
-  await prisma.department.upsert({
-    where: { id: DEPARTMENT_ID },
-    update: {},
-    create: {
-      id: DEPARTMENT_ID,
-      companyId: COMPANY_ID,
-      name: 'Engineering',
-      status: 'ACTIVE',
-      createdByUserId: USER_ID,
-    },
-  });
+  const deptData: any = { id: DEPARTMENT_ID, companyId: COMPANY_ID, name: 'Engineering', status: 'ACTIVE', createdByUserId: USER_ID };
+  await prisma.department.upsert({ where: { id: DEPARTMENT_ID }, update: deptData, create: deptData });
   console.log('  Department ready');
 
   // 6. Location
-  await prisma.companyLocation.upsert({
-    where: { id: LOCATION_ID },
-    update: {},
-    create: {
-      id: LOCATION_ID,
-      companyId: COMPANY_ID,
-      name: 'San Francisco HQ',
-      addressLine1: '123 Market St',
-      city: 'San Francisco',
-      countryCode: 'US',
-      status: 'ACTIVE',
-    },
-  });
+  const locData: any = { id: LOCATION_ID, companyId: COMPANY_ID, name: 'San Francisco HQ', addressLine1: '123 Market St', city: 'San Francisco', countryCode: 'US', status: 'ACTIVE' };
+  await prisma.companyLocation.upsert({ where: { id: LOCATION_ID }, update: locData, create: locData });
   console.log('  Location ready');
 
   // 7. Job — PUBLISHED so it accepts applications
-  await prisma.job.upsert({
-    where: { id: JOB_ID },
-    update: {},
-    create: {
-      id: JOB_ID,
-      companyId: COMPANY_ID,
-      title: 'Product Manager',
-      slug: 'product-manager-dev',
-      jobCode: 'PM-DEV-001',
-      description: 'Lead product strategy and execution for our AI recruitment platform.',
-      status: 'PUBLISHED',
-      employmentType: 'FULL_TIME',
-      workplaceType: 'HYBRID',
-      experienceLevel: 'SENIOR',
-      departmentId: DEPARTMENT_ID,
-      locationId: LOCATION_ID,
-      numberOfOpenings: 2,
-      salaryMin: 150000,
-      salaryMax: 200000,
-      salaryCurrency: 'USD',
-      salaryVisible: true,
-      ownerMembershipId: MEMBERSHIP_ID,
-      createdByMembershipId: MEMBERSHIP_ID,
-    },
-  });
+  const jobData: any = {
+    id: JOB_ID, companyId: COMPANY_ID, title: 'Product Manager', slug: 'product-manager-dev',
+    jobCode: 'PM-DEV-001', description: 'Lead product strategy and execution for our AI recruitment platform.',
+    status: 'PUBLISHED', employmentType: 'FULL_TIME', workplaceType: 'HYBRID', experienceLevel: 'SENIOR',
+    departmentId: DEPARTMENT_ID, locationId: LOCATION_ID, numberOfOpenings: 2,
+    salaryMin: 150000, salaryMax: 200000, salaryCurrency: 'USD', salaryVisible: true,
+    ownerMembershipId: MEMBERSHIP_ID, createdByMembershipId: MEMBERSHIP_ID,
+  };
+  await prisma.job.upsert({ where: { id: JOB_ID }, update: jobData, create: jobData });
   console.log('  Job "Product Manager" (PUBLISHED) ready');
 
   // 8. Pipeline with stages
-  await prisma.jobPipeline.upsert({
-    where: { id: PIPELINE_ID },
-    update: {},
-    create: {
-      id: PIPELINE_ID,
-      jobId: JOB_ID,
-      name: 'Default Pipeline',
-      isActive: true,
-      createdByMembershipId: MEMBERSHIP_ID,
-    },
-  });
+  const pipelineData: any = { id: PIPELINE_ID, jobId: JOB_ID, name: 'Default Pipeline', isActive: true, createdByMembershipId: MEMBERSHIP_ID };
+  await prisma.jobPipeline.upsert({ where: { id: PIPELINE_ID }, update: pipelineData, create: pipelineData });
 
   const stages = [
     { id: STAGE_APPLIED, name: 'Applied', type: 'APPLIED', sortOrder: 0 },
@@ -183,19 +110,8 @@ async function main() {
     { id: STAGE_REJECTED, name: 'Rejected', type: 'REJECTED', sortOrder: 5 },
   ];
   for (const s of stages) {
-    await prisma.jobPipelineStage.upsert({
-      where: { id: s.id },
-      update: {},
-      create: {
-        id: s.id,
-        pipelineId: PIPELINE_ID,
-        name: s.name,
-        type: s.type as any,
-        sortOrder: s.sortOrder,
-        required: true,
-        autoAdvanceEnabled: false,
-      },
-    });
+    const stageData: any = { id: s.id, pipelineId: PIPELINE_ID, name: s.name, type: s.type as any, sortOrder: s.sortOrder, required: true, autoAdvanceEnabled: false };
+    await prisma.jobPipelineStage.upsert({ where: { id: s.id }, update: stageData, create: stageData });
   }
   console.log('  Pipeline with 6 stages ready');
 
@@ -206,32 +122,11 @@ async function main() {
     { id: CANDIDATE_CAROL, firstName: 'Carol', lastName: 'Davis', email: 'carol.d@example.com', ccId: CC_CAROL },
   ];
   for (const cd of candidateData) {
-    await prisma.candidate.upsert({
-      where: { id: cd.id },
-      update: {},
-      create: {
-        id: cd.id,
-        firstName: cd.firstName,
-        lastName: cd.lastName,
-        email: cd.email,
-        normalizedEmail: cd.email.toLowerCase(),
-        status: 'ACTIVE',
-        source: 'RECRUITER_CREATED',
-      },
-    });
+    const candData: any = { id: cd.id, firstName: cd.firstName, lastName: cd.lastName, email: cd.email, normalizedEmail: cd.email.toLowerCase(), status: 'ACTIVE', source: 'RECRUITER_CREATED' };
+    await prisma.candidate.upsert({ where: { id: cd.id }, update: candData, create: candData });
 
-    await prisma.companyCandidate.upsert({
-      where: { id: cd.ccId },
-      update: {},
-      create: {
-        id: cd.ccId,
-        companyId: COMPANY_ID,
-        candidateId: cd.id,
-        source: 'RECRUITER_CREATED',
-        ownerMembershipId: MEMBERSHIP_ID,
-        createdByMembershipId: MEMBERSHIP_ID,
-      },
-    });
+    const ccData: any = { id: cd.ccId, companyId: COMPANY_ID, candidateId: cd.id, source: 'RECRUITER_CREATED', ownerMembershipId: MEMBERSHIP_ID, createdByMembershipId: MEMBERSHIP_ID };
+    await prisma.companyCandidate.upsert({ where: { id: cd.ccId }, update: ccData, create: ccData });
   }
   console.log('  Candidates (Alice, Bob, Carol) ready');
 
@@ -239,10 +134,11 @@ async function main() {
   const now = new Date();
   const daysAgo = (n: number) => new Date(now.getTime() - n * 86400000);
 
+  const counterData: any = { companyId: COMPANY_ID, year: 2026, lastValue: 10 };
   await prisma.applicationCounter.upsert({
     where: { companyId_year: { companyId: COMPANY_ID, year: 2026 } },
-    update: {},
-    create: { companyId: COMPANY_ID, year: 2026, lastValue: 10 },
+    update: counterData,
+    create: counterData,
   });
 
   const appData = [
@@ -276,24 +172,16 @@ async function main() {
   ];
 
   for (const app of appData) {
+    const appData2: any = {
+      id: app.id, companyId: COMPANY_ID, jobId: JOB_ID, candidateId: app.candidateId,
+      companyCandidateId: app.ccId, applicationNumber: `APP-2026-${String(appData.indexOf(app) + 1).padStart(4, '0')}`,
+      publicReference: `PUB-DEV-${app.id.slice(-4)}`, status: app.status as any, source: 'RECRUITER_CREATED',
+      consentConfirmed: true, submittedAt: app.submittedAt, currentStageId: app.currentStageId, version: app.version,
+    };
     await prisma.application.upsert({
       where: { id: app.id },
-      update: {},
-      create: {
-        id: app.id,
-        companyId: COMPANY_ID,
-        jobId: JOB_ID,
-        candidateId: app.candidateId,
-        companyCandidateId: app.ccId,
-        applicationNumber: `APP-2026-${String(appData.indexOf(app) + 1).padStart(4, '0')}`,
-        publicReference: `PUB-DEV-${app.id.slice(-4)}`,
-        status: app.status as any,
-        source: 'RECRUITER_CREATED',
-        consentConfirmed: true,
-        submittedAt: app.submittedAt,
-        currentStageId: app.currentStageId,
-        version: app.version,
-      },
+      update: appData2,
+      create: appData2,
     });
 
     // Stage history entry for submission
