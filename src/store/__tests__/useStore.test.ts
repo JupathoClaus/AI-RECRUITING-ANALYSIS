@@ -238,6 +238,7 @@ describe("advanceCandidateApplication", () => {
     expect(mockSubmitApplication).toHaveBeenCalledTimes(1)
     expect(mockSubmitApplication).toHaveBeenCalledWith(APPLICATION_ID, {
       expectedVersion: 1,
+      consentConfirmed: true,
     })
     expect(mockMoveApplication).not.toHaveBeenCalled()
   })

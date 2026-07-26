@@ -37,6 +37,12 @@ export function isAuthenticated(): boolean {
   return !!getAccessToken()
 }
 
+export interface StatusResponse<T> {
+  data: T
+  status: number
+  headers: Headers
+}
+
 interface RequestOptions {
   method?: string
   body?: unknown
@@ -44,6 +50,7 @@ interface RequestOptions {
   skipAuth?: boolean
   responseType?: 'json' | 'blob'
   signal?: AbortSignal
+  statusInBody?: boolean
 }
 
 export class ApiErrorResponse extends Error {
@@ -127,7 +134,7 @@ export interface BlobResponse {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, params, skipAuth = false, responseType = 'json', signal } = options
+  const { method = "GET", body, params, skipAuth = false, responseType = 'json', signal, statusInBody } = options
 
   let url = `${getBaseUrl()}${path}`
   if (params) {
@@ -147,10 +154,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (qs) url += `?${qs}`
   }
 
+  const isFormData = body instanceof FormData
   const headers: Record<string, string> = {}
   const acceptType = responseType === 'blob' ? 'text/csv' : 'application/json'
   headers['Accept'] = acceptType
-  if (responseType !== 'blob') {
+  if (!isFormData && responseType !== 'blob') {
     headers['Content-Type'] = 'application/json'
   }
 
@@ -161,14 +169,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     }
   }
 
+  const fetchBody = isFormData ? body : (body ? JSON.stringify(body) : undefined)
+
   let res = await doFetch(
     url,
-    {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      credentials: 'include',
-    },
+    { method, headers, body: fetchBody, credentials: 'include' },
     REQUEST_TIMEOUT_MS,
     signal,
   )
@@ -177,18 +182,26 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const newToken = await refreshAccessToken()
     if (newToken) {
       headers['Authorization'] = `Bearer ${newToken}`
+      const retryBody = options.body instanceof FormData ? options.body : (body ? JSON.stringify(body) : undefined)
       res = await doFetch(
         url,
-        {
-          method,
-          headers,
-          body: body ? JSON.stringify(body) : undefined,
-          credentials: 'include',
-        },
+        { method, headers, body: retryBody, credentials: 'include' },
         REQUEST_TIMEOUT_MS,
         signal,
       )
     }
+  }
+
+  if (statusInBody) {
+    if (responseType === 'blob') {
+      const blob = await res.blob()
+      return { data: blob, status: res.status, headers: res.headers } as T
+    }
+    if (res.status === 204) {
+      return { data: undefined, status: res.status, headers: res.headers } as T
+    }
+    const json = await res.json()
+    return { data: json, status: res.status, headers: res.headers } as T
   }
 
   if (!res.ok) {

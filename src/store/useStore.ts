@@ -386,7 +386,7 @@ export const useStore = create<AppState>((set, get) => ({
       switch (toStatus) {
         case "Screening":
           if (detail.status === "DRAFT") {
-            await submitApplication(currentApp.id, { expectedVersion: version })
+            await submitApplication(currentApp.id, { expectedVersion: version, consentConfirmed: true })
           } else {
             await moveApplication(currentApp.id, { expectedVersion: version, toStageId: currentApp.stageId })
           }
