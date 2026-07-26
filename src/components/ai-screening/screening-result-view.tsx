@@ -12,11 +12,11 @@ interface Props {
 
 function RecommendationBadge({ recommendation }: { recommendation?: string }) {
   if (!recommendation) return null
-  const variant = recommendation === 'SHORTLIST' ? 'success' : recommendation === 'NOT_SHORTLIST' ? 'error' : 'warning'
+  const badgeVariant: 'success' | 'error' | 'warning' = recommendation === 'SHORTLIST' ? 'success' : recommendation === 'NOT_SHORTLIST' ? 'error' : 'warning'
   const label = recommendation === 'SHORTLIST' ? 'Recommended for shortlist'
     : recommendation === 'NOT_SHORTLIST' ? 'Not recommended for shortlist'
     : 'Human review required'
-  return <Badge variant={variant as any} className="text-sm px-3 py-1">{label}</Badge>
+  return <Badge variant={badgeVariant} className="text-sm px-3 py-1">{label}</Badge>
 }
 
 export function ScreeningResultView({ result }: Props) {
@@ -90,6 +90,25 @@ export function ScreeningResultView({ result }: Props) {
                     </div>
                     <Progress value={(cs.score / cs.maximumScore) * 100} className="h-1.5" />
                     {cs.explanation && <p className="text-xs text-muted-foreground mt-0.5">{cs.explanation}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {result.evidence && result.evidence.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">Evidence</h4>
+              <div className="space-y-2">
+                {result.evidence.map((ev, i) => (
+                  <div key={i} className="border rounded-lg p-3 text-sm">
+                    <div className="font-medium">{ev.criterion}</div>
+                    {ev.sourceText && <p className="text-muted-foreground mt-1">Source: {ev.sourceText}</p>}
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant="info">{ev.assessment}</Badge>
+                      {ev.score !== undefined && <Badge variant="secondary">Score: {ev.score}</Badge>}
+                    </div>
+                    {ev.sourceCategory && <p className="text-xs text-muted-foreground mt-1">Category: {ev.sourceCategory}</p>}
                   </div>
                 ))}
               </div>

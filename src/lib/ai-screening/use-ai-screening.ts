@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { ScreeningWorkflowState, POLLING_INTERVAL_MS, MAX_POLLING_DURATION_MS, EXTRACTION_RETRY_INTERVAL_MS, MAX_EXTRACTION_WAIT_MS } from './screening-state'
-import { AiScreeningResultDto, ScreeningRequestResponse, requestAiScreening, getLatestAiScreening, getAiScreeningById } from '@/lib/api/ai-screening.api'
+import { POLLING_INTERVAL_MS, MAX_POLLING_DURATION_MS, EXTRACTION_RETRY_INTERVAL_MS, MAX_EXTRACTION_WAIT_MS } from './screening-state'
+import type { ScreeningWorkflowState } from './screening-state'
+import { AiScreeningResultDto, requestAiScreening, getLatestAiScreening, getAiScreeningById } from '@/lib/api/ai-screening.api'
 import { uploadResume, StoredFileResponse } from '@/lib/api/files.api'
 import { ApiErrorResponse } from '@/lib/api/client'
 
@@ -128,9 +129,18 @@ export function useAiScreening() {
           setWorkflow({ workflowState: ws, screeningResult: result })
           pollScreening(screeningId, startTime)
         }
-      } catch {
-        if (mountedRef.current && applicationRef.current === currentAppId) {
+      } catch (err) {
+        if (!mountedRef.current || applicationRef.current !== currentAppId) return
+        const apiErr = err instanceof ApiErrorResponse ? err : null
+        const isRetryable = apiErr ? (apiErr.statusCode === 429 || apiErr.statusCode >= 500 || !apiErr.statusCode) : true
+        if (isRetryable) {
           pollScreening(screeningId, startTime)
+        } else {
+          setWorkflow({
+            workflowState: 'ERROR',
+            error: apiErr?.message || 'Screening check failed',
+            errorCode: apiErr?.errorCode || 'POLL_FAILED',
+          })
         }
       }
     }, POLLING_INTERVAL_MS)
@@ -174,7 +184,7 @@ export function useAiScreening() {
       } catch (err) {
         if (!mountedRef.current || applicationRef.current !== currentAppId) return
         const apiErr = err instanceof ApiErrorResponse ? err : null
-        if (apiErr?.errorCode === 'RESUME_EXTRACTION_PENDING' || apiErr?.errorCode === 'CONFLICT') {
+        if (apiErr?.errorCode === 'RESUME_EXTRACTION_PENDING') {
           waitForExtraction(startTime)
         } else if (apiErr?.errorCode === 'RESUME_EXTRACTION_FAILED') {
           setWorkflow({ workflowState: 'EXTRACTION_FAILED', error: apiErr.message, errorCode: 'RESUME_EXTRACTION_FAILED' })
@@ -229,7 +239,7 @@ export function useAiScreening() {
     } catch (err) {
       if (!mountedRef.current || applicationRef.current !== appId) return
       const apiErr = err instanceof ApiErrorResponse ? err : null
-      if (apiErr?.errorCode === 'RESUME_EXTRACTION_PENDING' || apiErr?.statusCode === 409) {
+      if (apiErr?.errorCode === 'RESUME_EXTRACTION_PENDING') {
         setWorkflow({ workflowState: 'WAITING_FOR_EXTRACTION', extractionStatus: 'PENDING' })
         waitForExtraction(Date.now())
       } else if (apiErr?.errorCode === 'RESUME_EXTRACTION_FAILED') {
@@ -269,8 +279,16 @@ export function useAiScreening() {
         })
         pollScreening(result.id, Date.now())
       }
-    } catch {
-      // No screening exists yet - normal state
+    } catch (err) {
+      if (!mountedRef.current || applicationRef.current !== applicationId) return
+      const apiErr = err instanceof ApiErrorResponse ? err : null
+      if (apiErr?.statusCode !== 404) {
+        setWorkflow({
+          workflowState: 'ERROR',
+          error: apiErr?.message || 'Failed to load screening',
+          errorCode: apiErr?.errorCode || 'LOAD_FAILED',
+        })
+      }
     }
   }, [setWorkflow, pollScreening])
 

@@ -1,17 +1,17 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { AppLayout } from '@/components/layout/app-layout'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Separator } from '@/components/ui/separator'
 import { ApplicationSelector } from '@/components/ai-screening/application-selector'
 import { ResumeUploadArea } from '@/components/ai-screening/resume-upload-area'
 import { ScreeningProgress } from '@/components/ai-screening/screening-progress'
 import { ScreeningResultView } from '@/components/ai-screening/screening-result-view'
 import { useAiScreening } from '@/lib/ai-screening/use-ai-screening'
+import { getApplicationResume } from '@/lib/api/files.api'
 import { Shield, RefreshCw } from 'lucide-react'
 
 export default function AiScreenerPage() {
@@ -26,14 +26,27 @@ export default function AiScreenerPage() {
     loadLatestScreening,
   } = useAiScreening()
 
-  const handleSelect = (applicationId: string, hasResume: boolean) => {
+  const checkingRef = useRef(false)
+
+  useEffect(() => {
+    const appId = state.selectedApplicationId
+    if (!appId || checkingRef.current) return
+    checkingRef.current = true
+    getApplicationResume(appId)
+      .then((file) => {
+        if (file) {
+          setResumeAvailable()
+          loadLatestScreening(appId)
+        } else {
+          setResumeMissing()
+        }
+      })
+      .catch(() => setResumeMissing())
+      .finally(() => { checkingRef.current = false })
+  }, [state.selectedApplicationId, setResumeAvailable, setResumeMissing, loadLatestScreening])
+
+  const handleSelect = (applicationId: string) => {
     selectApplication(applicationId)
-    if (hasResume) {
-      setResumeAvailable()
-      loadLatestScreening(applicationId)
-    } else {
-      setResumeMissing()
-    }
   }
 
   const isProcessing = ['REQUESTING_SCREENING', 'WAITING_FOR_EXTRACTION', 'SCREENING_PENDING', 'SCREENING_RUNNING', 'UPLOADING_RESUME'].includes(state.workflowState)

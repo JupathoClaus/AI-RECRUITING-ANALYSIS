@@ -192,18 +192,6 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     }
   }
 
-  if (statusInBody) {
-    if (responseType === 'blob') {
-      const blob = await res.blob()
-      return { data: blob, status: res.status, headers: res.headers } as T
-    }
-    if (res.status === 204) {
-      return { data: undefined, status: res.status, headers: res.headers } as T
-    }
-    const json = await res.json()
-    return { data: json, status: res.status, headers: res.headers } as T
-  }
-
   if (!res.ok) {
     let errorBody: { errorCode?: string; message?: string } | null = null
     try {
@@ -234,6 +222,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   const json = await res.json()
+
+  if (statusInBody) {
+    return { data: json, status: res.status, headers: res.headers } as T
+  }
+
   const apiRes = json as { data?: unknown; meta?: unknown; statusCode?: number }
 
   if (apiRes.data !== undefined && apiRes.meta !== undefined) {
