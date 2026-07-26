@@ -1,22 +1,17 @@
 import { ScreeningInput } from '../domain/screening-input.type';
-import { EvidenceItem, CriteriaScore } from '../domain/screening-result.type';
-import { AiScreeningRecommendation, AiScreeningConfidence } from '../domain/screening-recommendation.enum';
+import { ProviderScreeningResult } from '../domain/screening-result.type';
 
-export interface ProviderScreeningResult {
-  overallScore: number;
-  recommendation: AiScreeningRecommendation;
-  confidence: AiScreeningConfidence;
-  matchedQualifications: string[];
-  missingQualifications: string[];
-  evidence: EvidenceItem[];
-  criteriaScores: CriteriaScore[];
-  uncertainties: string[];
-  riskFlags: string[];
-  explanation: string;
-  prohibitedReasoningDetected: boolean;
-  providerMetadata?: Record<string, unknown>;
+export interface AiScreeningProviderOptions {
+  timeoutMs?: number;
+  requestId?: string;
+  abortSignal?: AbortSignal;
 }
 
 export interface AiScreeningProvider {
-  screen(input: ScreeningInput): Promise<ProviderScreeningResult>;
+  readonly providerName: string;
+
+  screen(
+    input: ScreeningInput,
+    options?: AiScreeningProviderOptions,
+  ): Promise<ProviderScreeningResult>;
 }

@@ -1,31 +1,29 @@
-import { AiScreeningRecommendation, AiScreeningConfidence } from './screening-recommendation.enum';
+import { ScreeningRecommendation } from './screening-recommendation.enum';
+import { ScreeningConfidence } from './screening-confidence.enum';
+import { ScreeningEvidenceItem } from './screening-evidence.type';
+import { ScreeningCriterionScore } from './screening-criterion-score.type';
 
-export interface EvidenceItem {
-  criterion: string;
-  evidence: string;
-  sourceCategory: string;
-  assessment: string;
-  score?: number;
+export interface ProviderMetadata {
+  provider: string;
+  model?: string;
+  promptVersion?: string;
+  responseId?: string;
+  processingTimeMs?: number;
+  finishReason?: string;
+  createdAt?: string;
 }
 
-export interface CriteriaScore {
-  criterion: string;
-  score: number;
-  maxScore: number;
-  weight: number;
-}
-
-export interface ScreeningResult {
+export interface ProviderScreeningResult {
   overallScore: number;
-  recommendation: AiScreeningRecommendation;
-  confidence: AiScreeningConfidence;
+  recommendation: ScreeningRecommendation;
+  confidence: ScreeningConfidence;
   matchedQualifications: string[];
   missingQualifications: string[];
-  evidence: EvidenceItem[];
-  criteriaScores: CriteriaScore[];
+  evidence: ScreeningEvidenceItem[];
   uncertainties: string[];
   riskFlags: string[];
   explanation: string;
+  criteriaScores: ScreeningCriterionScore[];
   prohibitedReasoningDetected: boolean;
-  providerMetadata?: Record<string, unknown>;
+  providerMetadata?: ProviderMetadata;
 }
