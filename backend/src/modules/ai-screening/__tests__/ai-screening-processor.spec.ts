@@ -17,6 +17,7 @@ import { ScreeningConfidence } from '../domain/screening-confidence.enum';
 const mockPrisma = {
   application: { findFirst: jest.fn(), update: jest.fn() },
   aiScreeningResult: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+  resumeTextExtraction: { findFirst: jest.fn() },
   storedFile: { findUnique: jest.fn() },
 };
 
@@ -101,6 +102,13 @@ describe('AiScreeningProcessor', () => {
   beforeEach(async () => {
     jest.resetAllMocks();
     mockReadFile.mockResolvedValue('Parsed resume text.');
+    mockPrisma.resumeTextExtraction.findFirst.mockResolvedValue({
+      id: 'ext-1', storedFileId: 'file-1', companyId: 'company-1', status: 'COMPLETED',
+      extractedText: 'Parsed resume text.',
+      extractedTextSha256: 'abc', sourceFileSha256: 'def', parserName: 'pdf-parse', parserVersion: '1.1.1',
+      completedAt: new Date(),
+      storedFile: { status: 'ACTIVE', deletedAt: null },
+    });
 
     const module = await Test.createTestingModule({
       providers: [

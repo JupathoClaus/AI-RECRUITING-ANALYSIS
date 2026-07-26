@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ScreeningInput, ScreeningQuestionAnswer } from '../domain/screening-input.type';
 import { redactResumeText } from '../utils/resume-redaction';
+import { CompletedExtraction } from './resume-text-loader.service';
 
 export interface ApplicationData {
   id: string;
@@ -32,8 +33,6 @@ export interface ApplicationData {
   }>;
 }
 
-export type ResumeTextData = import('./resume-text-loader.service').ResumeTextData;
-
 @Injectable()
 export class ScreeningInputBuilderService {
   private readonly maxResumeChars: number;
@@ -44,7 +43,7 @@ export class ScreeningInputBuilderService {
 
   build(
     application: ApplicationData,
-    resumeTextData: ResumeTextData,
+    resumeTextData: CompletedExtraction,
     promptVersion: string = 'v1',
   ): ScreeningInput {
     const requiredSkills: string[] = [];

@@ -1942,6 +1942,9 @@ model StoredFile {
 
   application Application? @relation(fields: [applicationId], references: [id])
 
+  // Phase 4 — AI Screening
+  textExtractions ResumeTextExtraction[]
+
   @@index([companyId])
   @@index([applicationId])
   @@index([category])
@@ -2142,35 +2145,35 @@ enum AiScreeningConfidence {
 }
 
 model AiScreeningResult {
-  id                        String                    @id @default(uuid())
-  applicationId             String
-  jobId                     String
-  candidateId               String
-  companyId                 String
-  initiatedByUserId         String
-  status                    AiScreeningStatus         @default(PENDING)
-  overallScore              Int?
-  recommendation            AiScreeningRecommendation?
-  confidence                AiScreeningConfidence?
-  matchedQualifications     Json?
-  missingQualifications     Json?
-  evidence                  Json?
-  criteriaScores            Json?
-  uncertainties             Json?
-  riskFlags                 Json?
-  explanation               String?
-  prohibitedReasoningDetected Boolean                   @default(false)
-  provider                  String?
-  model                     String?
-  promptVersion             String?
-  providerResponseId        String?
-  inputFingerprint          String?
-  failureCode               String?
-  failureMessageSafe        String?
-  startedAt                 DateTime?
-  completedAt               DateTime?
-  createdAt                 DateTime                  @default(now())
-  updatedAt                 DateTime                  @updatedAt
+  id                          String                     @id @default(uuid())
+  applicationId               String
+  jobId                       String
+  candidateId                 String
+  companyId                   String
+  initiatedByUserId           String
+  status                      AiScreeningStatus          @default(PENDING)
+  overallScore                Int?
+  recommendation              AiScreeningRecommendation?
+  confidence                  AiScreeningConfidence?
+  matchedQualifications       Json?
+  missingQualifications       Json?
+  evidence                    Json?
+  criteriaScores              Json?
+  uncertainties               Json?
+  riskFlags                   Json?
+  explanation                 String?
+  prohibitedReasoningDetected Boolean                    @default(false)
+  provider                    String?
+  model                       String?
+  promptVersion               String?
+  providerResponseId          String?
+  inputFingerprint            String?
+  failureCode                 String?
+  failureMessageSafe          String?
+  startedAt                   DateTime?
+  completedAt                 DateTime?
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
 
   application Application @relation(fields: [applicationId], references: [id])
 
@@ -2180,6 +2183,44 @@ model AiScreeningResult {
   @@index([createdAt])
   @@index([recommendation])
   @@index([applicationId, createdAt])
+}
+
+// ─── ResumeTextExtraction ────────────────────────────────────────────────────
+// Phase 4 — Resume Text Extraction Pipeline
+
+enum ResumeExtractionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model ResumeTextExtraction {
+  id                  String                 @id @default(uuid())
+  storedFileId        String
+  companyId           String
+  initiatedByUserId   String?
+  status              ResumeExtractionStatus @default(PENDING)
+  extractedText       String?
+  extractedTextSha256 String?
+  sourceFileSha256    String?
+  parserName          String?
+  parserVersion       String?
+  mimeType            String?
+  failureCode         String?
+  failureMessageSafe  String?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  storedFile StoredFile @relation(fields: [storedFileId], references: [id])
+
+  @@index([storedFileId])
+  @@index([companyId])
+  @@index([status])
+  @@index([storedFileId, companyId, status])
+  @@index([createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

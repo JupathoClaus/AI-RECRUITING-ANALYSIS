@@ -9,6 +9,9 @@ import { ResumeTextLoaderService } from '../services/resume-text-loader.service'
 import { AI_SCREENING_QUEUE } from '../queue/ai-screening-queue.constants';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
+import { ResumeExtractionService } from '../../resume-processing/services/resume-extraction.service';
+
+const mockRes = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn() } as any);
 
 const mockReadFile = jest.fn().mockResolvedValue('Parsed resume text.');
 jest.mock('fs/promises', () => ({
@@ -49,6 +52,8 @@ describe('AiScreeningController', () => {
         AiScreeningService, ScreeningInputBuilderService, ResumeTextLoaderService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: getQueueToken(AI_SCREENING_QUEUE), useValue: mockQueue },
+        { provide: getQueueToken('resume-processing'), useValue: { add: jest.fn() } },
+        { provide: ResumeExtractionService, useValue: { requestExtraction: jest.fn() } },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     })
@@ -70,6 +75,7 @@ describe('AiScreeningController', () => {
       const result = await controller.requestScreening(
         'app-1', { forceRerun: false },
         { userId: 'user-1', activeCompanyId: 'company-1', role: 'HR_MANAGER', permissions: [] } as any,
+        mockRes(),
       );
 
       expect(result.action).toBe('CREATED');
@@ -85,6 +91,7 @@ describe('AiScreeningController', () => {
       const result = await controller.requestScreening(
         'app-1', { forceRerun: false },
         { userId: 'user-1', activeCompanyId: 'company-1', role: 'HR_MANAGER', permissions: [] } as any,
+        mockRes(),
       );
 
       expect(result.action).toBe('REUSED');
@@ -100,6 +107,7 @@ describe('AiScreeningController', () => {
       const result = await controller.requestScreening(
         'app-1', { forceRerun: true },
         { userId: 'user-1', activeCompanyId: 'company-1', role: 'HR_MANAGER', permissions: [] } as any,
+        mockRes(),
       );
 
       expect(result.action).toBe('CREATED');
@@ -114,6 +122,7 @@ describe('AiScreeningController', () => {
       await controller.requestScreening(
         'app-1', { forceRerun: false },
         { userId: 'user-1', activeCompanyId: 'company-1', role: 'RECRUITER', permissions: [] } as any,
+        mockRes(),
       );
 
       expect(spy).toHaveBeenCalledWith('app-1', 'company-1', 'user-1', false);

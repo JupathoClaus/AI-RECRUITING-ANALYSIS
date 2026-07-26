@@ -8,7 +8,7 @@ import { AiScreeningJobData } from './ai-screening-job-data.interface';
 import { AI_SCREENING_PROVIDER } from '../providers/ai-screening-provider.token';
 import { AiScreeningProvider } from '../providers/ai-screening-provider.interface';
 import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
-import { ResumeTextLoaderService, ResumeTextData } from '../services/resume-text-loader.service';
+import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
 import { computeScreeningFingerprint } from '../utils/screening-input-fingerprint';
 import { AiScreeningProviderError } from '../providers/ai-screening-provider.errors';
 import { ScreeningInput } from '../domain/screening-input.type';
@@ -117,14 +117,14 @@ export class AiScreeningProcessor extends WorkerHost {
         throw new UnrecoverableError('No resume file available');
       }
 
-      const resumeText = await this.resumeLoader.load(resumeFile.storageKey);
-      if (!resumeText || resumeText.parsedText.trim().length < 10) {
-        throw new UnrecoverableError('Resume has no parsed text');
+      const completedExtraction = await this.resumeLoader.loadCompletedExtraction(resumeFile.id, companyId);
+      if (!completedExtraction || completedExtraction.parsedText.trim().length < 10) {
+        throw new UnrecoverableError('Resume has no completed extraction');
       }
 
       screeningInput = this.inputBuilder.build(
         application as never,
-        resumeText,
+        completedExtraction,
         this.promptVersion,
       );
 
@@ -132,7 +132,7 @@ export class AiScreeningProcessor extends WorkerHost {
         applicationId,
         input: screeningInput,
         jobUpdatedAt: jobRecord.updatedAt.toISOString(),
-        resumeChecksumSha256: resumeFile.checksumSha256,
+        resumeChecksumSha256: resumeFile.checksumSha256 ?? completedExtraction.sourceFileSha256,
         resumeUpdatedAt: resumeFile.updatedAt.toISOString(),
         provider: screening.provider ?? this.provider.providerName,
         model: screening.model ?? '',
@@ -162,13 +162,14 @@ export class AiScreeningProcessor extends WorkerHost {
         throw err;
       }
 
+      const isLastAttempt = job.attemptsMade >= (job.opts.attempts ?? 3) - 1;
+
       if (err instanceof AiScreeningProviderError) {
         if (!err.retryable) {
           await this.failTerminal(screeningId, err.safeCode, err.safeMessage);
           throw new UnrecoverableError(err.safeMessage);
         }
 
-        const isLastAttempt = job.attemptsMade >= (job.opts.attempts ?? 3) - 1;
         if (isLastAttempt) {
           this.logger.warn(`Screening ${screeningId} exhausted retries (${job.attemptsMade + 1}/${job.opts.attempts ?? 3})`);
           await this.failTerminal(screeningId, err.safeCode, err.safeMessage);
@@ -179,7 +180,13 @@ export class AiScreeningProcessor extends WorkerHost {
         throw err;
       }
 
-      this.logger.error(`Screening ${screeningId} unexpected provider error: ${(err as Error).message}`);
+      if (isLastAttempt) {
+        this.logger.error(`Screening ${screeningId} final attempt failed: ${(err as Error).message}`);
+        await this.failTerminal(screeningId, 'PROCESSING_ERROR', 'Screening processing failed after all retries.');
+        throw new UnrecoverableError((err as Error).message);
+      }
+
+      this.logger.error(`Screening ${screeningId} retryable error (attempt ${job.attemptsMade + 1}): ${(err as Error).message}`);
       throw err;
     }
 

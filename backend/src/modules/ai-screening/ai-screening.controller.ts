@@ -8,7 +8,9 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -19,7 +21,6 @@ import { AuthenticatedPrincipal } from '../auth/interfaces/auth.interface';
 import { AiScreeningService } from './ai-screening.service';
 import { RunAiScreeningDto } from './dto/run-ai-screening.dto';
 import { ListAiScreeningsQueryDto } from './dto/list-ai-screenings-query.dto';
-
 
 @ApiTags('AI Screening')
 @ApiBearerAuth()
@@ -37,16 +38,16 @@ export class AiScreeningController {
   })
   @ApiResponse({ status: 200, description: 'Existing reusable screening result' })
   @ApiResponse({ status: 202, description: 'New screening queued' })
-  @ApiResponse({ status: 400, description: 'Invalid input' })
   @ApiResponse({ status: 401, description: 'Unauthenticated' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Application not found' })
-  @ApiResponse({ status: 409, description: 'Conflict (missing resume or job description)' })
+  @ApiResponse({ status: 409, description: 'Conflict (extraction pending/missing resume/job description)' })
   @ApiResponse({ status: 503, description: 'Queue unavailable' })
   async requestScreening(
     @Param('applicationId') applicationId: string,
     @Body() dto: RunAiScreeningDto,
     @CurrentUser() user: AuthenticatedPrincipal,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.screeningService.requestScreening(
       applicationId,
@@ -55,6 +56,7 @@ export class AiScreeningController {
       dto.forceRerun,
     );
 
+    res.status(result.action === 'CREATED' ? HttpStatus.ACCEPTED : HttpStatus.OK);
     return result;
   }
 
@@ -68,12 +70,7 @@ export class AiScreeningController {
     @Query() query: ListAiScreeningsQueryDto,
     @CurrentUser() user: AuthenticatedPrincipal,
   ) {
-    return this.screeningService.listScreenings(
-      applicationId,
-      user.activeCompanyId!,
-      query.page ?? 1,
-      query.limit ?? 20,
-    );
+    return this.screeningService.listScreenings(applicationId, user.activeCompanyId!, query.page ?? 1, query.limit ?? 20);
   }
 
   @Get('applications/:applicationId/ai-screenings/latest')

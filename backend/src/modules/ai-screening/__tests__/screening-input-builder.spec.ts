@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
-import { ScreeningInputBuilderService, ApplicationData, ResumeTextData } from '../services/screening-input-builder.service';
+import { ScreeningInputBuilderService, ApplicationData } from '../services/screening-input-builder.service';
+import { CompletedExtraction } from '../services/resume-text-loader.service';
 import { ScreeningInput } from '../domain/screening-input.type';
 
 const mockConfigService = {
@@ -36,9 +37,13 @@ function createMockApplication(overrides?: Partial<ApplicationData>): Applicatio
   };
 }
 
-const MOCK_RESUME_TEXT: ResumeTextData = {
+const MOCK_RESUME_TEXT: CompletedExtraction = {
   parsedText: 'Experienced TypeScript developer with React skills. 5 years of experience.',
-  checksumSha256: 'abc123',
+  extractedTextSha256: 'abc123',
+  sourceFileSha256: 'def456',
+  parserName: 'pdf-parse',
+  parserVersion: '1.1.1',
+  completedAt: new Date(),
 };
 
 describe('ScreeningInputBuilderService', () => {

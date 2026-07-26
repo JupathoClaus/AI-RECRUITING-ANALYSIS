@@ -7,6 +7,7 @@ import swaggerConfig from './loaders/swagger.config';
 import authConfig from './loaders/auth.config';
 import emailConfig from './loaders/email.config';
 import aiScreeningConfig from './loaders/ai-screening.config';
+import resumeExtractionConfig from './loaders/resume-extraction.config';
 
 export default [
   appConfig,
@@ -18,6 +19,7 @@ export default [
   authConfig,
   emailConfig,
   aiScreeningConfig,
+  resumeExtractionConfig,
 ];
 
 export {
@@ -30,4 +32,5 @@ export {
   authConfig,
   emailConfig,
   aiScreeningConfig,
+  resumeExtractionConfig,
 };

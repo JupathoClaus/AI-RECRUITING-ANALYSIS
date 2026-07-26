@@ -6,6 +6,7 @@ import { PrismaService } from '@database/prisma/prisma.service';
 import { AiScreeningService } from '../ai-screening.service';
 import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
 import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
+import { ResumeExtractionService } from '../../resume-processing/services/resume-extraction.service';
 import { AI_SCREENING_QUEUE } from '../queue/ai-screening-queue.constants';
 
 const mockReadFile = jest.fn().mockResolvedValue('Parsed resume text content here.');
@@ -24,6 +25,11 @@ const mockPrisma = {
     findUnique: jest.fn(),
     findMany: jest.fn(),
     count: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
+  resumeTextExtraction: {
+    findFirst: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
@@ -83,6 +89,17 @@ describe('AiScreeningService', () => {
     jest.resetAllMocks();
     mockReadFile.mockResolvedValue('Parsed resume text content here.');
     mockQueue.add.mockResolvedValue({ id: 'job-1' });
+    mockPrisma.resumeTextExtraction.findFirst.mockResolvedValue({
+      id: 'ext-1', storedFileId: 'file-1', companyId: 'company-1', status: 'COMPLETED',
+      extractedText: 'Parsed resume text content here.',
+      extractedTextSha256: 'abc', sourceFileSha256: 'def', parserName: 'pdf-parse', parserVersion: '1.1.1',
+      completedAt: new Date(),
+      storedFile: { status: 'ACTIVE', deletedAt: null },
+    });
+
+    const mockExtractionService = {
+      requestExtraction: jest.fn().mockResolvedValue({ action: 'REUSED', extraction: { id: 'ext-1', status: 'COMPLETED' } }),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -91,6 +108,8 @@ describe('AiScreeningService', () => {
         ResumeTextLoaderService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: getQueueToken(AI_SCREENING_QUEUE), useValue: mockQueue },
+        { provide: getQueueToken('resume-processing'), useValue: { add: jest.fn() } },
+        { provide: ResumeExtractionService, useValue: mockExtractionService },
         { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();

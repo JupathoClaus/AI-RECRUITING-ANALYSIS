@@ -59,6 +59,10 @@ export const validationSchema = Joi.object({
   AI_SCREENING_SCHEMA_VERSION: Joi.string().min(1).default('v1'),
   AI_SCREENING_WORKER_CONCURRENCY: Joi.number().min(1).max(20).default(3),
   AI_SCREENING_MOCK_SCENARIO: Joi.string().optional().allow(''),
+  RESUME_EXTRACTION_MAX_FILE_BYTES: Joi.number().min(1024).max(52428800).default(10485760),
+  RESUME_EXTRACTION_MAX_TEXT_CHARS: Joi.number().min(100).max(500000).default(50000),
+  RESUME_EXTRACTION_MIN_TEXT_CHARS: Joi.number().min(1).max(1000).default(20),
+  RESUME_EXTRACTION_TIMEOUT_MS: Joi.number().min(1000).max(120000).default(30000),
 });
 
 export interface ValidatedEnv {

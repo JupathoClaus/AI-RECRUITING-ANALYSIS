@@ -1,30 +1,49 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { readFile } from 'fs/promises';
-import { resolve } from 'path';
+import { Injectable, Logger } from '@nestjs/common';
+import { PrismaService } from '@database/prisma/prisma.service';
 
-export interface ResumeTextData {
+export interface CompletedExtraction {
   parsedText: string;
-  checksumSha256: string;
+  extractedTextSha256: string;
+  sourceFileSha256: string;
+  parserName: string;
+  parserVersion: string;
+  completedAt: Date;
 }
 
 @Injectable()
 export class ResumeTextLoaderService {
-  private readonly uploadDir: string;
-  private readonly parserSuffix: string;
+  private readonly logger = new Logger(ResumeTextLoaderService.name);
 
-  constructor(configService: ConfigService) {
-    this.uploadDir = configService.get<string>('app.uploadDir') || './uploads';
-    this.parserSuffix = configService.get<string>('app.resumeTextParserSuffix') || '_parsed.txt';
-  }
+  constructor(private readonly prisma: PrismaService) {}
 
-  async load(storageKey: string): Promise<ResumeTextData | null> {
-    const parsedPath = resolve(this.uploadDir, `${storageKey}${this.parserSuffix}`);
-    try {
-      const parsedText = await readFile(parsedPath, 'utf-8');
-      return { parsedText, checksumSha256: '' };
-    } catch {
+  async loadCompletedExtraction(
+    storedFileId: string,
+    companyId: string,
+  ): Promise<CompletedExtraction | null> {
+    const extraction = await this.prisma.resumeTextExtraction.findFirst({
+      where: {
+        storedFileId,
+        companyId,
+        status: 'COMPLETED',
+        storedFile: {
+          status: 'ACTIVE',
+          deletedAt: null,
+        },
+      },
+      orderBy: { completedAt: 'desc' },
+    });
+
+    if (!extraction || !extraction.extractedText) {
       return null;
     }
+
+    return {
+      parsedText: extraction.extractedText,
+      extractedTextSha256: extraction.extractedTextSha256 ?? '',
+      sourceFileSha256: extraction.sourceFileSha256 ?? '',
+      parserName: extraction.parserName ?? '',
+      parserVersion: extraction.parserVersion ?? '',
+      completedAt: extraction.completedAt!,
+    };
   }
 }
