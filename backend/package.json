@@ -65,6 +65,7 @@
     "joi": "^18.2.3",
     "nestjs-pino": "^4.6.0",
     "nodemailer": "^9.0.3",
+    "openai": "^6.49.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pino": "^10.3.1",

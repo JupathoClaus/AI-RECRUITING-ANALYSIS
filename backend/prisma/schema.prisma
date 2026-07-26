@@ -1891,6 +1891,9 @@ model Application {
   // Phase 2B
   resumeFiles StoredFile[]
 
+  // Phase 4 — AI Screening
+  aiScreeningResults AiScreeningResult[]
+
   @@unique([companyId, applicationNumber])
   @@index([companyId])
   @@index([jobId])
@@ -2114,6 +2117,69 @@ model ApplicationDecision {
   @@index([applicationId])
   @@index([type])
   @@index([finalDecision])
+}
+
+// ─── AiScreeningResult ────────────────────────────────────────────────────────
+// Phase 4 — AI Resume Screening Engine
+
+enum AiScreeningStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum AiScreeningRecommendation {
+  SHORTLIST
+  NOT_SHORTLIST
+  HUMAN_REVIEW
+}
+
+enum AiScreeningConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model AiScreeningResult {
+  id                        String                    @id @default(uuid())
+  applicationId             String
+  jobId                     String
+  candidateId               String
+  companyId                 String
+  initiatedByUserId         String
+  status                    AiScreeningStatus         @default(PENDING)
+  overallScore              Int?
+  recommendation            AiScreeningRecommendation?
+  confidence                AiScreeningConfidence?
+  matchedQualifications     Json?
+  missingQualifications     Json?
+  evidence                  Json?
+  criteriaScores            Json?
+  uncertainties             Json?
+  riskFlags                 Json?
+  explanation               String?
+  prohibitedReasoningDetected Boolean                   @default(false)
+  provider                  String?
+  model                     String?
+  promptVersion             String?
+  providerResponseId        String?
+  inputFingerprint          String?
+  failureCode               String?
+  failureMessageSafe        String?
+  startedAt                 DateTime?
+  completedAt               DateTime?
+  createdAt                 DateTime                  @default(now())
+  updatedAt                 DateTime                  @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id])
+
+  @@index([applicationId])
+  @@index([companyId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([recommendation])
+  @@index([applicationId, createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

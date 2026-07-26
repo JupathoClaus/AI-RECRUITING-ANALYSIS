@@ -1,0 +1,75 @@
+export const screeningOutputSchema: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    overallScore: { type: 'integer', minimum: 0, maximum: 100 },
+    recommendation: { type: 'string', enum: ['SHORTLIST', 'NOT_SHORTLIST', 'HUMAN_REVIEW'] },
+    confidence: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'] },
+    matchedQualifications: {
+      type: 'array',
+      items: { type: 'string' },
+      maxItems: 50,
+    },
+    missingQualifications: {
+      type: 'array',
+      items: { type: 'string' },
+      maxItems: 50,
+    },
+    evidence: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          criterion: { type: 'string' },
+          evidence: { type: 'string' },
+          sourceCategory: { type: 'string' },
+          assessment: { type: 'string' },
+          score: { type: 'integer', minimum: 0, maximum: 100 },
+        },
+        required: ['criterion', 'evidence', 'sourceCategory', 'assessment'],
+        additionalProperties: false,
+      },
+      maxItems: 100,
+    },
+    criteriaScores: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          criterion: { type: 'string' },
+          score: { type: 'integer', minimum: 0, maximum: 100 },
+          maxScore: { type: 'integer', minimum: 0, maximum: 100 },
+          weight: { type: 'number', minimum: 0, maximum: 1 },
+        },
+        required: ['criterion', 'score', 'maxScore', 'weight'],
+        additionalProperties: false,
+      },
+      maxItems: 20,
+    },
+    uncertainties: {
+      type: 'array',
+      items: { type: 'string' },
+      maxItems: 20,
+    },
+    riskFlags: {
+      type: 'array',
+      items: { type: 'string' },
+      maxItems: 20,
+    },
+    explanation: { type: 'string', maxLength: 5000 },
+    prohibitedReasoningDetected: { type: 'boolean' },
+  },
+  required: [
+    'overallScore',
+    'recommendation',
+    'confidence',
+    'matchedQualifications',
+    'missingQualifications',
+    'evidence',
+    'criteriaScores',
+    'uncertainties',
+    'riskFlags',
+    'explanation',
+    'prohibitedReasoningDetected',
+  ],
+  additionalProperties: false,
+};

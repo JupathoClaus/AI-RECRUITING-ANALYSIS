@@ -48,6 +48,12 @@ export const validationSchema = Joi.object({
   BUILD_ID: Joi.string().optional(),
   MAX_FILE_SIZE: Joi.number().default(10485760),
   UPLOAD_DIR: Joi.string().default('./uploads'),
+  AI_SCREENING_PROVIDER: Joi.string().valid('openai', 'mock').default('mock'),
+  OPENAI_API_KEY: Joi.string().optional().allow(''),
+  OPENAI_MODEL: Joi.string().default('gpt-4o-mini'),
+  AI_SCREENING_TIMEOUT_MS: Joi.number().default(60000),
+  AI_SCREENING_MAX_RESUME_CHARS: Joi.number().default(15000),
+  AI_SCREENING_PROMPT_VERSION: Joi.string().default('v1'),
 });
 
 export interface ValidatedEnv {
