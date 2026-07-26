@@ -6,6 +6,7 @@ import securityConfig from './loaders/security.config';
 import swaggerConfig from './loaders/swagger.config';
 import authConfig from './loaders/auth.config';
 import emailConfig from './loaders/email.config';
+import aiScreeningConfig from './loaders/ai-screening.config';
 
 export default [
   appConfig,
@@ -16,6 +17,7 @@ export default [
   swaggerConfig,
   authConfig,
   emailConfig,
+  aiScreeningConfig,
 ];
 
 export {
@@ -27,4 +29,5 @@ export {
   swaggerConfig,
   authConfig,
   emailConfig,
+  aiScreeningConfig,
 };

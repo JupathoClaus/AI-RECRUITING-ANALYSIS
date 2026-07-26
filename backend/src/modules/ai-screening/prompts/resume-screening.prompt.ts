@@ -6,7 +6,11 @@ export interface ResumeScreeningPrompt {
   promptVersion: string;
 }
 
-const MAX_RESUME_CHARS = 15000;
+export interface BuildPromptOptions {
+  maxResumeChars: number;
+  promptVersion: string;
+}
+
 const SAFETY_INSTRUCTIONS = `
 ## SAFETY RULES
 
@@ -24,10 +28,32 @@ const SAFETY_INSTRUCTIONS = `
 12. HIGH confidence requires clear, specific supporting evidence.
 13. If you detect prohibited reasoning in the input, mark prohibitedReasoningDetected as true and force HUMAN_REVIEW.`;
 
-export function buildResumeScreeningPrompt(input: ScreeningInput): ResumeScreeningPrompt {
-  const truncatedResume = input.resumeText.length > MAX_RESUME_CHARS
-    ? input.resumeText.slice(0, MAX_RESUME_CHARS) + '\n... [resume truncated]'
-    : input.resumeText;
+function normalizeArray(items: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of items) {
+    const trimmed = item.trim();
+    if (trimmed.length > 0 && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  }
+  return result;
+}
+
+export function buildResumeScreeningPrompt(
+  input: ScreeningInput,
+  options: BuildPromptOptions,
+): ResumeScreeningPrompt {
+  const truncatedResume =
+    input.resumeText.length > options.maxResumeChars
+      ? input.resumeText.slice(0, options.maxResumeChars) + '\n... [resume truncated]'
+      : input.resumeText;
+
+  const requiredSkills = normalizeArray(input.requiredSkills);
+  const preferredSkills = normalizeArray(input.preferredSkills);
+  const requiredCertifications = normalizeArray(input.requiredCertifications);
+  const preferredCertifications = normalizeArray(input.preferredCertifications);
 
   const evaluationInput = [
     `## JOB DETAILS`,
@@ -35,10 +61,14 @@ export function buildResumeScreeningPrompt(input: ScreeningInput): ResumeScreeni
     `Description: ${input.jobDescription}`,
     ``,
     `## REQUIRED SKILLS`,
-    input.requiredSkills.length > 0 ? input.requiredSkills.map((s) => `  - ${s}`).join('\n') : '  (none specified)',
+    requiredSkills.length > 0
+      ? requiredSkills.map((s) => `  - ${s}`).join('\n')
+      : '  (none specified)',
     ``,
     `## PREFERRED SKILLS`,
-    input.preferredSkills.length > 0 ? input.preferredSkills.map((s) => `  - ${s}`).join('\n') : '  (none specified)',
+    preferredSkills.length > 0
+      ? preferredSkills.map((s) => `  - ${s}`).join('\n')
+      : '  (none specified)',
     ``,
     `## REQUIRED EXPERIENCE`,
     input.requiredExperience || 'Not specified',
@@ -53,14 +83,23 @@ export function buildResumeScreeningPrompt(input: ScreeningInput): ResumeScreeni
     input.preferredEducation || 'Not specified',
     ``,
     `## REQUIRED CERTIFICATIONS`,
-    input.requiredCertifications.length > 0 ? input.requiredCertifications.map((c) => `  - ${c}`).join('\n') : '  (none specified)',
+    requiredCertifications.length > 0
+      ? requiredCertifications.map((c) => `  - ${c}`).join('\n')
+      : '  (none specified)',
     ``,
     `## PREFERRED CERTIFICATIONS`,
-    input.preferredCertifications.length > 0 ? input.preferredCertifications.map((c) => `  - ${c}`).join('\n') : '  (none specified)',
+    preferredCertifications.length > 0
+      ? preferredCertifications.map((c) => `  - ${c}`).join('\n')
+      : '  (none specified)',
     ``,
     `## SCREENING QUESTIONS`,
     input.screeningQuestions.length > 0
-      ? input.screeningQuestions.map((q, i) => `  Q${i + 1}: ${q.question}\n  A: ${q.answer}\n  Required: ${q.isRequired}`).join('\n')
+      ? input.screeningQuestions
+          .map(
+            (q, i) =>
+              `  Q${i + 1}: ${q.question}\n  A: ${q.answer}\n  Required: ${q.isRequired}`,
+          )
+          .join('\n')
       : '  (none)',
     ``,
     `## RESUME TEXT`,
@@ -70,6 +109,6 @@ export function buildResumeScreeningPrompt(input: ScreeningInput): ResumeScreeni
   return {
     systemInstructions: `You are an expert recruitment analyst. Evaluate the job application by comparing the resume against the job requirements.${SAFETY_INSTRUCTIONS}`,
     evaluationInput,
-    promptVersion: input.promptVersion || 'v1',
+    promptVersion: options.promptVersion,
   };
 }
