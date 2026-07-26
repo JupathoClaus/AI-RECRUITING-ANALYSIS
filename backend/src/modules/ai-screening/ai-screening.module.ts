@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import OpenAI from 'openai';
 import { DatabaseModule } from '@database/database.module';
+import { ResumeProcessingModule } from '../resume-processing/resume-processing.module';
 import { AI_SCREENING_PROVIDER } from './providers/ai-screening-provider.token';
 import { OPENAI_CLIENT } from './providers/openai-client.token';
 import { AiScreeningProvider } from './providers/ai-screening-provider.interface';
@@ -50,6 +51,7 @@ function createAiScreeningProvider(
   imports: [
     DatabaseModule,
     ConfigModule,
+    ResumeProcessingModule,
     BullModule.registerQueue({ name: AI_SCREENING_QUEUE }),
   ],
   controllers: [AiScreeningController],

@@ -103,12 +103,12 @@ describe('AiInterviewCodeService', () => {
   });
 
   describe('displayHint', () => {
-    it('should format a raw string as ABCD-EFGH', () => {
-      expect(service.displayHint('ABCDEFGH')).toBe('ABCD-EFGH');
+    it('should mask all but last 4 chars', () => {
+      expect(service.displayHint('ABCDEFGH')).toBe('****-EFGH');
     });
 
-    it('should normalize before formatting', () => {
-      expect(service.displayHint('abcdefgh')).toBe('ABCD-EFGH');
+    it('should normalize before masking', () => {
+      expect(service.displayHint('abcdefgh')).toBe('****-EFGH');
     });
   });
 

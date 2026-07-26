@@ -530,14 +530,15 @@ describe('AiInterviewsService', () => {
 
   describe('startInterview', () => {
     it('should require acknowledgements', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
       await expect(
         service.startInterview('token', { acknowledgementsAccepted: false }),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('should atomically transition status for mock start', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
       prisma.aiInterview.updateMany.mockResolvedValue({ count: 1 });
       prisma.aiInterview.findUnique.mockResolvedValue(mockInterview);
       prisma.aiInterview.update.mockResolvedValue({
@@ -562,7 +563,8 @@ describe('AiInterviewsService', () => {
     });
 
     it('should only create one provider session on duplicate start', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
       // First start succeeds
       prisma.aiInterview.updateMany.mockResolvedValueOnce({ count: 1 });
       prisma.aiInterview.findUnique.mockResolvedValue(mockInterview);
@@ -591,7 +593,8 @@ describe('AiInterviewsService', () => {
     });
 
     it('should reject Tavus when disabled', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
       prisma.aiInterview.updateMany.mockResolvedValue({ count: 1 });
       prisma.aiInterview.findUnique.mockResolvedValue({
         ...mockInterview,
@@ -604,7 +607,8 @@ describe('AiInterviewsService', () => {
     });
 
     it('should not return meeting token in response', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
       prisma.aiInterview.updateMany.mockResolvedValue({ count: 1 });
       prisma.aiInterview.findUnique.mockResolvedValue(mockInterview);
       prisma.aiInterview.update.mockResolvedValue({
@@ -622,7 +626,7 @@ describe('AiInterviewsService', () => {
 
   describe('completeInterview', () => {
     it('should complete mock interview', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
       prisma.aiInterview.findUnique.mockResolvedValue({
         ...mockInterview,
         status: AiInterviewStatus.IN_PROGRESS,
@@ -646,7 +650,7 @@ describe('AiInterviewsService', () => {
     });
 
     it('should not complete Tavus interview via frontend', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
       prisma.aiInterview.findUnique.mockResolvedValue({
         ...mockInterview,
         status: AiInterviewStatus.IN_PROGRESS,
@@ -659,7 +663,7 @@ describe('AiInterviewsService', () => {
     });
 
     it('should reject completion of cancelled interview', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
       prisma.aiInterview.findUnique.mockResolvedValue({
         ...mockInterview,
         status: AiInterviewStatus.CANCELLED,
@@ -671,7 +675,7 @@ describe('AiInterviewsService', () => {
     });
 
     it('should handle duplicate completion safely', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
       prisma.aiInterview.findUnique.mockResolvedValue({
         ...mockInterview,
         status: AiInterviewStatus.COMPLETED,
@@ -905,7 +909,7 @@ describe('AiInterviewsService', () => {
     });
 
     it('should session response exclude internal IDs', async () => {
-      tokenService.extractInterviewId.mockReturnValue('interview-1');
+      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
       prisma.aiInterview.findUnique.mockResolvedValue(mockInterview);
 
       const result = await service.getInterviewSession('valid-token');

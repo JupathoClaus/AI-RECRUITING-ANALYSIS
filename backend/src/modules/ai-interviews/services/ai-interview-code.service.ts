@@ -44,6 +44,6 @@ export class AiInterviewCodeService {
   displayHint(raw: string): string {
     const normalized = this.normalize(raw);
     if (normalized.length !== CODE_LENGTH) return raw;
-    return `${normalized.slice(0, GROUP_SIZE)}-${normalized.slice(GROUP_SIZE)}`;
+    return `****-${normalized.slice(-4)}`;
   }
 }

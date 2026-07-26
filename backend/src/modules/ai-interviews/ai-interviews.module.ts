@@ -19,7 +19,7 @@ import { TavusClientService } from './services/tavus-client.service';
     HttpModule,
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('aiInterview.accessTokenSecret') || 'fallback-secret',
+        secret: configService.get<string>('aiInterview.accessTokenSecret') || '',
         signOptions: {
           expiresIn: `${configService.get<number>('aiInterview.accessTokenTtlMinutes') || 60}m`,
         },

@@ -7,7 +7,7 @@ export interface AiInterviewTokenPayload {
   purpose: 'talentai-ai-interview-access';
   cv: string;
   iat: number;
-  exp: number;
+  exp?: number;
 }
 
 @Injectable()
@@ -35,7 +35,6 @@ export class AiInterviewTokenService {
       purpose: 'talentai-ai-interview-access',
       cv: codeHash.slice(0, 16),
       iat: now,
-      exp: now + this.ttlMinutes * 60,
     };
 
     return this.jwtService.sign(payload, {

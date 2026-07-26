@@ -67,7 +67,7 @@ export class AiInterviewsService {
     const existing = await this.prisma.aiInterview.findFirst({
       where: {
         applicationId: dto.applicationId,
-        status: { notIn: [AiInterviewStatus.CANCELLED, AiInterviewStatus.EXPIRED, AiInterviewStatus.FAILED] },
+        status: { notIn: [AiInterviewStatus.CANCELLED, AiInterviewStatus.EXPIRED, AiInterviewStatus.FAILED, AiInterviewStatus.COMPLETED] },
       },
     });
     if (existing) {
@@ -377,10 +377,8 @@ export class AiInterviewsService {
   }
 
   async getInterviewSession(accessToken: string): Promise<SessionResponseDto> {
-    const interviewId = this.tokenService.extractInterviewId(accessToken);
-    if (!interviewId) {
-      throw new BadRequestException({ code: 'INVALID_SESSION', message: 'Invalid or expired session.' });
-    }
+    const payload = this.tokenService.verify(accessToken);
+    const interviewId = payload.sub;
 
     const interview = await this.prisma.aiInterview.findUnique({
       where: { id: interviewId },
@@ -399,6 +397,10 @@ export class AiInterviewsService {
       throw new BadRequestException({ code: 'INVALID_SESSION', message: 'Interview not found.' });
     }
 
+    if (payload.cv !== interview.codeHash.slice(0, 16)) {
+      throw new BadRequestException({ code: 'CODE_VERSION_MISMATCH', message: 'Session expired due to code change.' });
+    }
+
     const companyName = interview.application.company?.name || 'AI Recruiter Co';
 
     return {
@@ -415,13 +417,22 @@ export class AiInterviewsService {
   }
 
   async startInterview(accessToken: string, dto: StartAiInterviewDto): Promise<StartInterviewResponseDto> {
-    const interviewId = this.tokenService.extractInterviewId(accessToken);
-    if (!interviewId) {
-      throw new BadRequestException({ code: 'INVALID_SESSION', message: 'Invalid or expired session.' });
-    }
+    const payload = this.tokenService.verify(accessToken);
+    const interviewId = payload.sub;
 
     if (!dto.acknowledgementsAccepted) {
       throw new BadRequestException({ code: 'ACKNOWLEDGEMENT_REQUIRED', message: 'You must accept the required acknowledgements before starting.' });
+    }
+
+    const interviewForCvCheck = await this.prisma.aiInterview.findUnique({
+      where: { id: interviewId },
+      select: { codeHash: true },
+    });
+    if (!interviewForCvCheck) {
+      throw new BadRequestException({ code: 'INTERVIEW_NOT_FOUND', message: 'Interview not found.' });
+    }
+    if (payload.cv !== interviewForCvCheck.codeHash.slice(0, 16)) {
+      throw new BadRequestException({ code: 'CODE_VERSION_MISMATCH', message: 'Session expired due to code change.' });
     }
 
     // Atomic idempotency: only update if in a pre-start status
@@ -447,7 +458,6 @@ export class AiInterviewsService {
     });
 
     if (updateResult.count === 0) {
-      // Interview may already be in progress or in a terminal state
       const existing = await this.prisma.aiInterview.findUnique({
         where: { id: interviewId },
       });
@@ -595,10 +605,8 @@ export class AiInterviewsService {
   }
 
   async completeInterview(accessToken: string) {
-    const interviewId = this.tokenService.extractInterviewId(accessToken);
-    if (!interviewId) {
-      throw new BadRequestException({ code: 'INVALID_SESSION', message: 'Invalid or expired session.' });
-    }
+    const payload = this.tokenService.verify(accessToken);
+    const interviewId = payload.sub;
 
     const interview = await this.prisma.aiInterview.findUnique({
       where: { id: interviewId },
@@ -606,6 +614,10 @@ export class AiInterviewsService {
 
     if (!interview) {
       throw new BadRequestException({ code: 'INTERVIEW_NOT_FOUND', message: 'Interview not found.' });
+    }
+
+    if (payload.cv !== interview.codeHash.slice(0, 16)) {
+      throw new BadRequestException({ code: 'CODE_VERSION_MISMATCH', message: 'Session expired due to code change.' });
     }
 
     // Cannot complete a cancelled interview
