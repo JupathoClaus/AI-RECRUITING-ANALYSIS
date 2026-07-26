@@ -18,32 +18,37 @@ export default function AiScreenerPage() {
   const {
     state,
     selectApplication,
-    setResumeAvailable,
-    setResumeMissing,
     handleUploadResume,
+    cancelUpload,
     requestScreening,
     retryScreening,
     loadLatestScreening,
   } = useAiScreening()
 
   const checkingRef = useRef(false)
+  const checkControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     const appId = state.selectedApplicationId
-    if (!appId || checkingRef.current) return
+    if (!appId) return
+    if (checkingRef.current) return
     checkingRef.current = true
+    const controller = new AbortController()
+    checkControllerRef.current = controller
     getApplicationResume(appId)
       .then((file) => {
+        if (controller.signal.aborted) return
         if (file) {
-          setResumeAvailable()
           loadLatestScreening(appId)
-        } else {
-          setResumeMissing()
         }
       })
-      .catch(() => setResumeMissing())
-      .finally(() => { checkingRef.current = false })
-  }, [state.selectedApplicationId, setResumeAvailable, setResumeMissing, loadLatestScreening])
+      .catch(() => {})
+      .finally(() => {
+        checkingRef.current = false
+        if (checkControllerRef.current === controller) checkControllerRef.current = null
+      })
+    return () => { controller.abort() }
+  }, [state.selectedApplicationId, loadLatestScreening])
 
   const handleSelect = (applicationId: string) => {
     selectApplication(applicationId)

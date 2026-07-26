@@ -144,4 +144,83 @@ describe("apiRequest", () => {
     controller.abort()
     await expect(promise).rejects.toThrow(/Abort/i)
   })
+
+  describe("statusInBody", () => {
+    it("200 with statusInBody returns data and status", async () => {
+      mockFetch.mockResolvedValue(mockResponse(200, { id: 's1', status: 'COMPLETED' }))
+      const { apiRequest } = await import("../client")
+      const result = await apiRequest<any>("/test", { statusInBody: true })
+      expect(result.data).toEqual({ id: 's1', status: 'COMPLETED' })
+      expect(result.status).toBe(200)
+    })
+
+    it("202 with statusInBody returns data and status", async () => {
+      mockFetch.mockResolvedValue(mockResponse(202, { id: 's2', status: 'PENDING' }))
+      const { apiRequest } = await import("../client")
+      const result = await apiRequest<any>("/test", { statusInBody: true })
+      expect(result.data).toEqual({ id: 's2', status: 'PENDING' })
+      expect(result.status).toBe(202)
+    })
+
+    it("400 with statusInBody still throws ApiErrorResponse", async () => {
+      mockFetch.mockResolvedValue(mockResponse(400, { errorCode: 'BAD_REQUEST', message: 'Invalid' }))
+      const { apiRequest, ApiErrorResponse } = await import("../client")
+      await expect(apiRequest("/test", { statusInBody: true })).rejects.toThrow(ApiErrorResponse)
+    })
+
+    it("409 preserves exact errorCode", async () => {
+      mockFetch.mockResolvedValue(mockResponse(409, { errorCode: 'RESUME_EXTRACTION_PENDING', message: 'Extraction in progress' }))
+      const { apiRequest, ApiErrorResponse } = await import("../client")
+      try {
+        await apiRequest("/test", { statusInBody: true })
+        expect(true).toBe(false)
+      } catch (e) {
+        const err = e as InstanceType<typeof ApiErrorResponse>
+        expect(err.errorCode).toBe('RESUME_EXTRACTION_PENDING')
+        expect(err.statusCode).toBe(409)
+      }
+    })
+  })
+
+  describe("FormData", () => {
+    it("does not set Content-Type for FormData", async () => {
+      let capturedHeaders: any = null
+      mockFetch.mockImplementation(async (_url: string, opts: any) => { capturedHeaders = opts.headers; return mockResponse(200, { data: { id: '1' } }) })
+      const { apiRequest } = await import("../client")
+      const fd = new FormData()
+      fd.append('file', new File(['content'], 'test.pdf', { type: 'application/pdf' }))
+      await apiRequest("/upload", { method: 'POST', body: fd })
+      expect(capturedHeaders['Content-Type']).toBeUndefined()
+    })
+
+    it("FormData keeps Authorization header", async () => {
+      let capturedHeaders: any = null
+      mockFetch.mockImplementation(async (_url: string, opts: any) => { capturedHeaders = opts.headers; return mockResponse(200, { data: { id: '1' } }) })
+      const { apiRequest } = await import("../client")
+      const fd = new FormData()
+      fd.append('file', new File(['content'], 'test.pdf', { type: 'application/pdf' }))
+      await apiRequest("/upload", { method: 'POST', body: fd })
+      expect(capturedHeaders['Authorization']).toBe('Bearer test-token')
+    })
+  })
+
+  describe("error responses", () => {
+    it("403 throws ApiErrorResponse", async () => {
+      mockFetch.mockResolvedValue(mockResponse(403, { errorCode: 'FORBIDDEN', message: 'Access denied' }))
+      const { apiRequest, ApiErrorResponse } = await import("../client")
+      await expect(apiRequest("/admin")).rejects.toThrow(ApiErrorResponse)
+    })
+
+    it("404 throws ApiErrorResponse", async () => {
+      mockFetch.mockResolvedValue(mockResponse(404, { errorCode: 'NOT_FOUND', message: 'Not found' }))
+      const { apiRequest, ApiErrorResponse } = await import("../client")
+      await expect(apiRequest("/missing")).rejects.toThrow(ApiErrorResponse)
+    })
+
+    it("500 throws ApiErrorResponse", async () => {
+      mockFetch.mockResolvedValue(mockResponse(500, { errorCode: 'INTERNAL_SERVER_ERROR', message: 'Server error' }))
+      const { apiRequest, ApiErrorResponse } = await import("../client")
+      await expect(apiRequest("/error")).rejects.toThrow(ApiErrorResponse)
+    })
+  })
 })

@@ -1,8 +1,12 @@
 'use client'
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { POLLING_INTERVAL_MS, MAX_POLLING_DURATION_MS, EXTRACTION_RETRY_INTERVAL_MS, MAX_EXTRACTION_WAIT_MS } from './screening-state'
 import type { ScreeningWorkflowState } from './screening-state'
+import {
+  POLLING_INTERVAL_MS, MAX_POLLING_DURATION_MS, EXTRACTION_RETRY_INTERVAL_MS, MAX_EXTRACTION_WAIT_MS,
+  workflowStateForStatus, screeningResultStateUpdate, isRetryablePollingError, isExpectedNoScreeningError,
+  isExtractionPendingError, isExtractionFailedError, classifyScreeningError,
+} from './screening-helpers'
 import { AiScreeningResultDto, requestAiScreening, getLatestAiScreening, getAiScreeningById } from '@/lib/api/ai-screening.api'
 import { uploadResume, StoredFileResponse } from '@/lib/api/files.api'
 import { ApiErrorResponse } from '@/lib/api/client'
@@ -31,11 +35,18 @@ const initialState: ScreeningState = {
   uploadedFile: null,
 }
 
+function newController() {
+  const c = new AbortController()
+  return { controller: c, signal: c.signal }
+}
+
 export function useAiScreening() {
   const [state, setState] = useState<ScreeningState>(initialState)
-  const abortRef = useRef<AbortController | null>(null)
-  const pollingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const extractionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pollControllerRef = useRef<AbortController | null>(null)
+  const extractionReqControllerRef = useRef<AbortController | null>(null)
+  const uploadControllerRef = useRef<AbortController | null>(null)
   const mountedRef = useRef(true)
   const applicationRef = useRef<string | null>(null)
 
@@ -48,9 +59,15 @@ export function useAiScreening() {
   }, [])
 
   const cancelAll = useCallback(() => {
-    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
-    if (pollingTimerRef.current) { clearTimeout(pollingTimerRef.current); pollingTimerRef.current = null }
+    if (pollTimerRef.current) { clearTimeout(pollTimerRef.current); pollTimerRef.current = null }
     if (extractionTimerRef.current) { clearTimeout(extractionTimerRef.current); extractionTimerRef.current = null }
+    if (pollControllerRef.current) { pollControllerRef.current.abort(); pollControllerRef.current = null }
+    if (extractionReqControllerRef.current) { extractionReqControllerRef.current.abort(); extractionReqControllerRef.current = null }
+    if (uploadControllerRef.current) { uploadControllerRef.current.abort(); uploadControllerRef.current = null }
+  }, [])
+
+  const isStale = useCallback((appId: string | null) => {
+    return !mountedRef.current || (appId !== null && applicationRef.current !== appId)
   }, [])
 
   const setWorkflow = useCallback((updates: Partial<ScreeningState>) => {
@@ -72,24 +89,23 @@ export function useAiScreening() {
     })
   }, [cancelAll, setWorkflow])
 
-  const setResumeAvailable = useCallback(() => {
-    setWorkflow({ workflowState: 'RESUME_READY' })
-  }, [setWorkflow])
-
-  const setResumeMissing = useCallback(() => {
-    setWorkflow({ workflowState: 'RESUME_MISSING' })
-  }, [setWorkflow])
-
   const handleUploadResume = useCallback(async (file: File) => {
     const appId = applicationRef.current
     if (!appId) return
+    const { controller, signal } = newController()
+    uploadControllerRef.current = controller
     setWorkflow({ workflowState: 'UPLOADING_RESUME', uploadProgress: true, error: null, errorCode: null })
     try {
-      const result = await uploadResume(appId, file)
-      if (!mountedRef.current || applicationRef.current !== appId) return
+      const result = await uploadResume(appId, file, signal)
+      if (isStale(appId)) return
       setWorkflow({ workflowState: 'RESUME_READY', uploadProgress: false, uploadedFile: result })
     } catch (err) {
-      if (!mountedRef.current || applicationRef.current !== appId) return
+      if (isStale(appId)) return
+      const { isAbort } = classifyScreeningError(err instanceof ApiErrorResponse ? err : (err instanceof Error ? err : null))
+      if (isAbort) {
+        setWorkflow({ workflowState: 'RESUME_MISSING', uploadProgress: false })
+        return
+      }
       const apiErr = err instanceof ApiErrorResponse ? err : null
       setWorkflow({
         workflowState: 'ERROR',
@@ -97,7 +113,17 @@ export function useAiScreening() {
         error: apiErr?.message || 'Upload failed',
         errorCode: apiErr?.errorCode || 'UPLOAD_FAILED',
       })
+    } finally {
+      if (uploadControllerRef.current === controller) uploadControllerRef.current = null
     }
+  }, [setWorkflow, isStale])
+
+  const cancelUpload = useCallback(() => {
+    if (uploadControllerRef.current) {
+      uploadControllerRef.current.abort()
+      uploadControllerRef.current = null
+    }
+    setWorkflow({ workflowState: 'RESUME_MISSING', uploadProgress: false })
   }, [setWorkflow])
 
   const pollScreening = useCallback((screeningId: string, startTime: number) => {
@@ -107,44 +133,39 @@ export function useAiScreening() {
       setWorkflow({ workflowState: 'TIMED_OUT', error: 'Screening is taking longer than expected. You can check again later.' })
       return
     }
-    pollingTimerRef.current = setTimeout(async () => {
+    pollTimerRef.current = setTimeout(async () => {
       const currentAppId = applicationRef.current
       if (!mountedRef.current || !currentAppId) return
-      const controller = new AbortController()
-      abortRef.current = controller
+      const { controller, signal } = newController()
+      pollControllerRef.current = controller
       try {
-        const result = await getAiScreeningById(screeningId, controller.signal)
-        if (!mountedRef.current || applicationRef.current !== currentAppId) return
-        if (result.status === 'COMPLETED') {
-          setWorkflow({ workflowState: 'SCREENING_COMPLETED', screeningResult: result })
-        } else if (result.status === 'FAILED') {
-          setWorkflow({
-            workflowState: 'SCREENING_FAILED',
-            screeningResult: result,
-            error: result.failureMessageSafe || 'Screening failed',
-            errorCode: result.failureCode || 'SCREENING_FAILED',
-          })
+        const result = await getAiScreeningById(screeningId, signal)
+        if (isStale(currentAppId)) return
+        if (result.status === 'COMPLETED' || result.status === 'FAILED') {
+          const update = screeningResultStateUpdate(result)
+          setWorkflow(update)
         } else {
-          const ws = result.status === 'PENDING' ? 'SCREENING_PENDING' : 'SCREENING_RUNNING'
-          setWorkflow({ workflowState: ws, screeningResult: result })
+          setWorkflow({ workflowState: workflowStateForStatus(result.status), screeningResult: result })
           pollScreening(screeningId, startTime)
         }
       } catch (err) {
-        if (!mountedRef.current || applicationRef.current !== currentAppId) return
-        const apiErr = err instanceof ApiErrorResponse ? err : null
-        const isRetryable = apiErr ? (apiErr.statusCode === 429 || apiErr.statusCode >= 500 || !apiErr.statusCode) : true
-        if (isRetryable) {
+        if (isStale(currentAppId)) return
+        const apiErr = err instanceof ApiErrorResponse ? err : (err instanceof Error ? err : null)
+        if (classifyScreeningError(apiErr).isAbort) return
+        if (isRetryablePollingError(apiErr as ApiErrorResponse | null)) {
           pollScreening(screeningId, startTime)
         } else {
           setWorkflow({
             workflowState: 'ERROR',
-            error: apiErr?.message || 'Screening check failed',
-            errorCode: apiErr?.errorCode || 'POLL_FAILED',
+            error: apiErr instanceof ApiErrorResponse ? apiErr.message : 'Screening check failed',
+            errorCode: apiErr instanceof ApiErrorResponse ? apiErr.errorCode : 'POLL_FAILED',
           })
         }
+      } finally {
+        if (pollControllerRef.current === controller) pollControllerRef.current = null
       }
     }, POLLING_INTERVAL_MS)
-  }, [setWorkflow])
+  }, [setWorkflow, isStale])
 
   const waitForExtraction = useCallback((startTime: number) => {
     if (!mountedRef.current) return
@@ -156,23 +177,19 @@ export function useAiScreening() {
     extractionTimerRef.current = setTimeout(async () => {
       const currentAppId = applicationRef.current
       if (!mountedRef.current || !currentAppId) return
+      const { controller, signal } = newController()
+      extractionReqControllerRef.current = controller
       try {
-        const response = await requestAiScreening(currentAppId, { signal: abortRef.current?.signal })
-        if (!mountedRef.current || applicationRef.current !== currentAppId) return
+        const response = await requestAiScreening(currentAppId, { signal })
+        if (isStale(currentAppId)) return
         if (response.status === 202 || response.status === 200) {
-          const { action, data } = response.data
-          if (data.status === 'COMPLETED') {
-            setWorkflow({ workflowState: 'SCREENING_COMPLETED', screeningResult: data, screeningId: data.id })
-          } else if (data.status === 'FAILED') {
-            setWorkflow({
-              workflowState: 'SCREENING_FAILED',
-              screeningResult: data,
-              error: data.failureMessageSafe || 'Screening failed',
-              errorCode: data.failureCode || 'SCREENING_FAILED',
-            })
+          const { data } = response.data
+          if (data.status === 'COMPLETED' || data.status === 'FAILED') {
+            const update = screeningResultStateUpdate(data)
+            setWorkflow({ ...update, screeningId: data.id })
           } else {
             setWorkflow({
-              workflowState: data.status === 'PENDING' ? 'SCREENING_PENDING' : 'SCREENING_RUNNING',
+              workflowState: workflowStateForStatus(data.status),
               screeningResult: data,
               screeningId: data.id,
             })
@@ -182,18 +199,25 @@ export function useAiScreening() {
           waitForExtraction(startTime)
         }
       } catch (err) {
-        if (!mountedRef.current || applicationRef.current !== currentAppId) return
+        if (isStale(currentAppId)) return
         const apiErr = err instanceof ApiErrorResponse ? err : null
-        if (apiErr?.errorCode === 'RESUME_EXTRACTION_PENDING') {
+        if (classifyScreeningError(apiErr).isAbort) return
+        if (apiErr && isExtractionPendingError(apiErr)) {
           waitForExtraction(startTime)
-        } else if (apiErr?.errorCode === 'RESUME_EXTRACTION_FAILED') {
+        } else if (apiErr && isExtractionFailedError(apiErr)) {
           setWorkflow({ workflowState: 'EXTRACTION_FAILED', error: apiErr.message, errorCode: 'RESUME_EXTRACTION_FAILED' })
         } else {
-          setWorkflow({ workflowState: 'ERROR', error: apiErr?.message || 'Request failed', errorCode: apiErr?.errorCode || 'REQUEST_FAILED' })
+          setWorkflow({
+            workflowState: 'ERROR',
+            error: apiErr?.message || 'Request failed',
+            errorCode: apiErr?.errorCode || 'REQUEST_FAILED',
+          })
         }
+      } finally {
+        if (extractionReqControllerRef.current === controller) extractionReqControllerRef.current = null
       }
     }, EXTRACTION_RETRY_INTERVAL_MS)
-  }, [setWorkflow, pollScreening])
+  }, [setWorkflow, pollScreening, isStale])
 
   const requestScreening = useCallback(async () => {
     const appId = applicationRef.current
@@ -202,47 +226,22 @@ export function useAiScreening() {
     setWorkflow({ workflowState: 'REQUESTING_SCREENING', error: null, errorCode: null })
     try {
       const response = await requestAiScreening(appId)
-      if (!mountedRef.current || applicationRef.current !== appId) return
-
-      if (response.status === 202) {
+      if (isStale(appId)) return
+      if (response.status === 202 || response.status === 200) {
         const { data } = response.data
-        if (data.status === 'COMPLETED') {
-          setWorkflow({ workflowState: 'SCREENING_COMPLETED', screeningResult: data, screeningId: data.id })
-        } else {
-          setWorkflow({
-            workflowState: data.status === 'PENDING' ? 'SCREENING_PENDING' : 'SCREENING_RUNNING',
-            screeningResult: data,
-            screeningId: data.id,
-          })
-          pollScreening(data.id, Date.now())
-        }
-      } else if (response.status === 200) {
-        const { data } = response.data
-        if (data.status === 'COMPLETED') {
-          setWorkflow({ workflowState: 'SCREENING_COMPLETED', screeningResult: data, screeningId: data.id })
-        } else if (data.status === 'FAILED') {
-          setWorkflow({
-            workflowState: 'SCREENING_FAILED',
-            screeningResult: data,
-            error: data.failureMessageSafe || 'Screening failed',
-            errorCode: data.failureCode || 'SCREENING_FAILED',
-          })
-        } else {
-          setWorkflow({
-            workflowState: data.status === 'PENDING' ? 'SCREENING_PENDING' : 'SCREENING_RUNNING',
-            screeningResult: data,
-            screeningId: data.id,
-          })
+        const update = screeningResultStateUpdate(data)
+        setWorkflow({ ...update, screeningId: data.id })
+        if (data.status !== 'COMPLETED' && data.status !== 'FAILED') {
           pollScreening(data.id, Date.now())
         }
       }
     } catch (err) {
-      if (!mountedRef.current || applicationRef.current !== appId) return
+      if (isStale(appId)) return
       const apiErr = err instanceof ApiErrorResponse ? err : null
-      if (apiErr?.errorCode === 'RESUME_EXTRACTION_PENDING') {
+      if (apiErr && isExtractionPendingError(apiErr)) {
         setWorkflow({ workflowState: 'WAITING_FOR_EXTRACTION', extractionStatus: 'PENDING' })
         waitForExtraction(Date.now())
-      } else if (apiErr?.errorCode === 'RESUME_EXTRACTION_FAILED') {
+      } else if (apiErr && isExtractionFailedError(apiErr)) {
         setWorkflow({ workflowState: 'EXTRACTION_FAILED', error: apiErr.message, errorCode: 'RESUME_EXTRACTION_FAILED' })
       } else {
         setWorkflow({
@@ -252,61 +251,44 @@ export function useAiScreening() {
         })
       }
     }
-  }, [cancelAll, setWorkflow, pollScreening, waitForExtraction])
+  }, [cancelAll, setWorkflow, pollScreening, waitForExtraction, isStale])
 
-  const retryScreening = useCallback(() => {
-    requestScreening()
-  }, [requestScreening])
+  const retryScreening = useCallback(() => { requestScreening() }, [requestScreening])
 
   const loadLatestScreening = useCallback(async (applicationId: string) => {
     try {
       const result = await getLatestAiScreening(applicationId)
-      if (!mountedRef.current || applicationRef.current !== applicationId) return
-      if (result.status === 'COMPLETED') {
-        setWorkflow({ workflowState: 'SCREENING_COMPLETED', screeningResult: result, screeningId: result.id })
-      } else if (result.status === 'FAILED') {
+      if (isStale(applicationId)) return
+      if (result.status === 'COMPLETED' || result.status === 'FAILED') {
+        const update = screeningResultStateUpdate(result)
+        setWorkflow({ ...update, screeningId: result.id })
+      } else {
         setWorkflow({
-          workflowState: 'SCREENING_FAILED',
-          screeningResult: result,
-          error: result.failureMessageSafe || 'Screening failed',
-          errorCode: result.failureCode || 'SCREENING_FAILED',
-        })
-      } else if (result.status === 'PENDING' || result.status === 'RUNNING') {
-        setWorkflow({
-          workflowState: result.status === 'PENDING' ? 'SCREENING_PENDING' : 'SCREENING_RUNNING',
+          workflowState: workflowStateForStatus(result.status),
           screeningResult: result,
           screeningId: result.id,
         })
         pollScreening(result.id, Date.now())
       }
     } catch (err) {
-      if (!mountedRef.current || applicationRef.current !== applicationId) return
+      if (isStale(applicationId)) return
       const apiErr = err instanceof ApiErrorResponse ? err : null
-      if (apiErr?.statusCode !== 404) {
-        setWorkflow({
-          workflowState: 'ERROR',
-          error: apiErr?.message || 'Failed to load screening',
-          errorCode: apiErr?.errorCode || 'LOAD_FAILED',
-        })
-      }
+      if (apiErr && isExpectedNoScreeningError(apiErr)) return
+      setWorkflow({
+        workflowState: 'ERROR',
+        error: apiErr?.message || 'Failed to load screening',
+        errorCode: apiErr?.errorCode || 'LOAD_FAILED',
+      })
     }
-  }, [setWorkflow, pollScreening])
-
-  const reset = useCallback(() => {
-    cancelAll()
-    applicationRef.current = null
-    setState(initialState)
-  }, [cancelAll])
+  }, [setWorkflow, pollScreening, isStale])
 
   return {
     state,
     selectApplication,
-    setResumeAvailable,
-    setResumeMissing,
     handleUploadResume,
+    cancelUpload,
     requestScreening,
     retryScreening,
     loadLatestScreening,
-    reset,
   }
 }
