@@ -10,6 +10,13 @@ const MEMBERSHIP_ID = '00000000-0000-0000-0000-00000000d020';
 const DEPARTMENT_ID = '00000000-0000-0000-0000-00000000d030';
 const LOCATION_ID = '00000000-0000-0000-0000-00000000d040';
 const JOB_ID = '00000000-0000-0000-0000-00000000d050';
+const DEMO_JOB_ID = '00000000-0000-0000-0000-00000000d060';
+const DEMO_PIPELINE_ID = '00000000-0000-0000-0000-00000000d160';
+const DEMO_STAGE_APPLIED = '00000000-0000-0000-0000-00000000d170';
+
+const CANDIDATE_DANIEL = '00000000-0000-0000-0000-00000000d400';
+const CC_DANIEL = '00000000-0000-0000-0000-00000000d410';
+const APP_DANIEL = '00000000-0000-0000-0000-00000000d500';
 
 const PIPELINE_ID = '00000000-0000-0000-0000-00000000d100';
 const STAGE_APPLIED = '00000000-0000-0000-0000-00000000d110';
@@ -250,13 +257,121 @@ async function main() {
   });
   console.log('  User record finalized');
 
+  // 12. Demo candidate: Daniel Kato — Senior Software Developer
+  const demoEmail = process.env.DEMO_CANDIDATE_EMAIL || 'daniel.kato@example.com';
+  const danielData: any = {
+    id: CANDIDATE_DANIEL,
+    firstName: 'Daniel',
+    lastName: 'Kato',
+    email: demoEmail,
+    normalizedEmail: demoEmail.toLowerCase(),
+    status: 'ACTIVE',
+    source: 'RECRUITER_CREATED',
+    totalExperienceYears: 6,
+    skills: JSON.stringify(['TypeScript', 'React', 'Node.js', 'PostgreSQL', 'REST APIs', 'Git', 'Team Leadership']),
+  };
+  await prisma.candidate.upsert({ where: { id: CANDIDATE_DANIEL }, update: danielData, create: danielData });
+  console.log(`  Candidate Daniel Kato (${demoEmail}) ready`);
+
+  // Company candidate for Daniel
+  const ccDanielData: any = {
+    id: CC_DANIEL,
+    companyId: COMPANY_ID,
+    candidateId: CANDIDATE_DANIEL,
+    source: 'RECRUITER_CREATED',
+    ownerMembershipId: MEMBERSHIP_ID,
+    createdByMembershipId: MEMBERSHIP_ID,
+  };
+  await prisma.companyCandidate.upsert({ where: { id: CC_DANIEL }, update: ccDanielData, create: ccDanielData });
+  console.log('  Company candidate Daniel ready');
+
+  // Demo job: Senior Software Developer
+  const demoJobData: any = {
+    id: DEMO_JOB_ID,
+    companyId: COMPANY_ID,
+    title: 'Senior Software Developer',
+    slug: 'senior-software-developer-demo',
+    jobCode: 'SSD-DEMO-001',
+    description: 'We are looking for an experienced Senior Software Developer to join our growing engineering team. You will help build and scale our AI-powered recruitment platform, working across the full stack with TypeScript, React, and Node.js.',
+    status: 'PUBLISHED',
+    employmentType: 'FULL_TIME',
+    workplaceType: 'HYBRID',
+    experienceLevel: 'SENIOR',
+    departmentId: DEPARTMENT_ID,
+    locationId: LOCATION_ID,
+    numberOfOpenings: 1,
+    salaryMin: 120000,
+    salaryMax: 180000,
+    salaryCurrency: 'USD',
+    salaryVisible: true,
+    ownerMembershipId: MEMBERSHIP_ID,
+    createdByMembershipId: MEMBERSHIP_ID,
+  };
+  await prisma.job.upsert({ where: { id: DEMO_JOB_ID }, update: demoJobData, create: demoJobData });
+  console.log('  Job "Senior Software Developer" (PUBLISHED) ready');
+
+  // Pipeline for demo job
+  const demoPipelineData: any = {
+    id: DEMO_PIPELINE_ID,
+    jobId: DEMO_JOB_ID,
+    name: 'Demo Pipeline',
+    isActive: true,
+    createdByMembershipId: MEMBERSHIP_ID,
+  };
+  await prisma.jobPipeline.upsert({ where: { id: DEMO_PIPELINE_ID }, update: demoPipelineData, create: demoPipelineData });
+
+  const demoStageData: any = {
+    id: DEMO_STAGE_APPLIED,
+    pipelineId: DEMO_PIPELINE_ID,
+    name: 'Applied',
+    type: 'APPLIED',
+    sortOrder: 0,
+    required: true,
+    autoAdvanceEnabled: false,
+  };
+  await prisma.jobPipelineStage.upsert({ where: { id: DEMO_STAGE_APPLIED }, update: demoStageData, create: demoStageData });
+  console.log('  Demo pipeline with stage ready');
+
+  // Application for Daniel
+  const demoAppData: any = {
+    id: APP_DANIEL,
+    companyId: COMPANY_ID,
+    jobId: DEMO_JOB_ID,
+    candidateId: CANDIDATE_DANIEL,
+    companyCandidateId: CC_DANIEL,
+    applicationNumber: 'APP-2026-DEMO-001',
+    publicReference: 'PUB-DEMO-DANIEL',
+    status: 'SUBMITTED',
+    source: 'RECRUITER_CREATED',
+    consentConfirmed: true,
+    submittedAt: new Date(),
+    currentStageId: DEMO_STAGE_APPLIED,
+    version: 1,
+  };
+  await prisma.application.upsert({ where: { id: APP_DANIEL }, update: demoAppData, create: demoAppData });
+
+  // Stage history for Daniel
+  await prisma.applicationStageHistory.create({
+    data: {
+      applicationId: APP_DANIEL,
+      toStageId: DEMO_STAGE_APPLIED,
+      toStatus: 'SUBMITTED',
+      actorType: 'RECRUITER',
+      occurredAt: new Date(),
+    },
+  }).catch(() => {});
+
+  console.log('  Application Daniel -> Senior Software Developer ready');
+
   console.log('\nDev data seeding completed successfully!');
   console.log('  Login: sarah@airecruiter.com / admin123');
   console.log('  Job:   Product Manager (PUBLISHED)');
+  console.log('  Job:   Senior Software Developer (PUBLISHED, demo)');
   console.log('  Pipeline: 6 stages');
   console.log('  Alice Johnson -> Applied (movable)');
   console.log('  Bob Smith    -> Screening (movable)');
   console.log('  Carol Davis  -> Interview (movable)');
+  console.log('  Daniel Kato  -> Applied (demo, AI Interview target)');
 }
 
 main()

@@ -299,6 +299,68 @@ export class EmailService {
     await this.send({ to, subject, html, text });
   }
 
+  async sendAiInterviewInvitationEmail(
+    to: string,
+    candidateName: string,
+    jobTitle: string,
+    companyName: string,
+    interviewLink: string,
+    interviewCode: string,
+    durationMinutes: number,
+    expiresAt: Date | null,
+    recruiterNote?: string,
+  ): Promise<void> {
+    const subject = `AI interview invitation — ${jobTitle}`;
+    const expiryText = expiresAt
+      ? `\n\nThis invitation expires on ${expiresAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.`
+      : '';
+    const noteHtml = recruiterNote ? `<p style="margin:16px 0 0 0;font-size:14px;color:#4a5568;font-style:italic;">Note from the recruiter: ${recruiterNote}</p>` : '';
+    const noteText = recruiterNote ? `\n\nNote from the recruiter: ${recruiterNote}` : '';
+
+    const html = this.baseHtml(`
+      <h2 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#1a1a2e;">AI Interview Invitation</h2>
+      <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#4a5568;">
+        Hi ${candidateName},<br><br>
+        You have been invited to complete an <strong>AI-powered interview</strong> for the position of
+        <strong>${jobTitle}</strong> at ${companyName}.<br><br>
+        This interview will be conducted by an AI interviewer. Your responses will be transcribed and
+        reviewed by authorized recruitment staff.
+      </p>
+      <div style="background-color:#f0f4ff;border-radius:8px;padding:20px;margin:0 0 24px 0;text-align:center;">
+        <p style="margin:0 0 8px 0;font-size:14px;color:#4a5568;font-weight:600;">Your interview code</p>
+        <p style="margin:0 0 16px 0;font-size:28px;font-weight:700;color:#6366f1;letter-spacing:4px;font-family:monospace;">${interviewCode}</p>
+        <a href="${interviewLink}" style="display:inline-block;padding:14px 40px;background-color:#6366f1;color:#ffffff;font-size:16px;font-weight:600;text-decoration:none;border-radius:8px;">
+          Start Your Interview
+        </a>
+      </div>
+      <p style="margin:0 0 16px 0;font-size:14px;line-height:1.6;color:#4a5568;">
+        <strong>Duration:</strong> Approximately ${durationMinutes} minutes<br>
+        <strong>Estimated completion:</strong> You can complete it at your convenience${expiryText}
+      </p>
+      <h3 style="margin:24px 0 12px 0;font-size:16px;font-weight:600;color:#1a1a2e;">Preparation tips</h3>
+      <ul style="margin:0 0 16px 0;font-size:14px;line-height:1.8;color:#4a5568;padding-left:20px;">
+        <li>Use a stable internet connection</li>
+        <li>Choose a quiet, well-lit room</li>
+        <li>Ensure your camera and microphone are working</li>
+        <li>Use a modern browser (Chrome, Firefox, or Edge)</li>
+        <li>Close unnecessary applications</li>
+      </ul>
+      <p style="margin:0 0 16px 0;font-size:13px;line-height:1.6;color:#718096;">
+        By proceeding, you agree that your spoken answers may be transcribed and reviewed by
+        authorized recruitment staff at ${companyName}. Your data will be handled according to
+        our privacy policy.
+      </p>
+      <p style="margin:0 0 8px 0;font-size:13px;color:#718096;">
+        Questions? Contact the recruitment team at ${companyName}.
+      </p>
+      ${noteHtml}
+    `);
+
+    const text = `Hi ${candidateName},\n\nYou have been invited to complete an AI-powered interview for the position of ${jobTitle} at ${companyName}.\n\nThis interview will be conducted by an AI interviewer. Your responses will be transcribed and reviewed by authorized recruitment staff.\n\nYour interview code: ${interviewCode}\n\nStart your interview: ${interviewLink}\n\nDuration: Approximately ${durationMinutes} minutes${expiryText}\n\nPreparation tips:\n- Use a stable internet connection\n- Choose a quiet, well-lit room\n- Ensure your camera and microphone are working\n- Use a modern browser (Chrome, Firefox, or Edge)\n- Close unnecessary applications\n\nBy proceeding, you agree that your spoken answers may be transcribed and reviewed by authorized recruitment staff at ${companyName}.\n\nQuestions? Contact the recruitment team.${noteText}`;
+
+    await this.send({ to, subject, html, text });
+  }
+
   async sendOfferSentEmail(
     to: string,
     candidateName: string,

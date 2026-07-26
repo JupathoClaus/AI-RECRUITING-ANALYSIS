@@ -25,6 +25,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
+import { SendAiInterviewModal } from "@/components/ai-interview/send-ai-interview-modal"
 import {
   SearchNormal,
   Add,
@@ -121,6 +122,7 @@ export default function CandidatesPage() {
   const [addDialogOpen, setAddDialogOpen] = React.useState(false)
   const [detailsCandidate, setDetailsCandidate] = React.useState<Candidate | null>(null)
   const [actionInProgress, setActionInProgress] = React.useState(false)
+  const [aiInterviewModalOpen, setAiInterviewModalOpen] = React.useState(false)
   const [addFeedback, setAddFeedback] = React.useState<{ type: "error"; message: string } | null>(null)
   const [pageFeedback, setPageFeedback] = React.useState<{ type: "success" | "warning"; message: string } | null>(null)
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
@@ -850,6 +852,17 @@ export default function CandidatesPage() {
                         Mark as Hired
                       </Button>
                     )}
+                    {displayStatus && detailsCandidate.applicationSummary?.current && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="ml-auto"
+                        onClick={() => setAiInterviewModalOpen(true)}
+                      >
+                        <MagicStar className="h-4 w-4" />
+                        Send AI Interview
+                      </Button>
+                    )}
                   </div>
                 </DialogFooter>
               </>
@@ -857,6 +870,15 @@ export default function CandidatesPage() {
           })()}
         </DialogContent>
       </Dialog>
+
+      <SendAiInterviewModal
+        open={aiInterviewModalOpen}
+        onOpenChange={setAiInterviewModalOpen}
+        candidateName={detailsCandidate?.displayName || ""}
+        candidateEmail={detailsCandidate?.email || ""}
+        jobTitle={detailsCandidate?.applicationSummary?.current?.jobTitle || ""}
+        applicationId={detailsCandidate?.applicationSummary?.current?.id || ""}
+      />
     </AppLayout>
   )
 }

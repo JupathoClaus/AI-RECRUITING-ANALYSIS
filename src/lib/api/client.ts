@@ -47,6 +47,7 @@ interface RequestOptions {
   method?: string
   body?: unknown
   params?: Record<string, string | number | string[] | undefined>
+  headers?: Record<string, string>
   skipAuth?: boolean
   responseType?: 'json' | 'blob'
   signal?: AbortSignal
@@ -134,7 +135,7 @@ export interface BlobResponse {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, params, skipAuth = false, responseType = 'json', signal, statusInBody } = options
+  const { method = "GET", body, params, headers: customHeaders, skipAuth = false, responseType = 'json', signal, statusInBody } = options
 
   let url = `${getBaseUrl()}${path}`
   if (params) {
@@ -155,7 +156,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   const isFormData = body instanceof FormData
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...customHeaders }
   const acceptType = responseType === 'blob' ? 'text/csv' : 'application/json'
   headers['Accept'] = acceptType
   if (!isFormData && responseType !== 'blob') {

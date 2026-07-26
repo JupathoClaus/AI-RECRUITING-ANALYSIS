@@ -33,6 +33,7 @@ import { FilesModule } from '../modules/files/files.module';
 import { EmailModule } from '../modules/email/email.module';
 import { AiScreeningModule } from '../modules/ai-screening/ai-screening.module';
 import { ResumeProcessingModule } from '../modules/resume-processing/resume-processing.module';
+import { AiInterviewsModule } from '../modules/ai-interviews/ai-interviews.module';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -151,6 +152,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
     EmailModule,
     AiScreeningModule,
     ResumeProcessingModule,
+    AiInterviewsModule,
   ],
 })
 export class AppModule {}

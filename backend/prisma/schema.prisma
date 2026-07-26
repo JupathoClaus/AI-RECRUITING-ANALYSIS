@@ -231,6 +231,9 @@ model Company {
   // Phase 2.4
   notifications UserNotification[]
 
+  // Phase 5 — AI Interviews
+  aiInterviews AiInterview[]
+
   @@index([status])
   @@index([industry])
   @@index([createdAt])
@@ -340,6 +343,9 @@ model CompanyMembership {
   updatedInterviews          Interview[]            @relation("InterviewUpdatedBy")
   participantMemberships     InterviewParticipant[] @relation("InterviewParticipantMembership")
   addedInterviewParticipants InterviewParticipant[] @relation("InterviewParticipantAddedBy")
+
+  // Phase 5 — AI Interviews
+  createdAiInterviews AiInterview[] @relation("AiInterviewCreatedBy")
 
   @@unique([userId, companyId])
   @@index([companyId])
@@ -1894,6 +1900,9 @@ model Application {
   // Phase 4 — AI Screening
   aiScreeningResults AiScreeningResult[]
 
+  // Phase 5 — AI Interviews
+  aiInterviews AiInterview[]
+
   @@unique([companyId, applicationNumber])
   @@index([companyId])
   @@index([jobId])
@@ -2421,4 +2430,93 @@ model ApplicationAuditEvent {
   @@index([companyCandidateId])
   @@index([eventType])
   @@index([occurredAt])
+}
+
+// ─── AI Interview Enums ────────────────────────────────────────────────────────
+
+enum AiInterviewStatus {
+  CREATED
+  SENT
+  ACCESSED
+  READY
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  FAILED
+}
+
+enum AiInterviewProvider {
+  MOCK
+  TAVUS
+}
+
+enum AiInterviewTranscriptStatus {
+  NOT_REQUESTED
+  PENDING
+  READY
+  FAILED
+}
+
+// ─── AI Interview Model ────────────────────────────────────────────────────────
+
+model AiInterview {
+  id                        String                      @id @default(uuid())
+  applicationId             String
+  companyId                 String
+  provider                  AiInterviewProvider          @default(TAVUS)
+  status                    AiInterviewStatus            @default(CREATED)
+
+  // Interview code
+  codeHash                  String
+  codeDisplayHint           String?
+
+  // Invitation tracking
+  invitationSentAt          DateTime?
+  invitationEmail           String?
+
+  // Access tracking
+  accessedAt                DateTime?
+
+  // Interview execution
+  startedAt                 DateTime?
+  completedAt               DateTime?
+  cancelledAt               DateTime?
+
+  // Tavus integration
+  tavusConversationId       String?
+  tavusConversationUrl      String?
+  tavusStatus               String?
+  tavusMeetingToken         String?
+
+  // Transcript
+  transcriptStatus          AiInterviewTranscriptStatus  @default(NOT_REQUESTED)
+  transcriptUrl             String?
+
+  // Config
+  language                  String                      @default("en")
+  estimatedDurationMinutes  Int                         @default(30)
+  availableFrom             DateTime?
+  expiresAt                 DateTime?
+
+  // Notes
+  notes                     String?
+  cancelledByMembershipId   String?
+
+  // Relations
+  application               Application                 @relation(fields: [applicationId], references: [id])
+  company                   Company                     @relation(fields: [companyId], references: [id])
+  createdByMembershipId     String?
+  createdBy                 CompanyMembership?           @relation("AiInterviewCreatedBy", fields: [createdByMembershipId], references: [id])
+
+  // Timestamps
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+
+  @@unique([codeHash])
+  @@index([applicationId])
+  @@index([companyId])
+  @@index([status])
+  @@index([tavusConversationId])
+  @@index([expiresAt])
 }

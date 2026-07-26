@@ -8,6 +8,7 @@ import authConfig from './loaders/auth.config';
 import emailConfig from './loaders/email.config';
 import aiScreeningConfig from './loaders/ai-screening.config';
 import resumeExtractionConfig from './loaders/resume-extraction.config';
+import tavusConfig from './loaders/tavus.config';
 
 export default [
   appConfig,
@@ -20,6 +21,7 @@ export default [
   emailConfig,
   aiScreeningConfig,
   resumeExtractionConfig,
+  tavusConfig,
 ];
 
 export {
@@ -33,4 +35,5 @@ export {
   emailConfig,
   aiScreeningConfig,
   resumeExtractionConfig,
+  tavusConfig,
 };

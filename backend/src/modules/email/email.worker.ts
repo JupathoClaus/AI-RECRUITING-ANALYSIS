@@ -116,6 +116,20 @@ export class EmailWorker extends WorkerHost {
           );
           break;
 
+        case 'recruitment.ai-interview-invitation':
+          await this.emailService.sendAiInterviewInvitationEmail(
+            job.data.email as string,
+            job.data.candidateName as string,
+            job.data.jobTitle as string,
+            job.data.companyName as string,
+            job.data.interviewLink as string,
+            job.data.interviewCode as string,
+            (job.data.durationMinutes as number) || 30,
+            job.data.expiresAt ? new Date(job.data.expiresAt as string) : null,
+            job.data.recruiterNote as string | undefined,
+          );
+          break;
+
         case 'recruitment.offer-sent':
           await this.emailService.sendOfferSentEmail(
             job.data.email as string,
