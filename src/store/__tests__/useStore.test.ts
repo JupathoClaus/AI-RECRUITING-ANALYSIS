@@ -8,6 +8,7 @@ const mockMarkApplicationHired = vi.fn()
 const mockFetchApplicationById = vi.fn()
 const mockFetchCandidates = vi.fn()
 const mockFetchApplications = vi.fn()
+const mockGetJobPipeline = vi.fn()
 
 vi.mock("@/lib/api/applications.api", () => ({
   moveApplication: (...args: unknown[]) => mockMoveApplication(...args),
@@ -29,6 +30,7 @@ vi.mock("@/lib/api/candidates.api", () => ({
 
 vi.mock("@/lib/api/jobs.api", () => ({
   getJobs: vi.fn().mockResolvedValue([]),
+  getJobPipeline: (...args: unknown[]) => mockGetJobPipeline(...args),
 }))
 
 vi.mock("@/lib/api/interviews.api", () => ({
@@ -57,6 +59,11 @@ import { useStore } from "@/store/useStore"
 const CANDIDATE_ID = "candidate-1"
 const APPLICATION_ID = "app-1"
 const STAGE_ID = "stage-1"
+const SCREENING_STAGE_ID = "stage-screening"
+const PIPELINE_STAGES = [
+  { id: SCREENING_STAGE_ID, name: "Screening", type: "SCREENING", sortOrder: 1 },
+  { id: "stage-interview", name: "Interview", type: "INTERVIEW", sortOrder: 2 },
+]
 
 function makeCandidate(overrides?: Partial<Candidate>): Candidate {
   return {
@@ -113,7 +120,7 @@ beforeEach(() => {
 })
 
 describe("advanceCandidateApplication", () => {
-  it("calls moveApplication with toStageId for non-DRAFT Screening", async () => {
+  it("calls moveApplication with correct Screening stageId for non-DRAFT", async () => {
     const candidate = makeCandidate()
     useStore.setState({ candidates: [candidate] })
 
@@ -124,6 +131,12 @@ describe("advanceCandidateApplication", () => {
       stageId: STAGE_ID,
     })
 
+    mockGetJobPipeline.mockResolvedValue({
+      id: "pipeline-1",
+      jobId: "job-1",
+      stages: PIPELINE_STAGES,
+    })
+
     mockMoveApplication.mockResolvedValue(undefined)
     mockFetchCandidates.mockResolvedValue({ data: [] })
     mockFetchApplications.mockResolvedValue({ data: [] })
@@ -131,10 +144,11 @@ describe("advanceCandidateApplication", () => {
     const store = useStore.getState()
     await store.advanceCandidateApplication(CANDIDATE_ID, "Screening")
 
+    expect(mockGetJobPipeline).toHaveBeenCalledWith("job-1")
     expect(mockMoveApplication).toHaveBeenCalledTimes(1)
     expect(mockMoveApplication).toHaveBeenCalledWith(APPLICATION_ID, {
       expectedVersion: 1,
-      toStageId: STAGE_ID,
+      toStageId: SCREENING_STAGE_ID,
     })
   })
 
@@ -254,6 +268,12 @@ describe("advanceCandidateApplication", () => {
       stageId: STAGE_ID,
     })
 
+    mockGetJobPipeline.mockResolvedValue({
+      id: "pipeline-1",
+      jobId: "job-1",
+      stages: PIPELINE_STAGES,
+    })
+
     mockMoveApplication.mockResolvedValue(undefined)
     mockFetchCandidates.mockResolvedValue({ data: [] })
     mockFetchApplications.mockResolvedValue({ data: [] })
@@ -275,6 +295,12 @@ describe("advanceCandidateApplication", () => {
       status: "APPLIED",
       version: 1,
       stageId: STAGE_ID,
+    })
+
+    mockGetJobPipeline.mockResolvedValue({
+      id: "pipeline-1",
+      jobId: "job-1",
+      stages: PIPELINE_STAGES,
     })
 
     mockMoveApplication.mockRejectedValue(new Error("Network error"))

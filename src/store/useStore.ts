@@ -19,7 +19,8 @@ import {
 } from "@/lib/api/applications.api"
 import type { CreateCandidateRequest } from "@/lib/api/candidates.api"
 import type { ApplicationListItem, ApplicationQueryParams } from "@/lib/api/applications.api"
-import { getJobs } from "@/lib/api/jobs.api"
+import { getJobs, getJobPipeline } from "@/lib/api/jobs.api"
+import type { PipelineStageDto } from "@/lib/api/jobs.api"
 import type { JobListDto } from "@/lib/api/types"
 import {
   fetchInterviews as fetchInterviewsApi,
@@ -388,7 +389,12 @@ export const useStore = create<AppState>((set, get) => ({
           if (detail.status === "DRAFT") {
             await submitApplication(currentApp.id, { expectedVersion: version, consentConfirmed: true })
           } else {
-            await moveApplication(currentApp.id, { expectedVersion: version, toStageId: currentApp.stageId })
+            const pipeline = await getJobPipeline(currentApp.jobId)
+            const sorted = [...pipeline.stages].sort((a, b) => a.sortOrder - b.sortOrder)
+            const target = sorted.find(s => s.name.toLowerCase() === "screening") ?? sorted[0]
+            if (target) {
+              await moveApplication(currentApp.id, { expectedVersion: version, toStageId: target.id })
+            }
           }
           break
         case "Interview":

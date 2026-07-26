@@ -101,7 +101,7 @@ export function useAiScreening() {
       setWorkflow({ workflowState: 'RESUME_READY', uploadProgress: false, uploadedFile: result })
     } catch (err) {
       if (isStale(appId)) return
-      const { isAbort } = classifyScreeningError(err instanceof ApiErrorResponse ? err : (err instanceof Error ? err : null))
+      const { isAbort } = classifyScreeningError(err)
       if (isAbort) {
         setWorkflow({ workflowState: 'RESUME_MISSING', uploadProgress: false })
         return
@@ -150,9 +150,9 @@ export function useAiScreening() {
         }
       } catch (err) {
         if (isStale(currentAppId)) return
-        const apiErr = err instanceof ApiErrorResponse ? err : (err instanceof Error ? err : null)
-        if (classifyScreeningError(apiErr).isAbort) return
-        if (isRetryablePollingError(apiErr as ApiErrorResponse | null)) {
+        if (classifyScreeningError(err).isAbort) return
+        const apiErr = err instanceof ApiErrorResponse ? err : null
+        if (isRetryablePollingError(apiErr)) {
           pollScreening(screeningId, startTime)
         } else {
           setWorkflow({
@@ -200,8 +200,8 @@ export function useAiScreening() {
         }
       } catch (err) {
         if (isStale(currentAppId)) return
+        if (classifyScreeningError(err).isAbort) return
         const apiErr = err instanceof ApiErrorResponse ? err : null
-        if (classifyScreeningError(apiErr).isAbort) return
         if (apiErr && isExtractionPendingError(apiErr)) {
           waitForExtraction(startTime)
         } else if (apiErr && isExtractionFailedError(apiErr)) {

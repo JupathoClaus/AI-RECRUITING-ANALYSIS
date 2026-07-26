@@ -29,7 +29,7 @@ export function screeningResultStateUpdate(result: AiScreeningResultDto) {
   }
 }
 
-export function isRetryablePollingError(err: ApiErrorResponse | Error | null): boolean {
+export function isRetryablePollingError(err: unknown): boolean {
   if (!err) return true
   if (err instanceof ApiErrorResponse) {
     const code = err.statusCode
@@ -50,13 +50,13 @@ export function isExtractionFailedError(err: ApiErrorResponse): boolean {
   return err.errorCode === 'RESUME_EXTRACTION_FAILED'
 }
 
-export function classifyScreeningError(err: ApiErrorResponse | Error | null): {
+export function classifyScreeningError(err: unknown): {
   isRetryable: boolean
   isAbort: boolean
 } {
   if (!err) return { isRetryable: true, isAbort: false }
 
-  if (err instanceof DOMException && err.name === 'AbortError') {
+  if ((typeof DOMException !== 'undefined' && err instanceof DOMException) || (err instanceof Error && err.name === 'AbortError')) {
     return { isRetryable: false, isAbort: true }
   }
 
@@ -64,6 +64,10 @@ export function classifyScreeningError(err: ApiErrorResponse | Error | null): {
     const code = err.statusCode
     const retryable = code === 429 || code === 408 || code >= 500
     return { isRetryable: retryable, isAbort: false }
+  }
+
+  if (err instanceof Error) {
+    return { isRetryable: true, isAbort: false }
   }
 
   return { isRetryable: true, isAbort: false }
