@@ -14,6 +14,7 @@ import {
   rejectApplication,
   shortlistApplication,
   moveApplication,
+  submitApplication,
   markApplicationHired,
 } from "@/lib/api/applications.api"
 import type { CreateCandidateRequest } from "@/lib/api/candidates.api"
@@ -383,14 +384,13 @@ export const useStore = create<AppState>((set, get) => ({
       const version = detail.version
 
       switch (toStatus) {
-        case "Screening": {
+        case "Screening":
           if (detail.status === "DRAFT") {
-            await moveApplication(currentApp.id, { expectedVersion: version })
+            await submitApplication(currentApp.id, { expectedVersion: version })
           } else {
-            await moveApplication(currentApp.id, { expectedVersion: version })
+            await moveApplication(currentApp.id, { expectedVersion: version, toStageId: currentApp.stageId })
           }
           break
-        }
         case "Interview":
           await shortlistApplication(currentApp.id, { expectedVersion: version })
           break
