@@ -50,6 +50,7 @@ export class ResumeTextExtractorService {
       const uint8 = new Uint8Array(input.buffer.buffer, input.buffer.byteOffset, input.buffer.byteLength);
       const parser = new PDFParse(uint8);
       data = await parser.getText();
+      try { parser.destroy(); } catch { /* cleanup */ }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.toLowerCase().includes('password') || msg.toLowerCase().includes('encrypted')) {
