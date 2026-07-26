@@ -33,6 +33,7 @@ import { QueueService } from './queue.service';
       { name: 'ai-processing' },
       { name: 'interview-reminder' },
       { name: 'interview-notification' },
+      { name: 'ai-screening' },
     ),
   ],
   providers: [QueueService],

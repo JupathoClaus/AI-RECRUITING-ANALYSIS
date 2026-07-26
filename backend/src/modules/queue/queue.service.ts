@@ -10,6 +10,7 @@ export const QUEUE_NAMES = {
   AI_PROCESSING: 'ai-processing',
   INTERVIEW_REMINDER: 'interview-reminder',
   INTERVIEW_NOTIFICATION: 'interview-notification',
+  AI_SCREENING: 'ai-screening',
 } as const;
 
 @Injectable()

@@ -8,6 +8,8 @@ export interface AiScreeningConfig {
   maxResumeChars: number;
   promptVersion: string;
   schemaVersion: string;
+  workerConcurrency: number;
+  mockScenario: string;
 }
 
 export default registerAs('aiScreening', (): AiScreeningConfig => {
@@ -22,6 +24,9 @@ export default registerAs('aiScreening', (): AiScreeningConfig => {
   const promptVersion = process.env.AI_SCREENING_PROMPT_VERSION || 'v1';
   const schemaVersion = process.env.AI_SCREENING_SCHEMA_VERSION || 'v1';
 
+  const concurrencyRaw = parseInt(process.env.AI_SCREENING_WORKER_CONCURRENCY || '3', 10);
+  const workerConcurrency = isNaN(concurrencyRaw) ? 3 : Math.max(1, Math.min(20, concurrencyRaw));
+
   return {
     provider,
     openAiApiKey: process.env.OPENAI_API_KEY || '',
@@ -30,5 +35,7 @@ export default registerAs('aiScreening', (): AiScreeningConfig => {
     maxResumeChars,
     promptVersion: promptVersion.trim() || 'v1',
     schemaVersion: schemaVersion.trim() || 'v1',
+    workerConcurrency,
+    mockScenario: process.env.AI_SCREENING_MOCK_SCENARIO || '',
   };
 });
