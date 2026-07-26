@@ -12,13 +12,14 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireTenantAccess } from '../auth/decorators/tenant-access.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuthenticatedPrincipal } from '../auth/interfaces/auth.interface';
 import { AiScreeningService } from './ai-screening.service';
 import { RunAiScreeningDto } from './dto/run-ai-screening.dto';
 import { ListAiScreeningsQueryDto } from './dto/list-ai-screenings-query.dto';
-import { AiScreeningResponseDto } from './dto/ai-screening-response.dto';
+
 
 @ApiTags('AI Screening')
 @ApiBearerAuth()
@@ -28,12 +29,11 @@ export class AiScreeningController {
   constructor(private readonly screeningService: AiScreeningService) {}
 
   @Post('applications/:applicationId/ai-screenings')
+  @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')
   @RequireTenantAccess()
-  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Request AI screening for an application',
-    description:
-      'Returns 202 if a new screening is queued, 200 if an existing reusable result is returned.',
+    description: 'Returns 202 if a new screening is queued, 200 if an existing reusable result is returned.',
   })
   @ApiResponse({ status: 200, description: 'Existing reusable screening result' })
   @ApiResponse({ status: 202, description: 'New screening queued' })
@@ -55,15 +55,11 @@ export class AiScreeningController {
       dto.forceRerun,
     );
 
-    return {
-      statusCode: result.status === 'PENDING' || result.status === 'RUNNING'
-        ? HttpStatus.ACCEPTED
-        : HttpStatus.OK,
-      data: result,
-    };
+    return result;
   }
 
   @Get('applications/:applicationId/ai-screenings')
+  @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')
   @RequireTenantAccess()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'List screening attempts for an application' })
@@ -81,6 +77,7 @@ export class AiScreeningController {
   }
 
   @Get('applications/:applicationId/ai-screenings/latest')
+  @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')
   @RequireTenantAccess()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get the latest screening result for an application' })
@@ -92,6 +89,7 @@ export class AiScreeningController {
   }
 
   @Get('ai-screenings/:screeningId')
+  @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')
   @RequireTenantAccess()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get a specific screening result by ID' })

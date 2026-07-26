@@ -10,12 +10,16 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { ScreeningInputBuilderService, ResumeTextData } from './services/screening-input-builder.service';
+import { ResumeTextLoaderService } from './services/resume-text-loader.service';
 import { computeScreeningFingerprint } from './utils/screening-input-fingerprint';
 import { AI_SCREENING_QUEUE, AI_SCREENING_JOB } from './queue/ai-screening-queue.constants';
 import { AiScreeningJobData } from './queue/ai-screening-job-data.interface';
 import { AiScreeningResponseDto } from './dto/ai-screening-response.dto';
-import { readFile } from 'fs/promises';
-import { resolve } from 'path';
+
+export interface ScreeningResultOrAction {
+  action: 'CREATED' | 'REUSED';
+  data: AiScreeningResponseDto;
+}
 
 @Injectable()
 export class AiScreeningService {
@@ -24,12 +28,11 @@ export class AiScreeningService {
   private readonly model: string;
   private readonly promptVersion: string;
   private readonly schemaVersion: string;
-  private readonly uploadDir: string;
-  private readonly resumeTextParserSuffix: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly inputBuilder: ScreeningInputBuilderService,
+    private readonly resumeLoader: ResumeTextLoaderService,
     @InjectQueue(AI_SCREENING_QUEUE) private readonly screeningQueue: Queue,
     configService: ConfigService,
   ) {
@@ -37,8 +40,6 @@ export class AiScreeningService {
     this.model = configService.get<string>('aiScreening.openAiModel') || 'gpt-4o-mini';
     this.promptVersion = configService.get<string>('aiScreening.promptVersion') || 'v1';
     this.schemaVersion = configService.get<string>('aiScreening.schemaVersion') || 'v1';
-    this.uploadDir = configService.get<string>('app.uploadDir') || './uploads';
-    this.resumeTextParserSuffix = configService.get<string>('app.resumeTextParserSuffix') || '_parsed.txt';
   }
 
   async requestScreening(
@@ -46,7 +47,7 @@ export class AiScreeningService {
     companyId: string,
     userId: string,
     forceRerun = false,
-  ): Promise<AiScreeningResponseDto> {
+  ): Promise<ScreeningResultOrAction> {
     const application = await this.prisma.application.findFirst({
       where: { id: applicationId, companyId, deletedAt: null },
       include: {
@@ -83,7 +84,7 @@ export class AiScreeningService {
       throw new ConflictException('No resume file found for this application.');
     }
 
-    const resumeText = await this.loadResumeText(resumeFile.storageKey);
+    const resumeText = await this.resumeLoader.load(resumeFile.storageKey);
     if (!resumeText || resumeText.parsedText.trim().length < 10) {
       throw new ConflictException('Resume has no parsed text. Resume processing must complete first.');
     }
@@ -106,6 +107,8 @@ export class AiScreeningService {
       schemaVersion: this.schemaVersion,
     });
 
+    let screening: { id: string; status: string; createdAt: Date; applicationId: string };
+
     if (!forceRerun) {
       const existing = await this.prisma.aiScreeningResult.findFirst({
         where: {
@@ -118,27 +121,50 @@ export class AiScreeningService {
       });
 
       if (existing) {
-        return this.mapToDto(existing);
+        return { action: 'REUSED', data: this.mapToDto(existing) };
       }
     }
 
-    const screening = await this.prisma.aiScreeningResult.create({
-      data: {
-        applicationId,
-        jobId: job.id,
-        candidateId: application.candidate.id,
-        companyId,
-        initiatedByUserId: userId,
-        status: 'PENDING',
-        inputFingerprint: fingerprint,
-        provider: this.provider,
-        model: this.model,
-        promptVersion: this.promptVersion,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      if (!forceRerun) {
+        const existing = await tx.aiScreeningResult.findFirst({
+          where: {
+            applicationId,
+            companyId,
+            inputFingerprint: fingerprint,
+            status: { in: ['PENDING', 'RUNNING', 'COMPLETED'] },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (existing) {
+          screening = existing as typeof screening;
+          return;
+        }
+      }
+
+      screening = await tx.aiScreeningResult.create({
+        data: {
+          applicationId,
+          jobId: job.id,
+          candidateId: application.candidate.id,
+          companyId,
+          initiatedByUserId: userId,
+          status: 'PENDING',
+          inputFingerprint: fingerprint,
+          provider: this.provider,
+          model: this.model,
+          promptVersion: this.promptVersion,
+        },
+      }) as typeof screening;
     });
 
+    if (screening!.status !== 'PENDING') {
+      return { action: 'REUSED', data: this.mapToDto(screening!) };
+    }
+
     const jobData: AiScreeningJobData = {
-      screeningId: screening.id,
+      screeningId: screening!.id,
       applicationId,
       companyId,
       initiatedByUserId: userId,
@@ -147,12 +173,12 @@ export class AiScreeningService {
 
     try {
       await this.screeningQueue.add(AI_SCREENING_JOB, jobData, {
-        jobId: screening.id,
+        jobId: screening!.id,
       });
     } catch (err) {
       this.logger.error(`Failed to enqueue screening job: ${(err as Error).message}`);
       await this.prisma.aiScreeningResult.update({
-        where: { id: screening.id },
+        where: { id: screening!.id },
         data: {
           status: 'FAILED',
           failureCode: 'QUEUE_FAILURE',
@@ -163,7 +189,7 @@ export class AiScreeningService {
       throw new ServiceUnavailableException('Screening job could not be queued. Please try again.');
     }
 
-    return this.mapToDto(screening);
+    return { action: 'CREATED', data: this.mapToDto(screening!) };
   }
 
   async getScreening(screeningId: string, companyId: string): Promise<AiScreeningResponseDto> {
@@ -233,16 +259,6 @@ export class AiScreeningService {
       limit,
       totalPages: Math.ceil(total / limit),
     };
-  }
-
-  private async loadResumeText(storageKey: string): Promise<ResumeTextData | null> {
-    const parsedPath = resolve(this.uploadDir, `${storageKey}${this.resumeTextParserSuffix}`);
-    try {
-      const parsedText = await readFile(parsedPath, 'utf-8');
-      return { parsedText, checksumSha256: '' };
-    } catch {
-      return null;
-    }
   }
 
   private mapToDto(screening: Record<string, unknown>): AiScreeningResponseDto {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ScreeningInput, ScreeningQuestionAnswer } from '../domain/screening-input.type';
+import { redactResumeText } from '../utils/resume-redaction';
 
 export interface ApplicationData {
   id: string;
@@ -31,10 +32,7 @@ export interface ApplicationData {
   }>;
 }
 
-export interface ResumeTextData {
-  parsedText: string;
-  checksumSha256: string;
-}
+export type ResumeTextData = import('./resume-text-loader.service').ResumeTextData;
 
 @Injectable()
 export class ScreeningInputBuilderService {
@@ -70,10 +68,12 @@ export class ScreeningInputBuilderService {
       });
     }
 
+    const redacted = redactResumeText(resumeTextData.parsedText);
+
     const truncatedResume =
-      resumeTextData.parsedText.length > this.maxResumeChars
-        ? resumeTextData.parsedText.slice(0, this.maxResumeChars) + '\n... [resume truncated]'
-        : resumeTextData.parsedText;
+      redacted.length > this.maxResumeChars
+        ? redacted.slice(0, this.maxResumeChars) + '\n... [resume truncated]'
+        : redacted;
 
     return Object.freeze({
       applicationId: application.id,

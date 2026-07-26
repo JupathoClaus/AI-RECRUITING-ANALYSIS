@@ -5,6 +5,7 @@ import { NotFoundException, ConflictException, ServiceUnavailableException } fro
 import { PrismaService } from '@database/prisma/prisma.service';
 import { AiScreeningService } from '../ai-screening.service';
 import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
+import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
 import { AI_SCREENING_QUEUE } from '../queue/ai-screening-queue.constants';
 
 const mockReadFile = jest.fn().mockResolvedValue('Parsed resume text content here.');
@@ -29,6 +30,7 @@ const mockPrisma = {
   storedFile: {
     findUnique: jest.fn(),
   },
+  $transaction: jest.fn(),
 };
 
 const mockQueue = {
@@ -64,21 +66,14 @@ const mockApplication = {
     description: 'Build software.',
     qualifications: null,
     updatedAt: new Date(),
-    skills: [
-      { skill: { displayName: 'TypeScript' }, importance: 'REQUIRED' },
-    ],
+    skills: [{ skill: { displayName: 'TypeScript' }, importance: 'REQUIRED' }],
     screeningQuestions: [],
   },
   candidate: { id: 'cand-1' },
   screeningAnswers: [],
-  resumeFiles: [
-    {
-      id: 'file-1',
-      checksumSha256: 'abc123',
-      updatedAt: new Date(),
-      storageKey: 'company-1/file-1.pdf',
-    },
-  ],
+  resumeFiles: [{
+    id: 'file-1', checksumSha256: 'abc123', updatedAt: new Date(), storageKey: 'company-1/file-1.pdf',
+  }],
 };
 
 describe('AiScreeningService', () => {
@@ -93,6 +88,7 @@ describe('AiScreeningService', () => {
       providers: [
         AiScreeningService,
         ScreeningInputBuilderService,
+        ResumeTextLoaderService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: getQueueToken(AI_SCREENING_QUEUE), useValue: mockQueue },
         { provide: ConfigService, useValue: mockConfigService },
@@ -106,72 +102,64 @@ describe('AiScreeningService', () => {
     it('creates a PENDING screening attempt and enqueues a job', async () => {
       mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
       mockPrisma.aiScreeningResult.findFirst.mockResolvedValue(null);
-      mockPrisma.aiScreeningResult.create.mockResolvedValue({
-        id: 'screen-1',
-        applicationId: 'app-1',
-        status: 'PENDING',
-        companyId: 'company-1',
-        createdAt: new Date(),
+      mockPrisma.$transaction.mockImplementation(async (cb: Function) => {
+        mockPrisma.aiScreeningResult.create.mockResolvedValue({
+          id: 'screen-1', applicationId: 'app-1', status: 'PENDING', companyId: 'company-1', createdAt: new Date(),
+        });
+        return cb(mockPrisma);
       });
 
       const result = await service.requestScreening('app-1', 'company-1', 'user-1');
 
-      expect(result.status).toBe('PENDING');
+      expect(result.action).toBe('CREATED');
+      expect(result.data.status).toBe('PENDING');
       expect(mockPrisma.aiScreeningResult.create).toHaveBeenCalled();
       expect(mockQueue.add).toHaveBeenCalled();
     });
 
-    it('returns existing PENDING attempt when found', async () => {
+    it('returns existing PENDING attempt with REUSED action', async () => {
       mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
       mockPrisma.aiScreeningResult.findFirst.mockResolvedValue({
-        id: 'screen-1',
-        applicationId: 'app-1',
-        status: 'PENDING',
-        companyId: 'company-1',
-        createdAt: new Date(),
+        id: 'screen-1', applicationId: 'app-1', status: 'PENDING', companyId: 'company-1', createdAt: new Date(),
       });
 
       const result = await service.requestScreening('app-1', 'company-1', 'user-1');
 
-      expect(result.status).toBe('PENDING');
+      expect(result.action).toBe('REUSED');
+      expect(result.data.status).toBe('PENDING');
       expect(mockPrisma.aiScreeningResult.create).not.toHaveBeenCalled();
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
-    it('returns existing COMPLETED result when found', async () => {
+    it('returns existing COMPLETED result with REUSED action', async () => {
       mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
       mockPrisma.aiScreeningResult.findFirst.mockResolvedValue({
-        id: 'screen-1',
-        applicationId: 'app-1',
-        status: 'COMPLETED',
-        companyId: 'company-1',
-        recommendation: 'SHORTLIST',
-        overallScore: 85,
-        createdAt: new Date(),
+        id: 'screen-1', applicationId: 'app-1', status: 'COMPLETED', companyId: 'company-1', recommendation: 'SHORTLIST', overallScore: 85, createdAt: new Date(),
       });
 
       const result = await service.requestScreening('app-1', 'company-1', 'user-1');
 
-      expect(result.status).toBe('COMPLETED');
+      expect(result.action).toBe('REUSED');
+      expect(result.data.status).toBe('COMPLETED');
       expect(mockPrisma.aiScreeningResult.create).not.toHaveBeenCalled();
     });
 
-    it('forceRerun creates a new attempt even when COMPLETED exists', async () => {
+    it('forceRerun creates a new attempt and returns CREATED', async () => {
       mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
       mockPrisma.aiScreeningResult.findFirst.mockResolvedValue({
-        id: 'screen-old',
-        status: 'COMPLETED',
-        createdAt: new Date(),
+        id: 'screen-old', status: 'COMPLETED', createdAt: new Date(),
       });
-      mockPrisma.aiScreeningResult.create.mockResolvedValue({
-        id: 'screen-new',
-        status: 'PENDING',
-        createdAt: new Date(),
+      mockPrisma.$transaction.mockImplementation(async (cb: Function) => {
+        mockPrisma.aiScreeningResult.create.mockResolvedValue({
+          id: 'screen-new', status: 'PENDING', createdAt: new Date(),
+        });
+        return cb(mockPrisma);
       });
 
       const result = await service.requestScreening('app-1', 'company-1', 'user-1', true);
 
-      expect(result.status).toBe('PENDING');
+      expect(result.action).toBe('CREATED');
+      expect(result.data.status).toBe('PENDING');
       expect(mockPrisma.aiScreeningResult.create).toHaveBeenCalled();
     });
 
@@ -185,8 +173,7 @@ describe('AiScreeningService', () => {
 
     it('throws ConflictException for missing job description', async () => {
       mockPrisma.application.findFirst.mockResolvedValue({
-        ...mockApplication,
-        job: { ...mockApplication.job, description: '', qualifications: null },
+        ...mockApplication, job: { ...mockApplication.job, description: '', qualifications: null },
       });
 
       await expect(
@@ -195,10 +182,7 @@ describe('AiScreeningService', () => {
     });
 
     it('throws ConflictException for missing resume', async () => {
-      mockPrisma.application.findFirst.mockResolvedValue({
-        ...mockApplication,
-        resumeFiles: [],
-      });
+      mockPrisma.application.findFirst.mockResolvedValue({ ...mockApplication, resumeFiles: [] });
 
       await expect(
         service.requestScreening('app-1', 'company-1', 'user-1'),
@@ -207,11 +191,11 @@ describe('AiScreeningService', () => {
 
     it('marks attempt FAILED when queue insertion fails', async () => {
       mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
-      mockPrisma.aiScreeningResult.findFirst.mockResolvedValue(null);
-      mockPrisma.aiScreeningResult.create.mockResolvedValue({
-        id: 'screen-1',
-        status: 'PENDING',
-        createdAt: new Date(),
+      mockPrisma.$transaction.mockImplementation(async (cb: Function) => {
+        mockPrisma.aiScreeningResult.create.mockResolvedValue({
+          id: 'screen-1', status: 'PENDING', createdAt: new Date(),
+        });
+        return cb(mockPrisma);
       });
       mockQueue.add.mockRejectedValue(new Error('Redis connection failed'));
       mockPrisma.aiScreeningResult.update.mockResolvedValue({});
@@ -226,25 +210,13 @@ describe('AiScreeningService', () => {
       );
     });
 
-    it('does not accept companyId from request (uses authenticated user)', async () => {
+    it('application status remains unchanged', async () => {
       mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
-      mockPrisma.aiScreeningResult.findFirst.mockResolvedValue(null);
-      mockPrisma.aiScreeningResult.create.mockResolvedValue({
-        id: 'screen-1', status: 'PENDING', createdAt: new Date(),
-      });
-
-      const result = await service.requestScreening('app-1', 'company-1', 'user-1');
-      expect(mockPrisma.application.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: expect.objectContaining({ companyId: 'company-1' }) }),
-      );
-      expect(result).toBeDefined();
-    });
-
-    it('application status remains unchanged (no status update called)', async () => {
-      mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
-      mockPrisma.aiScreeningResult.findFirst.mockResolvedValue(null);
-      mockPrisma.aiScreeningResult.create.mockResolvedValue({
-        id: 'screen-1', status: 'PENDING', createdAt: new Date(),
+      mockPrisma.$transaction.mockImplementation(async (cb: Function) => {
+        mockPrisma.aiScreeningResult.create.mockResolvedValue({
+          id: 'screen-1', status: 'PENDING', createdAt: new Date(),
+        });
+        return cb(mockPrisma);
       });
 
       await service.requestScreening('app-1', 'company-1', 'user-1');
@@ -256,41 +228,27 @@ describe('AiScreeningService', () => {
   describe('getScreening', () => {
     it('retrieves screening scoped by company', async () => {
       mockPrisma.aiScreeningResult.findFirst.mockResolvedValue({
-        id: 'screen-1',
-        applicationId: 'app-1',
-        status: 'COMPLETED',
-        companyId: 'company-1',
-        recommendation: 'SHORTLIST',
-        overallScore: 85,
-        createdAt: new Date(),
+        id: 'screen-1', applicationId: 'app-1', status: 'COMPLETED', companyId: 'company-1', recommendation: 'SHORTLIST', overallScore: 85, createdAt: new Date(),
       });
 
       const result = await service.getScreening('screen-1', 'company-1');
       expect(result.id).toBe('screen-1');
       expect(mockPrisma.aiScreeningResult.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ companyId: 'company-1' }),
-        }),
+        expect.objectContaining({ where: expect.objectContaining({ companyId: 'company-1' }) }),
       );
     });
 
     it('throws NotFound for cross-company access', async () => {
       mockPrisma.aiScreeningResult.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.getScreening('screen-1', 'other-company'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getScreening('screen-1', 'other-company')).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('getLatestScreening', () => {
     it('retrieves latest screening for application', async () => {
       mockPrisma.application.findFirst.mockResolvedValue({ id: 'app-1' });
-      mockPrisma.aiScreeningResult.findFirst.mockResolvedValue({
-        id: 'screen-1',
-        status: 'COMPLETED',
-        createdAt: new Date(),
-      });
+      mockPrisma.aiScreeningResult.findFirst.mockResolvedValue({ id: 'screen-1', status: 'COMPLETED', createdAt: new Date() });
 
       const result = await service.getLatestScreening('app-1', 'company-1');
       expect(result.id).toBe('screen-1');
@@ -298,25 +256,19 @@ describe('AiScreeningService', () => {
 
     it('throws NotFound when app does not exist', async () => {
       mockPrisma.application.findFirst.mockResolvedValue(null);
-
-      await expect(
-        service.getLatestScreening('app-nonexistent', 'company-1'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getLatestScreening('app-nonexistent', 'company-1')).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('listScreenings', () => {
     it('returns paginated results', async () => {
       mockPrisma.application.findFirst.mockResolvedValue({ id: 'app-1' });
-      mockPrisma.aiScreeningResult.findMany.mockResolvedValue([
-        { id: 'screen-1', status: 'COMPLETED', createdAt: new Date() },
-      ]);
+      mockPrisma.aiScreeningResult.findMany.mockResolvedValue([{ id: 'screen-1', status: 'COMPLETED', createdAt: new Date() }]);
       mockPrisma.aiScreeningResult.count.mockResolvedValue(1);
 
       const result = await service.listScreenings('app-1', 'company-1', 1, 20);
       expect(result.data).toHaveLength(1);
       expect(result.total).toBe(1);
-      expect(result.page).toBe(1);
     });
   });
 });

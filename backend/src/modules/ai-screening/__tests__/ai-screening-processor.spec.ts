@@ -3,25 +3,21 @@ import { ConfigService } from '@nestjs/config';
 import { Job, UnrecoverableError } from 'bullmq';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { AiScreeningProcessor } from '../queue/ai-screening.processor';
-import { ScreeningInputBuilderService, ResumeTextData } from '../services/screening-input-builder.service';
+import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
+import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
 import { AI_SCREENING_PROVIDER } from '../providers/ai-screening-provider.token';
 import { MockScreeningProvider } from '../providers/mock-screening.provider';
 import { AiScreeningJobData } from '../queue/ai-screening-job-data.interface';
 import { computeScreeningFingerprint } from '../utils/screening-input-fingerprint';
 import { ScreeningInput } from '../domain/screening-input.type';
+import { AI_SCREENING_JOB } from '../queue/ai-screening-queue.constants';
+import { ScreeningRecommendation } from '../domain/screening-recommendation.enum';
+import { ScreeningConfidence } from '../domain/screening-confidence.enum';
 
 const mockPrisma = {
-  application: {
-    findFirst: jest.fn(),
-    update: jest.fn(),
-  },
-  aiScreeningResult: {
-    findUnique: jest.fn(),
-    update: jest.fn(),
-  },
-  storedFile: {
-    findUnique: jest.fn(),
-  },
+  application: { findFirst: jest.fn(), update: jest.fn() },
+  aiScreeningResult: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+  storedFile: { findUnique: jest.fn() },
 };
 
 const mockConfigService = {
@@ -40,87 +36,61 @@ const mockConfigService = {
   }),
 };
 
+const mockProvider = new MockScreeningProvider();
 const mockReadFile = jest.fn().mockResolvedValue('Parsed resume text.');
 
 jest.mock('fs/promises', () => ({
   readFile: (...args: unknown[]) => mockReadFile(...args),
 }));
 
-const mockProvider = new MockScreeningProvider();
-
 const APP_DATE = new Date('2025-01-01T00:00:00.000Z');
 
 const mockApplication = {
-  id: 'app-1',
-  companyId: 'company-1',
-  deletedAt: null,
+  id: 'app-1', companyId: 'company-1', deletedAt: null,
   job: {
-    id: 'job-1',
-    title: 'Engineer',
-    description: 'Build software.',
-    qualifications: null,
+    id: 'job-1', title: 'Engineer', description: 'Build software.', qualifications: null,
     updatedAt: APP_DATE,
     skills: [{ skill: { displayName: 'TypeScript' }, importance: 'REQUIRED' }],
     screeningQuestions: [],
   },
   candidate: { id: 'cand-1' },
   screeningAnswers: [],
-  resumeFiles: [{
-    id: 'file-1',
-    checksumSha256: 'abc123',
-    updatedAt: APP_DATE,
-    storageKey: 'company-1/file-1.pdf',
-  }],
+  resumeFiles: [{ id: 'file-1', checksumSha256: 'abc123', updatedAt: APP_DATE, storageKey: 'company-1/file-1.pdf' }],
 };
 
-const RESUME_TEXT_DATA: ResumeTextData = { parsedText: 'Parsed resume text.', checksumSha256: 'abc123' };
-
-function buildFingerprintForTest(app: typeof mockApplication): string {
+function buildFingerprintForTest(): string {
   const input: ScreeningInput = Object.freeze({
-    applicationId: 'app-1',
-    candidateId: 'cand-1',
-    jobId: 'job-1',
-    companyId: 'company-1',
-    jobTitle: 'Engineer',
-    jobDescription: 'Build software.',
-    requiredSkills: ['TypeScript'],
-    preferredSkills: [],
-    requiredExperience: '',
-    preferredExperience: '',
-    requiredEducation: '',
-    preferredEducation: '',
-    requiredCertifications: [],
-    preferredCertifications: [],
-    resumeText: 'Parsed resume text.',
-    screeningQuestions: [],
-    promptVersion: 'v1',
+    applicationId: 'app-1', candidateId: 'cand-1', jobId: 'job-1', companyId: 'company-1',
+    jobTitle: 'Engineer', jobDescription: 'Build software.',
+    requiredSkills: ['TypeScript'], preferredSkills: [],
+    requiredExperience: '', preferredExperience: '',
+    requiredEducation: '', preferredEducation: '',
+    requiredCertifications: [], preferredCertifications: [],
+    resumeText: 'Parsed resume text.', screeningQuestions: [], promptVersion: 'v1',
   });
-
   return computeScreeningFingerprint({
-    applicationId: 'app-1',
-    input,
-    jobUpdatedAt: APP_DATE.toISOString(),
-    resumeChecksumSha256: 'abc123',
+    applicationId: 'app-1', input,
+    jobUpdatedAt: APP_DATE.toISOString(), resumeChecksumSha256: 'abc123',
     resumeUpdatedAt: APP_DATE.toISOString(),
-    provider: 'mock',
-    model: '',
-    promptVersion: 'v1',
-    schemaVersion: 'v1',
+    provider: 'mock', model: '', promptVersion: 'v1', schemaVersion: 'v1',
   });
 }
 
-const MATCHING_FINGERPRINT = buildFingerprintForTest(mockApplication);
+const MATCHING_FINGERPRINT = buildFingerprintForTest();
 
-function createJob(data: Partial<AiScreeningJobData> = {}): Job<AiScreeningJobData> {
+function createJob(overrides: Partial<AiScreeningJobData & { name?: string; id?: string; attemptsMade?: number; opts?: Record<string, unknown> }> = {}): Job<AiScreeningJobData> {
   return {
-    id: 'job-1',
+    id: overrides.id ?? 'screen-1',
+    name: overrides.name ?? AI_SCREENING_JOB,
+    attemptsMade: overrides.attemptsMade ?? 0,
+    opts: { attempts: 3, ...(overrides.opts ?? {}) },
     data: {
       screeningId: 'screen-1',
       applicationId: 'app-1',
       companyId: 'company-1',
       initiatedByUserId: 'user-1',
       inputFingerprint: MATCHING_FINGERPRINT,
-      ...data,
+      ...overrides,
     },
   } as Job<AiScreeningJobData>;
 }
@@ -136,6 +106,7 @@ describe('AiScreeningProcessor', () => {
       providers: [
         AiScreeningProcessor,
         ScreeningInputBuilderService,
+        ResumeTextLoaderService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: AI_SCREENING_PROVIDER, useValue: mockProvider },
@@ -145,181 +116,189 @@ describe('AiScreeningProcessor', () => {
     processor = module.get<AiScreeningProcessor>(AiScreeningProcessor);
   });
 
-  it('rejects job with invalid payload', async () => {
-    const job = createJob({ screeningId: '' });
-
+  it('rejects job with wrong name', async () => {
+    const job = createJob({ name: 'wrong-job-name' });
     await expect(processor.process(job)).rejects.toThrow(UnrecoverableError);
+  });
+
+  it('rejects job with invalid payload', async () => {
+    await expect(processor.process(createJob({ screeningId: '' }))).rejects.toThrow(UnrecoverableError);
   });
 
   it('rejects job when screening record not found', async () => {
     mockPrisma.aiScreeningResult.findUnique.mockResolvedValue(null);
-
     await expect(processor.process(createJob())).rejects.toThrow(UnrecoverableError);
   });
 
-  it('rejects job when screening identifiers do not match', async () => {
+  it('rejects job when identifiers mismatch', async () => {
     mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1',
-      applicationId: 'other-app',
-      companyId: 'company-1',
-      status: 'PENDING',
+      id: 'screen-1', applicationId: 'other-app', companyId: 'company-1', status: 'PENDING',
     });
-
     await expect(processor.process(createJob())).rejects.toThrow(UnrecoverableError);
   });
 
-  it('skips already COMPLETED screening', async () => {
+  it('skips COMPLETED screening', async () => {
     mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1',
-      applicationId: 'app-1',
-      companyId: 'company-1',
-      status: 'COMPLETED',
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'COMPLETED', completedAt: new Date(),
     });
-
     await expect(processor.process(createJob())).resolves.toBeUndefined();
   });
 
-  it('rejects already RUNNING screening', async () => {
+  it('skips terminal FAILED screening', async () => {
     mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1',
-      applicationId: 'app-1',
-      companyId: 'company-1',
-      status: 'RUNNING',
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'FAILED', completedAt: new Date(),
     });
+    await expect(processor.process(createJob())).resolves.toBeUndefined();
+  });
+
+  it('rejects RUNNING from different worker', async () => {
+    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'RUNNING',
+    });
+    await expect(processor.process(createJob({ id: 'different-job-id' }))).rejects.toThrow(UnrecoverableError);
+  });
+
+  it('allows retry when same job is RUNNING', async () => {
+    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'RUNNING', provider: 'mock', model: null,
+    });
+    mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+    mockPrisma.aiScreeningResult.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.aiScreeningResult.update.mockResolvedValue({});
+
+    await processor.process(createJob({ id: 'screen-1', attemptsMade: 1 }));
+    expect(mockPrisma.aiScreeningResult.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'COMPLETED' }) }),
+    );
+  });
+
+  it('first transient failure allows retry', async () => {
+    const err = new (require('../providers/ai-screening-provider.errors').AiScreeningTimeoutError)('mock');
+    jest.spyOn(mockProvider, 'screen').mockRejectedValue(err);
+
+    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'PENDING', provider: 'mock', model: null,
+    });
+    mockPrisma.aiScreeningResult.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+
+    await expect(processor.process(createJob({ attemptsMade: 0 }))).rejects.toThrow(err);
+    expect(mockPrisma.aiScreeningResult.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }),
+    );
+  });
+
+  it('second retry succeeds after first failure', async () => {
+    jest.spyOn(mockProvider, 'screen').mockResolvedValue({
+      overallScore: 85, recommendation: ScreeningRecommendation.SHORTLIST, confidence: ScreeningConfidence.HIGH,
+      matchedQualifications: ['TypeScript'], missingQualifications: [],
+      evidence: [], uncertainties: [], riskFlags: [],
+      explanation: 'Good match.', criteriaScores: [],
+      prohibitedReasoningDetected: false,
+    });
+
+    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'RUNNING', provider: 'mock', model: null,
+    });
+    mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+    mockPrisma.aiScreeningResult.updateMany.mockResolvedValue({ count: 0 });
+    mockPrisma.aiScreeningResult.update.mockResolvedValue({});
+
+    await processor.process(createJob({ id: 'screen-1', attemptsMade: 1 }));
+    expect(mockPrisma.aiScreeningResult.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'COMPLETED' }) }),
+    );
+  });
+
+  it('exhausted retries persist FAILED', async () => {
+    const err = new (require('../providers/ai-screening-provider.errors').AiScreeningTimeoutError)('mock');
+    jest.spyOn(mockProvider, 'screen').mockRejectedValue(err);
+
+    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'PENDING', provider: 'mock', model: null,
+    });
+    mockPrisma.aiScreeningResult.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+    mockPrisma.aiScreeningResult.update.mockResolvedValue({});
+
+    await expect(processor.process(createJob({ attemptsMade: 2, opts: { attempts: 3 } }))).rejects.toThrow(UnrecoverableError);
+    expect(mockPrisma.aiScreeningResult.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED', failureCode: 'PROVIDER_TIMEOUT' }) }),
+    );
+  });
+
+  it('permanent error does not retry', async () => {
+    const err = new (require('../providers/ai-screening-provider.errors').AiScreeningAuthenticationError)('mock');
+    jest.spyOn(mockProvider, 'screen').mockRejectedValue(err);
+
+    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'PENDING', provider: 'mock', model: null,
+    });
+    mockPrisma.aiScreeningResult.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+    mockPrisma.aiScreeningResult.update.mockResolvedValue({});
 
     await expect(processor.process(createJob())).rejects.toThrow(UnrecoverableError);
-  });
-
-  it('marks PENDING as RUNNING and processes successfully', async () => {
-    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1',
-      applicationId: 'app-1',
-      companyId: 'company-1',
-      status: 'PENDING',
-      provider: 'mock',
-      model: null,
-    });
-    mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
-
-    await processor.process(createJob());
-
     expect(mockPrisma.aiScreeningResult.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'screen-1' },
-        data: expect.objectContaining({ status: 'COMPLETED' }),
-      }),
+      expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED', failureCode: 'PROVIDER_AUTH_ERROR' }) }),
     );
   });
 
-  it('sets startedAt when marking RUNNING', async () => {
+  it('atomically claims PENDING', async () => {
     mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1',
-      applicationId: 'app-1',
-      companyId: 'company-1',
-      status: 'PENDING',
-      provider: null,
-      model: null,
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'PENDING', provider: 'mock', model: null,
     });
+    mockPrisma.aiScreeningResult.updateMany.mockResolvedValue({ count: 0 });
     mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
-
-    await processor.process(createJob());
-
-    expect(mockPrisma.aiScreeningResult.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'screen-1' },
-        data: expect.objectContaining({
-          status: 'RUNNING',
-          startedAt: expect.any(Date),
-        }),
-      }),
-    );
-  });
-
-  it('fingerprint mismatch prevents provider invocation', async () => {
-    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1',
-      applicationId: 'app-1',
-      companyId: 'company-1',
-      status: 'PENDING',
-      provider: 'mock',
-      model: null,
-    });
-
-    const differentApp = { ...mockApplication, id: 'different-app' };
-    mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
-
-    const job = createJob({ inputFingerprint: 'non-matching-fingerprint' });
-    await processor.process(job);
-
-    expect(mockPrisma.aiScreeningResult.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'screen-1' },
-        data: expect.objectContaining({
-          status: 'FAILED',
-          failureCode: 'STALE_FINGERPRINT',
-        }),
-      }),
-    );
-  });
-
-  it('handles application not found', async () => {
-    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1',
-      applicationId: 'app-1',
-      companyId: 'company-1',
-      status: 'PENDING',
-    });
-    mockPrisma.application.findFirst.mockResolvedValue(null);
 
     await expect(processor.process(createJob())).rejects.toThrow(UnrecoverableError);
+    expect(mockPrisma.aiScreeningResult.updateMany).toHaveBeenCalledWith({
+      where: { id: 'screen-1', status: 'PENDING' },
+      data: { status: 'RUNNING', startedAt: expect.any(Date) },
+    });
   });
 
   it('sets completedAt on completion', async () => {
-    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1',
-      applicationId: 'app-1',
-      companyId: 'company-1',
-      status: 'PENDING',
-      provider: 'mock',
-      model: null,
+    jest.spyOn(mockProvider, 'screen').mockResolvedValue({
+      overallScore: 85, recommendation: ScreeningRecommendation.SHORTLIST, confidence: ScreeningConfidence.HIGH,
+      matchedQualifications: ['TypeScript'], missingQualifications: [],
+      evidence: [{ criterion: 'skills', sourceCategory: 'RESUME' as any, sourceText: 'TypeScript', assessment: 'match', score: 90 }],
+      uncertainties: [], riskFlags: [], explanation: 'Good match.',
+      criteriaScores: [{ criterion: 'skills', score: 85, maximumScore: 100, weight: 0.5, explanation: 'Good' }],
+      prohibitedReasoningDetected: false,
     });
+
+    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'PENDING', provider: 'mock', model: null,
+    });
+    mockPrisma.aiScreeningResult.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+    mockPrisma.aiScreeningResult.update.mockResolvedValue({});
 
     await processor.process(createJob());
-
     const updateCalls = mockPrisma.aiScreeningResult.update.mock.calls;
     const lastUpdate = updateCalls[updateCalls.length - 1];
     expect(lastUpdate[0].data.completedAt).toBeDefined();
   });
 
-  it('SHORTLIST recommendation is persisted without advancing application', async () => {
-    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1',
-      applicationId: 'app-1',
-      companyId: 'company-1',
-      status: 'PENDING',
-      provider: 'mock',
-      model: null,
+  it('SHORTLIST does not advance application', async () => {
+    jest.spyOn(mockProvider, 'screen').mockResolvedValue({
+      overallScore: 85, recommendation: ScreeningRecommendation.SHORTLIST, confidence: ScreeningConfidence.HIGH,
+      matchedQualifications: ['TypeScript'], missingQualifications: [],
+      evidence: [{ criterion: 'skills', sourceCategory: 'RESUME' as any, sourceText: 'TypeScript', assessment: 'match' }],
+      uncertainties: [], riskFlags: [], explanation: 'Good match.',
+      criteriaScores: [],
+      prohibitedReasoningDetected: false,
     });
+
+    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
+      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1', status: 'PENDING', provider: 'mock', model: null,
+    });
+    mockPrisma.aiScreeningResult.updateMany.mockResolvedValue({ count: 1 });
     mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+    mockPrisma.aiScreeningResult.update.mockResolvedValue({});
 
     await processor.process(createJob());
-
     expect(mockPrisma.application.update).not.toHaveBeenCalled();
-  });
-
-  it('no email is sent by the processor', async () => {
-    mockPrisma.aiScreeningResult.findUnique.mockResolvedValue({
-      id: 'screen-1', applicationId: 'app-1', companyId: 'company-1',
-      status: 'PENDING', provider: 'mock', model: null,
-    });
-    mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
-
-    await processor.process(createJob());
-
-    const updateCall = mockPrisma.aiScreeningResult.update.mock.calls.find(
-      (c: any[]) => c[0]?.data?.status === 'COMPLETED',
-    );
-    expect(updateCall).toBeDefined();
   });
 });

@@ -1,53 +1,36 @@
-import {
-  Processor,
-  WorkerHost,
-  OnWorkerEvent,
-} from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Inject, Logger } from '@nestjs/common';
 import { Job, UnrecoverableError } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../database/prisma/prisma.service';
-import { AI_SCREENING_QUEUE } from './ai-screening-queue.constants';
+import { AI_SCREENING_QUEUE, AI_SCREENING_JOB } from './ai-screening-queue.constants';
 import { AiScreeningJobData } from './ai-screening-job-data.interface';
 import { AI_SCREENING_PROVIDER } from '../providers/ai-screening-provider.token';
 import { AiScreeningProvider } from '../providers/ai-screening-provider.interface';
-import { ScreeningInputBuilderService, ResumeTextData } from '../services/screening-input-builder.service';
+import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
+import { ResumeTextLoaderService, ResumeTextData } from '../services/resume-text-loader.service';
 import { computeScreeningFingerprint } from '../utils/screening-input-fingerprint';
-import {
-  AiScreeningProviderError,
-} from '../providers/ai-screening-provider.errors';
+import { AiScreeningProviderError } from '../providers/ai-screening-provider.errors';
 import { ScreeningInput } from '../domain/screening-input.type';
-import { readFile } from 'fs/promises';
-import { resolve } from 'path';
 
-@Processor(AI_SCREENING_QUEUE, {
-  concurrency: 3,
-})
+const STATIC_CONCURRENCY = 3;
+
+@Processor(AI_SCREENING_QUEUE, { concurrency: STATIC_CONCURRENCY })
 export class AiScreeningProcessor extends WorkerHost {
   private readonly logger = new Logger(AiScreeningProcessor.name);
   private readonly promptVersion: string;
   private readonly schemaVersion: string;
-  private readonly uploadDir: string;
-  private readonly resumeTextParserSuffix: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly inputBuilder: ScreeningInputBuilderService,
+    private readonly resumeLoader: ResumeTextLoaderService,
     @Inject(AI_SCREENING_PROVIDER) private readonly provider: AiScreeningProvider,
     configService: ConfigService,
   ) {
     super();
-    const concurrency = parseInt(
-      configService.get<string>('aiScreening.workerConcurrency') || '3',
-      10,
-    );
-    if (isNaN(concurrency) || concurrency < 1 || concurrency > 20) {
-      throw new Error('AI_SCREENING_WORKER_CONCURRENCY must be between 1 and 20');
-    }
     this.promptVersion = configService.get<string>('aiScreening.promptVersion') || 'v1';
     this.schemaVersion = configService.get<string>('aiScreening.schemaVersion') || 'v1';
-    this.uploadDir = configService.get<string>('app.uploadDir') || './uploads';
-    this.resumeTextParserSuffix = configService.get<string>('app.resumeTextParserSuffix') || '_parsed.txt';
   }
 
   async process(job: Job<AiScreeningJobData>): Promise<void> {
@@ -55,6 +38,10 @@ export class AiScreeningProcessor extends WorkerHost {
 
     if (!screeningId || !applicationId || !companyId) {
       throw new UnrecoverableError('Invalid job payload: missing required identifiers');
+    }
+
+    if (job.name !== AI_SCREENING_JOB) {
+      throw new UnrecoverableError(`Unexpected job name: ${job.name}. Expected: ${AI_SCREENING_JOB}`);
     }
 
     const screening = await this.prisma.aiScreeningResult.findUnique({
@@ -69,19 +56,32 @@ export class AiScreeningProcessor extends WorkerHost {
       throw new UnrecoverableError('Screening record does not match job identifiers');
     }
 
-    if (screening.status === 'COMPLETED') {
-      this.logger.warn(`Screening ${screeningId} already completed, skipping`);
+    if (screening.status === 'COMPLETED' ||
+        (screening.status === 'FAILED' && screening.completedAt != null)) {
+      this.logger.warn(`Screening ${screeningId} already ${screening.status}, skipping`);
       return;
     }
 
     if (screening.status === 'RUNNING') {
-      throw new UnrecoverableError(`Screening ${screeningId} is already RUNNING by another worker`);
+      const isSameJob = job.id === screeningId;
+      if (!isSameJob) {
+        throw new UnrecoverableError(`Screening ${screeningId} is already RUNNING by another worker`);
+      }
+      if (job.attemptsMade === 0) {
+        throw new UnrecoverableError(`Screening ${screeningId} is already RUNNING`);
+      }
+      this.logger.warn(`Screening ${screeningId} retry attempt ${job.attemptsMade + 1}, continuing`);
     }
 
-    await this.prisma.aiScreeningResult.update({
-      where: { id: screeningId },
-      data: { status: 'RUNNING', startedAt: new Date() },
-    });
+    if (screening.status === 'PENDING') {
+      const update = await this.prisma.aiScreeningResult.updateMany({
+        where: { id: screeningId, status: 'PENDING' },
+        data: { status: 'RUNNING', startedAt: new Date() },
+      });
+      if (update.count === 0) {
+        throw new UnrecoverableError(`Screening ${screeningId} was claimed by another worker`);
+      }
+    }
 
     let screeningInput: ScreeningInput;
     try {
@@ -111,13 +111,13 @@ export class AiScreeningProcessor extends WorkerHost {
         throw new UnrecoverableError('Application not found or deleted');
       }
 
-      const job = application.job;
+      const jobRecord = application.job;
       const resumeFile = application.resumeFiles[0];
       if (!resumeFile) {
         throw new UnrecoverableError('No resume file available');
       }
 
-      const resumeText = await this.loadResumeText(resumeFile.storageKey);
+      const resumeText = await this.resumeLoader.load(resumeFile.storageKey);
       if (!resumeText || resumeText.parsedText.trim().length < 10) {
         throw new UnrecoverableError('Resume has no parsed text');
       }
@@ -131,7 +131,7 @@ export class AiScreeningProcessor extends WorkerHost {
       const currentFingerprint = computeScreeningFingerprint({
         applicationId,
         input: screeningInput,
-        jobUpdatedAt: job.updatedAt.toISOString(),
+        jobUpdatedAt: jobRecord.updatedAt.toISOString(),
         resumeChecksumSha256: resumeFile.checksumSha256,
         resumeUpdatedAt: resumeFile.updatedAt.toISOString(),
         provider: screening.provider ?? this.provider.providerName,
@@ -141,20 +141,13 @@ export class AiScreeningProcessor extends WorkerHost {
       });
 
       if (currentFingerprint !== inputFingerprint) {
-        await this.prisma.aiScreeningResult.update({
-          where: { id: screeningId },
-          data: {
-            status: 'FAILED',
-            failureCode: 'STALE_FINGERPRINT',
-            failureMessageSafe: 'Source data changed since screening was requested. Please re-request.',
-            completedAt: new Date(),
-          },
-        });
+        await this.failTerminal(screeningId, 'STALE_FINGERPRINT',
+          'Source data changed since screening was requested. Please re-request.');
         return;
       }
     } catch (err) {
       if (err instanceof UnrecoverableError) {
-        await this.failPermanent(screeningId, err.message);
+        await this.failTerminal(screeningId, 'LOAD_ERROR', err.message);
         throw err;
       }
       throw err;
@@ -165,20 +158,28 @@ export class AiScreeningProcessor extends WorkerHost {
       result = await this.provider.screen(screeningInput);
     } catch (err) {
       if (err instanceof UnrecoverableError) {
-        await this.failPermanent(screeningId, err.message);
+        await this.failTerminal(screeningId, 'FATAL_ERROR', err.message);
         throw err;
       }
 
       if (err instanceof AiScreeningProviderError) {
         if (!err.retryable) {
-          await this.failPermanent(screeningId, err.safeMessage, err.safeCode);
+          await this.failTerminal(screeningId, err.safeCode, err.safeMessage);
           throw new UnrecoverableError(err.safeMessage);
         }
-        this.logger.warn(`Retryable provider error for screening ${screeningId}: ${err.message}`);
+
+        const isLastAttempt = job.attemptsMade >= (job.opts.attempts ?? 3) - 1;
+        if (isLastAttempt) {
+          this.logger.warn(`Screening ${screeningId} exhausted retries (${job.attemptsMade + 1}/${job.opts.attempts ?? 3})`);
+          await this.failTerminal(screeningId, err.safeCode, err.safeMessage);
+          throw new UnrecoverableError(err.safeMessage);
+        }
+
+        this.logger.warn(`Screening ${screeningId} retryable error (attempt ${job.attemptsMade + 1}): ${err.message}`);
         throw err;
       }
 
-      this.logger.error(`Unexpected provider error for screening ${screeningId}: ${(err as Error).message}`);
+      this.logger.error(`Screening ${screeningId} unexpected provider error: ${(err as Error).message}`);
       throw err;
     }
 
@@ -211,7 +212,11 @@ export class AiScreeningProcessor extends WorkerHost {
     }
   }
 
-  private async failPermanent(screeningId: string, messageSafe: string, failureCode = 'PROCESSING_ERROR'): Promise<void> {
+  private async failTerminal(
+    screeningId: string,
+    failureCode: string,
+    messageSafe: string,
+  ): Promise<void> {
     try {
       await this.prisma.aiScreeningResult.update({
         where: { id: screeningId },
@@ -222,18 +227,8 @@ export class AiScreeningProcessor extends WorkerHost {
           completedAt: new Date(),
         },
       });
-    } catch (updateErr) {
-      this.logger.error(`Failed to mark screening ${screeningId} as FAILED: ${(updateErr as Error).message}`);
-    }
-  }
-
-  private async loadResumeText(storageKey: string): Promise<ResumeTextData | null> {
-    const parsedPath = resolve(this.uploadDir, `${storageKey}${this.resumeTextParserSuffix}`);
-    try {
-      const parsedText = await readFile(parsedPath, 'utf-8');
-      return { parsedText, checksumSha256: '' };
-    } catch {
-      return null;
+    } catch (err) {
+      this.logger.error(`Failed to mark screening ${screeningId} as FAILED: ${(err as Error).message}`);
     }
   }
 

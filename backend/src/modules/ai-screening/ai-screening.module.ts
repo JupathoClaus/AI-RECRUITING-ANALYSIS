@@ -1,4 +1,4 @@
-import { Module, OnModuleInit, Logger, Optional, Inject } from '@nestjs/common';
+import { Module, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import OpenAI from 'openai';
@@ -12,6 +12,7 @@ import { AiScreeningController } from './ai-screening.controller';
 import { AiScreeningService } from './ai-screening.service';
 import { AiScreeningProcessor } from './queue/ai-screening.processor';
 import { ScreeningInputBuilderService } from './services/screening-input-builder.service';
+import { ResumeTextLoaderService } from './services/resume-text-loader.service';
 import { AI_SCREENING_QUEUE } from './queue/ai-screening-queue.constants';
 
 function createAiScreeningProvider(
@@ -54,6 +55,7 @@ function createAiScreeningProvider(
   controllers: [AiScreeningController],
   providers: [
     ScreeningInputBuilderService,
+    ResumeTextLoaderService,
     AiScreeningService,
     AiScreeningProcessor,
     {
