@@ -24,13 +24,13 @@ describe("ai-interviews.api", () => {
   })
 
   describe("sendAiInterviewInvitation", () => {
-    it("calls POST /ai-interviews/:id/send with email", async () => {
-      vi.mocked(apiRequest).mockResolvedValue({ sent: true, rawCode: "WXYZ-1234" })
+    it("calls POST /ai-interviews/:id/send with rawCode", async () => {
+      vi.mocked(apiRequest).mockResolvedValue({ sent: true, sentAt: "2024-01-01", codeHint: "WXYZ-1234" })
       const { sendAiInterviewInvitation } = await import("../ai-interviews.api")
-      const result = await sendAiInterviewInvitation("int-1", { to: "c@test.com" })
+      const result = await sendAiInterviewInvitation("int-1", { rawCode: "WXYZ-1234" })
       expect(apiRequest).toHaveBeenCalledWith("/ai-interviews/int-1/send", {
         method: "POST",
-        body: { to: "c@test.com" },
+        body: { rawCode: "WXYZ-1234" },
       })
       expect(result.sent).toBe(true)
     })
@@ -38,7 +38,7 @@ describe("ai-interviews.api", () => {
 
   describe("verifyInterviewCode", () => {
     it("calls POST /ai-interviews/public/verify-code with code", async () => {
-      vi.mocked(apiRequest).mockResolvedValue({ accessToken: "tok-1", candidateName: "Daniel", jobTitle: "Developer" })
+      vi.mocked(apiRequest).mockResolvedValue({ accessToken: "tok-1", candidateDisplayName: "Daniel Kato", jobTitle: "Developer" })
       const { verifyInterviewCode } = await import("../ai-interviews.api")
       const result = await verifyInterviewCode("ABCD-EFGH")
       expect(apiRequest).toHaveBeenCalledWith("/ai-interviews/public/verify-code", {

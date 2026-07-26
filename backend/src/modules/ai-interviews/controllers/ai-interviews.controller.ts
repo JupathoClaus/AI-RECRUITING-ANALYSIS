@@ -36,7 +36,7 @@ export class AiInterviewsController {
   @RequirePermissions('interviews.read')
   @ApiOperation({ summary: 'Get AI interview by ID' })
   async findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedPrincipal) {
-    return this.aiInterviewsService.findById(id);
+    return this.aiInterviewsService.findById(id, user.activeCompanyId!);
   }
 
   @Get('by-application/:applicationId')
@@ -44,6 +44,14 @@ export class AiInterviewsController {
   @ApiOperation({ summary: 'Get AI interviews for an application' })
   async findByApplication(@Param('applicationId') applicationId: string, @CurrentUser() user: AuthenticatedPrincipal) {
     return this.aiInterviewsService.findByApplication(applicationId, user.activeCompanyId!);
+  }
+
+  @Get(':id/preview')
+  @RequirePermissions('interviews.read')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Preview interview invitation details' })
+  async previewInvitation(@Param('id') id: string, @CurrentUser() user: AuthenticatedPrincipal) {
+    return this.aiInterviewsService.previewInvitation(id, user.activeCompanyId!);
   }
 
   @Post(':id/regenerate-code')

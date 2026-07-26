@@ -8,7 +8,7 @@ import {
   HttpStatus,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AiInterviewsService } from '../services/ai-interviews.service';
 import { VerifyCodeDto } from '../dto/verify-code.dto';
 import { StartAiInterviewDto } from '../dto/start-ai-interview.dto';

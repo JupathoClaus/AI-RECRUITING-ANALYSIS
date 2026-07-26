@@ -9,6 +9,7 @@ import emailConfig from './loaders/email.config';
 import aiScreeningConfig from './loaders/ai-screening.config';
 import resumeExtractionConfig from './loaders/resume-extraction.config';
 import tavusConfig from './loaders/tavus.config';
+import aiInterviewConfig from './loaders/ai-interview.config';
 
 export default [
   appConfig,
@@ -22,6 +23,7 @@ export default [
   aiScreeningConfig,
   resumeExtractionConfig,
   tavusConfig,
+  aiInterviewConfig,
 ];
 
 export {
@@ -36,4 +38,5 @@ export {
   aiScreeningConfig,
   resumeExtractionConfig,
   tavusConfig,
+  aiInterviewConfig,
 };

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { clearInterviewSession } from "@/lib/interview-session"
 import { completeAiInterview } from "@/lib/api/ai-interviews.api"
 
 export default function InterviewSessionPage() {
@@ -45,6 +46,7 @@ export default function InterviewSessionPage() {
     } catch {
       // Continue to completion page even if API call fails
     }
+    clearInterviewSession()
     router.push("/interview/complete")
   }
 
@@ -95,7 +97,7 @@ export default function InterviewSessionPage() {
             <div className="aspect-video rounded-lg bg-background flex items-center justify-center">
               <div className="space-y-3">
                 <p className="text-xl font-semibold text-foreground">AI Interview Simulation</p>
-                <p className="text-muted">This is a mock interview session.</p>
+                <p className="text-muted">Demo interviewer — Mock mode</p>
                 <p className="text-sm text-muted">In production, the Tavus AI interviewer will appear here.</p>
               </div>
             </div>

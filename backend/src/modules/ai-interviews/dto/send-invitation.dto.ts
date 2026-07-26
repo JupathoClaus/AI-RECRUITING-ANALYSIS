@@ -1,10 +1,13 @@
-import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class SendInvitationDto {
-  @ApiProperty({ description: 'Candidate email address' })
-  @IsEmail()
-  to: string;
+  @ApiPropertyOptional({ description: 'Raw interview code to verify before sending' })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(20)
+  rawCode?: string;
 
   @ApiPropertyOptional({ description: 'Optional recruiter note for email' })
   @IsOptional()

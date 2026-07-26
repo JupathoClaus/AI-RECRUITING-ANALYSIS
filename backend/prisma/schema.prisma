@@ -2461,57 +2461,57 @@ enum AiInterviewTranscriptStatus {
 // ─── AI Interview Model ────────────────────────────────────────────────────────
 
 model AiInterview {
-  id                        String                      @id @default(uuid())
-  applicationId             String
-  companyId                 String
-  provider                  AiInterviewProvider          @default(TAVUS)
-  status                    AiInterviewStatus            @default(CREATED)
+  id            String              @id @default(uuid())
+  applicationId String
+  companyId     String
+  provider      AiInterviewProvider @default(TAVUS)
+  status        AiInterviewStatus   @default(CREATED)
 
   // Interview code
-  codeHash                  String
-  codeDisplayHint           String?
+  codeHash        String
+  codeDisplayHint String?
 
   // Invitation tracking
-  invitationSentAt          DateTime?
-  invitationEmail           String?
+  invitationSentAt DateTime?
+  invitationEmail  String?
 
   // Access tracking
-  accessedAt                DateTime?
+  accessedAt DateTime?
 
   // Interview execution
-  startedAt                 DateTime?
-  completedAt               DateTime?
-  cancelledAt               DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  cancelledAt DateTime?
 
   // Tavus integration
-  tavusConversationId       String?
-  tavusConversationUrl      String?
-  tavusStatus               String?
-  tavusMeetingToken         String?
+  tavusConversationId  String?
+  tavusConversationUrl String?
+  tavusStatus          String?
+  tavusMeetingToken    String?
 
   // Transcript
-  transcriptStatus          AiInterviewTranscriptStatus  @default(NOT_REQUESTED)
-  transcriptUrl             String?
+  transcriptStatus AiInterviewTranscriptStatus @default(NOT_REQUESTED)
+  transcriptUrl    String?
 
   // Config
-  language                  String                      @default("en")
-  estimatedDurationMinutes  Int                         @default(30)
-  availableFrom             DateTime?
-  expiresAt                 DateTime?
+  language                 String    @default("en")
+  estimatedDurationMinutes Int       @default(30)
+  availableFrom            DateTime?
+  expiresAt                DateTime?
 
   // Notes
-  notes                     String?
-  cancelledByMembershipId   String?
+  notes                   String?
+  cancelledByMembershipId String?
 
   // Relations
-  application               Application                 @relation(fields: [applicationId], references: [id])
-  company                   Company                     @relation(fields: [companyId], references: [id])
-  createdByMembershipId     String?
-  createdBy                 CompanyMembership?           @relation("AiInterviewCreatedBy", fields: [createdByMembershipId], references: [id])
+  application           Application        @relation(fields: [applicationId], references: [id])
+  company               Company            @relation(fields: [companyId], references: [id])
+  createdByMembershipId String?
+  createdBy             CompanyMembership? @relation("AiInterviewCreatedBy", fields: [createdByMembershipId], references: [id])
 
   // Timestamps
-  createdAt                 DateTime                    @default(now())
-  updatedAt                 DateTime                    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([codeHash])
   @@index([applicationId])

@@ -268,9 +268,21 @@ async function main() {
     status: 'ACTIVE',
     source: 'RECRUITER_CREATED',
     totalExperienceYears: 6,
-    skills: JSON.stringify(['TypeScript', 'React', 'Node.js', 'PostgreSQL', 'REST APIs', 'Git', 'Team Leadership']),
   };
   await prisma.candidate.upsert({ where: { id: CANDIDATE_DANIEL }, update: danielData, create: danielData });
+
+  // Add skills via relation
+  const danielSkills = ['TypeScript', 'React', 'Node.js', 'PostgreSQL', 'REST APIs', 'Git', 'Team Leadership'];
+  for (const skillName of danielSkills) {
+    const skill = await prisma.skill.findFirst({ where: { displayName: { equals: skillName, mode: 'insensitive' } } });
+    if (skill) {
+      await prisma.candidateSkill.upsert({
+        where: { candidateId_skillId: { candidateId: CANDIDATE_DANIEL, skillId: skill.id } },
+        update: {},
+        create: { candidateId: CANDIDATE_DANIEL, skillId: skill.id },
+      });
+    }
+  }
   console.log(`  Candidate Daniel Kato (${demoEmail}) ready`);
 
   // Company candidate for Daniel

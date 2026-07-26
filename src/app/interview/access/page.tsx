@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { verifyInterviewCode } from "@/lib/api/ai-interviews.api"
+import { clearInterviewSession } from "@/lib/interview-session"
 
 export default function InterviewAccessPage() {
   const router = useRouter()
@@ -14,6 +15,10 @@ export default function InterviewAccessPage() {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState("")
 
+  React.useEffect(() => {
+    clearInterviewSession()
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!code.trim()) return
@@ -21,9 +26,10 @@ export default function InterviewAccessPage() {
     setError("")
 
     try {
+      clearInterviewSession()
       const result = await verifyInterviewCode(code.trim())
       sessionStorage.setItem("ai-interview-access-token", result.accessToken)
-      sessionStorage.setItem("ai-interview-candidate-name", result.candidateName)
+      sessionStorage.setItem("ai-interview-candidate-name", result.candidateDisplayName)
       sessionStorage.setItem("ai-interview-job-title", result.jobTitle)
       router.push("/interview/welcome")
     } catch (err: unknown) {

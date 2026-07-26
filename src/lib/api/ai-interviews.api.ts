@@ -68,7 +68,7 @@ export interface AiInterviewDetail {
 }
 
 export interface SendInvitationRequest {
-  to: string
+  rawCode?: string
   note?: string
 }
 
@@ -76,12 +76,21 @@ export interface SendInvitationResponse {
   sent: boolean
   sentAt: string
   codeHint: string
-  rawCode: string
 }
 
 export interface RegenerateCodeResponse {
   rawCode: string
   displayHint: string
+}
+
+export interface PreviewInvitationResponse {
+  candidateName: string
+  candidateEmail: string
+  jobTitle: string
+  companyName: string
+  interviewCode: string
+  estimatedDurationMinutes: number
+  expiresAt: string | null
 }
 
 // Recruiter API
@@ -98,6 +107,10 @@ export async function getAiInterview(id: string): Promise<AiInterviewDetail> {
 
 export async function getAiInterviewsByApplication(applicationId: string): Promise<AiInterviewDetail[]> {
   return apiRequest<AiInterviewDetail[]>(`/ai-interviews/by-application/${applicationId}`)
+}
+
+export async function previewAiInterviewInvitation(id: string): Promise<PreviewInvitationResponse> {
+  return apiRequest<PreviewInvitationResponse>(`/ai-interviews/${id}/preview`)
 }
 
 export async function regenerateAiInterviewCode(id: string): Promise<RegenerateCodeResponse> {
@@ -122,9 +135,10 @@ export async function cancelAiInterview(id: string): Promise<{ cancelled: boolea
 // Public candidate API
 export async function verifyInterviewCode(code: string): Promise<{
   accessToken: string
-  interviewId: string
-  candidateName: string
+  candidateFirstName: string
+  candidateDisplayName: string
   jobTitle: string
+  organizationName: string
   language: string
   estimatedDurationMinutes: number
   expiresAt: string | null
@@ -138,10 +152,10 @@ export async function verifyInterviewCode(code: string): Promise<{
 }
 
 export async function getInterviewSession(accessToken: string): Promise<{
-  candidateName: string
   candidateFirstName: string
+  candidateDisplayName: string
   jobTitle: string
-  jobDescription: string | null
+  organizationName: string
   language: string
   estimatedDurationMinutes: number
   expiresAt: string | null
@@ -159,7 +173,7 @@ export async function startAiInterview(
 ): Promise<{
   conversationUrl: string
   conversationId: string
-  meetingToken: string | null
+  meetingToken?: string | null
   provider: AiInterviewProvider
   status: AiInterviewStatus
 }> {

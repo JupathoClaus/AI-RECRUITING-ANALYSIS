@@ -62,7 +62,6 @@ export function SendAiInterviewModal({
   open,
   onOpenChange,
   candidateName,
-  candidateEmail,
   jobTitle,
   applicationId,
 }: SendAiInterviewModalProps) {
@@ -76,9 +75,8 @@ export function SendAiInterviewModal({
   const [sendSuccess, setSendSuccess] = React.useState(false)
   const [copiedCode, setCopiedCode] = React.useState(false)
   const [copiedLink, setCopiedLink] = React.useState(false)
-  const [interviewLink, setInterviewLink] = React.useState("")
 
-  const loadExisting = React.useCallback(async () => {
+  const loadExisting = useCallback(async () => {
     try {
       const list = await getAiInterviewsByApplication(applicationId)
       setExistingInterviews(list)
@@ -144,7 +142,6 @@ export function SendAiInterviewModal({
         },
       })
       setRawCode(result.rawCode)
-      setInterviewLink(`${window.location.origin}/interview/access`)
       setStep("created")
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create interview")
@@ -159,10 +156,8 @@ export function SendAiInterviewModal({
     setError("")
     try {
       const result = await sendAiInterviewInvitation(interview.id, {
-        to: candidateEmail,
+        rawCode,
       })
-      setRawCode(result.rawCode)
-      setInterviewLink(`${window.location.origin}/interview/access`)
       setSendSuccess(true)
       setStep("sent")
     } catch (err: unknown) {
@@ -210,6 +205,10 @@ export function SendAiInterviewModal({
     }
   }
 
+  const interviewLink = typeof window !== "undefined"
+    ? `${window.location.origin}/interview/access`
+    : ""
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -225,10 +224,6 @@ export function SendAiInterviewModal({
             <div className="flex justify-between">
               <span className="text-muted">Candidate</span>
               <span className="font-medium">{candidateName}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted">Email</span>
-              <span className="font-medium">{candidateEmail}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted">Position</span>
@@ -308,7 +303,7 @@ export function SendAiInterviewModal({
 
               {sendSuccess && (
                 <div className="rounded-lg bg-success/10 p-3 text-sm text-success text-center">
-                  Invitation sent successfully to {candidateEmail}.
+                  Invitation sent successfully.
                 </div>
               )}
             </div>
