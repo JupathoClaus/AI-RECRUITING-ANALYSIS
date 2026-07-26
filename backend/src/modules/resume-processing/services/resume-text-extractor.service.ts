@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { PDFParse } from 'pdf-parse';
-import mammoth from 'mammoth';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const mammoth = require('mammoth');
 
 export interface ResumeExtractionInput {
   buffer: Buffer;
@@ -46,7 +47,8 @@ export class ResumeTextExtractorService {
 
     let data: { text: string };
     try {
-      const parser = new PDFParse(input.buffer);
+      const uint8 = new Uint8Array(input.buffer.buffer, input.buffer.byteOffset, input.buffer.byteLength);
+      const parser = new PDFParse(uint8);
       data = await parser.getText();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -74,12 +74,17 @@ export class ResumeExtractionProcessor extends WorkerHost {
       }
     }
 
+    const isLastAttempt = job.attemptsMade >= (job.opts.attempts ?? 3) - 1;
     let fileData: { buffer: Buffer; mimeType: string; originalName: string; checksumSha256: string; sizeBytes: number };
     try {
       fileData = await this.fileReader.readStoredFile(storedFileId, companyId);
     } catch (err) {
       if (err instanceof UnrecoverableError) throw err;
-      throw new Error(`STORAGE_READ_FAILED: ${(err as Error).message}`);
+      if (isLastAttempt) {
+        await this.failTerminal(extractionId, 'STORAGE_READ_FAILED', 'Failed to read the stored resume file.');
+        throw new UnrecoverableError((err as Error).message);
+      }
+      throw err;
     }
 
     let result: import('../services/resume-text-extractor.service').ResumeExtractionOutput;
@@ -100,6 +105,11 @@ export class ResumeExtractionProcessor extends WorkerHost {
         throw new UnrecoverableError(errMsg);
       }
 
+      if (isLastAttempt) {
+        await this.failTerminal(extractionId, 'EXTRACTION_FAILED', errMsg);
+        throw new UnrecoverableError(errMsg);
+      }
+
       throw err;
     }
 
@@ -116,16 +126,20 @@ export class ResumeExtractionProcessor extends WorkerHost {
         },
       });
     } catch (err) {
+      if (isLastAttempt) {
+        await this.failTerminal(extractionId, 'PERSIST_FAILED', 'Failed to save extraction result.');
+        throw new UnrecoverableError((err as Error).message);
+      }
       this.logger.error(`Failed to persist extraction result: ${(err as Error).message}`);
       throw err;
     }
   }
 
-  private async failTerminal(extractionId: string, failureCode: string): Promise<void> {
+  private async failTerminal(extractionId: string, failureCode: string, failureMessageSafe?: string): Promise<void> {
     try {
       await this.prisma.resumeTextExtraction.update({
         where: { id: extractionId },
-        data: { status: 'FAILED', failureCode, completedAt: new Date() },
+        data: { status: 'FAILED', failureCode, failureMessageSafe: failureMessageSafe ?? failureCode, completedAt: new Date() },
       });
     } catch (err) {
       this.logger.error(`Failed to mark extraction ${extractionId} as FAILED: ${(err as Error).message}`);

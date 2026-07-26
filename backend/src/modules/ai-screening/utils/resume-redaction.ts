@@ -1,6 +1,6 @@
 const EMAIL_REGEX = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 
-const PHONE_REGEX = /\b(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g;
+const PHONE_REGEX = /\b(\+?\d{1,4}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{3,5}\b/g;
 
 const DOB_LABEL_REGEX = /^(date\s*of\s*birth|dob|birth\s*date|born)\s*[::\-]?\s*.+/gim;
 

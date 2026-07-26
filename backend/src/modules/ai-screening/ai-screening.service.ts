@@ -4,6 +4,8 @@ import {
   NotFoundException,
   ConflictException,
   ServiceUnavailableException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -93,12 +95,19 @@ export class AiScreeningService {
     if (!completedExtraction) {
       const extractionResult = await this.extractionService.requestExtraction(resumeFile.id, companyId, userId);
       if (extractionResult.action === 'CREATED') {
-        throw new ConflictException('Resume text extraction has been queued. Please try screening after extraction completes.');
+        throw new HttpException({
+          statusCode: HttpStatus.CONFLICT,
+          code: 'RESUME_EXTRACTION_PENDING',
+          message: 'Resume processing is in progress. Try screening again after extraction completes.',
+          extraction: { id: extractionResult.extraction.id, status: extractionResult.extraction.status },
+        }, HttpStatus.CONFLICT);
       }
-      return {
-        action: 'REUSED',
-        data: { id: extractionResult.extraction.id, applicationId, status: extractionResult.extraction.status, createdAt: new Date().toISOString() } as AiScreeningResponseDto,
-      };
+      throw new HttpException({
+        statusCode: HttpStatus.CONFLICT,
+        code: 'RESUME_EXTRACTION_PENDING',
+        message: 'Resume text extraction is not yet complete.',
+        extraction: { id: extractionResult.extraction.id, status: extractionResult.extraction.status },
+      }, HttpStatus.CONFLICT);
     }
 
     const screeningInput = this.inputBuilder.build(
