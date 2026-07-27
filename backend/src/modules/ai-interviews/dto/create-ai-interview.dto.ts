@@ -4,7 +4,7 @@ import { AiInterviewProvider } from '@prisma/client';
 
 export class CreateAiInterviewDto {
   @ApiProperty({ description: 'Application ID' })
-  @IsString()
+  @IsUUID('all')
   applicationId: string;
 
   @ApiPropertyOptional({ enum: AiInterviewProvider, default: 'TAVUS' })
