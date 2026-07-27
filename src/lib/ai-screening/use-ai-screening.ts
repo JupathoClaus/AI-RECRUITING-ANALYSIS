@@ -183,17 +183,17 @@ export function useAiScreening() {
         const response = await requestAiScreening(currentAppId, { signal })
         if (isStale(currentAppId)) return
         if (response.status === 202 || response.status === 200) {
-          const { data } = response.data
-          if (data.status === 'COMPLETED' || data.status === 'FAILED') {
-            const update = screeningResultStateUpdate(data)
-            setWorkflow({ ...update, screeningId: data.id })
+          const screeningData = response.data.data
+          if (screeningData.status === 'COMPLETED' || screeningData.status === 'FAILED') {
+            const update = screeningResultStateUpdate(screeningData)
+            setWorkflow({ ...update, screeningId: screeningData.id })
           } else {
             setWorkflow({
-              workflowState: workflowStateForStatus(data.status),
-              screeningResult: data,
-              screeningId: data.id,
+              workflowState: workflowStateForStatus(screeningData.status),
+              screeningResult: screeningData,
+              screeningId: screeningData.id,
             })
-            pollScreening(data.id, Date.now())
+            pollScreening(screeningData.id, Date.now())
           }
         } else {
           waitForExtraction(startTime)
@@ -228,11 +228,11 @@ export function useAiScreening() {
       const response = await requestAiScreening(appId)
       if (isStale(appId)) return
       if (response.status === 202 || response.status === 200) {
-        const { data } = response.data
-        const update = screeningResultStateUpdate(data)
-        setWorkflow({ ...update, screeningId: data.id })
-        if (data.status !== 'COMPLETED' && data.status !== 'FAILED') {
-          pollScreening(data.id, Date.now())
+        const screeningData = response.data.data
+        const update = screeningResultStateUpdate(screeningData)
+        setWorkflow({ ...update, screeningId: screeningData.id })
+        if (screeningData.status !== 'COMPLETED' && screeningData.status !== 'FAILED') {
+          pollScreening(screeningData.id, Date.now())
         }
       }
     } catch (err) {

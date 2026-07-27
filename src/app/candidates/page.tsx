@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useStore, type AddCandidateResult } from "@/store/useStore"
+import { useStore } from "@/store/useStore"
 import type { Candidate, DisplayApplicationStatus } from "@/types"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { ModalHeader } from "@/components/ui/modal-header"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -26,6 +26,12 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
 import { SendAiInterviewModal } from "@/components/ai-interview/send-ai-interview-modal"
+import { AddCandidateDialog } from "@/components/candidates/add-candidate-dialog"
+import { ScreeningProgress } from "@/components/ai-screening/screening-progress"
+import { ScreeningResultView } from "@/components/ai-screening/screening-result-view"
+import { useAiScreening } from "@/lib/ai-screening/use-ai-screening"
+import { getApplicationResume } from "@/lib/api/files.api"
+import type { StoredFileResponse } from "@/lib/api/files.api"
 import {
   SearchNormal,
   Add,
@@ -41,6 +47,7 @@ import {
   Briefcase,
   MagicStar,
   MessageSquare,
+  DocumentText,
 } from "iconsax-react"
 
 const statusConfig: Record<DisplayApplicationStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" | "info" }> = {
@@ -113,8 +120,112 @@ function TableSkeleton() {
   )
 }
 
+function DetailScreeningSection({ applicationId }: { applicationId: string }) {
+  const [resumeInfo, setResumeInfo] = React.useState<StoredFileResponse | null>(null)
+  const [resumeLoading, setResumeLoading] = React.useState(true)
+  const screening = useAiScreening()
+
+  React.useEffect(() => {
+    if (!applicationId) return
+    setResumeLoading(true)
+    getApplicationResume(applicationId).then((r) => {
+      setResumeInfo(r)
+      setResumeLoading(false)
+    })
+  }, [applicationId])
+
+  React.useEffect(() => {
+    if (!applicationId) return
+    screening.selectApplication(applicationId)
+    screening.loadLatestScreening(applicationId)
+  }, [applicationId])
+
+  const handleStartScreening = async () => {
+    await screening.requestScreening()
+  }
+
+  const handleRetryScreening = () => {
+    screening.retryScreening()
+  }
+
+  const ws = screening.state.workflowState
+  const hasScreeningData = screening.state.screeningResult !== null
+  const screenNotStarted = ws === 'IDLE' || ws === 'APPLICATION_SELECTED'
+  const isWorking = ws !== 'IDLE' && ws !== 'APPLICATION_SELECTED' && ws !== 'SCREENING_COMPLETED' && ws !== 'SCREENING_FAILED'
+
+  return (
+    <>
+      <Separator />
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <DocumentText className="h-4 w-4 text-muted" />
+          <h4 className="text-sm font-medium text-foreground">Resume</h4>
+        </div>
+        <div className="ml-6 space-y-3">
+          {resumeLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
+          {!resumeLoading && resumeInfo && (
+            <div>
+              <p className="text-sm font-medium">{resumeInfo.originalName}</p>
+              <p className="text-xs text-muted-foreground">
+                {(resumeInfo.sizeBytes / 1024).toFixed(0)} KB &middot; {resumeInfo.mimeType}
+                &nbsp;&middot; Uploaded {timeAgo(new Date(resumeInfo.createdAt))}
+              </p>
+            </div>
+          )}
+          {!resumeLoading && !resumeInfo && (
+            <p className="text-sm text-muted-foreground">No resume uploaded for this application.</p>
+          )}
+        </div>
+      </div>
+
+      <Separator />
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <MagicStar className="h-4 w-4 text-muted" />
+          <h4 className="text-sm font-medium text-foreground">AI Screening</h4>
+        </div>
+        <div className="ml-6 space-y-3">
+          {hasScreeningData && (
+            <ScreeningResultView result={screening.state.screeningResult!} />
+          )}
+
+          {!hasScreeningData && screenNotStarted && resumeInfo && (
+            <div className="text-center py-4">
+              <Button onClick={handleStartScreening} size="sm">
+                Start AI Screening
+              </Button>
+              <p className="text-xs text-muted-foreground mt-2">
+                AI will compare the candidate&apos;s resume against the job requirements
+              </p>
+            </div>
+          )}
+
+          {!hasScreeningData && isWorking && (
+            <ScreeningProgress workflowState={ws} />
+          )}
+
+          {ws === 'SCREENING_FAILED' && (
+            <div className="text-center">
+              <p className="text-sm text-error mb-2">{screening.state.error || 'Screening failed'}</p>
+              <Button onClick={handleRetryScreening} variant="outline" size="sm">Retry</Button>
+            </div>
+          )}
+
+          {!hasScreeningData && !resumeInfo && !resumeLoading && (
+            <p className="text-sm text-muted-foreground">
+              Upload a resume first to enable AI screening.
+            </p>
+          )}
+
+          {screenNotStarted && !resumeInfo && !resumeLoading && null}
+        </div>
+      </div>
+    </>
+  )
+}
+
 export default function CandidatesPage() {
-  const { candidates, jobs, addCandidateApplication, rejectCandidateApplication, advanceCandidateApplication, fetchCandidates, candidatesLoading, candidatesError } = useStore()
+  const { candidates, jobs, rejectCandidateApplication, advanceCandidateApplication, fetchCandidates, candidatesLoading, candidatesError } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
   const [jobFilter, setJobFilter] = React.useState<string>("all")
@@ -123,21 +234,9 @@ export default function CandidatesPage() {
   const [detailsCandidate, setDetailsCandidate] = React.useState<Candidate | null>(null)
   const [actionInProgress, setActionInProgress] = React.useState(false)
   const [aiInterviewModalOpen, setAiInterviewModalOpen] = React.useState(false)
-  const [addFeedback, setAddFeedback] = React.useState<{ type: "error"; message: string } | null>(null)
   const [pageFeedback, setPageFeedback] = React.useState<{ type: "success" | "warning"; message: string } | null>(null)
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [bulkActionLoading, setBulkActionLoading] = React.useState(false)
-
-  const [newCandidate, setNewCandidate] = React.useState({
-    name: "",
-    email: "",
-    phone: "",
-    jobId: "",
-    experience: "",
-    skills: "",
-    rating: 0,
-    notes: "",
-  })
 
   React.useEffect(() => {
     fetchCandidates()
@@ -214,168 +313,29 @@ export default function CandidatesPage() {
     }
   }, [selectedIds, candidates, rejectCandidateApplication, advanceCandidateApplication])
 
-  const handleAddCandidate = async () => {
-    if (!newCandidate.name || !newCandidate.email) return
-    setActionInProgress(true)
-    setAddFeedback(null)
-    setPageFeedback(null)
-    const job = jobs.find((j) => j.id === newCandidate.jobId)
-    try {
-      const result: AddCandidateResult = await addCandidateApplication({
-        name: newCandidate.name,
-        email: newCandidate.email,
-        phone: newCandidate.phone,
-        jobId: newCandidate.jobId,
-        jobTitle: job?.title || "",
-        experience: Number(newCandidate.experience) || 0,
-        skills: newCandidate.skills
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
-        aiScore: 0,
-        rating: newCandidate.rating,
-        notes: newCandidate.notes,
-      })
-      setNewCandidate({ name: "", email: "", phone: "", jobId: "", experience: "", skills: "", rating: 0, notes: "" })
-      if (result.status === "candidate-created-application-failed") {
-        setPageFeedback({ type: "warning", message: `Candidate was created, but the application could not be created.${result.error ? ` (${result.error})` : ""}` })
-        setAddDialogOpen(false)
-      } else if (result.status === "candidate-creation-failed") {
-        setAddFeedback({ type: "error", message: result.error || "Failed to create candidate" })
-      } else if (result.status === "candidate-and-application-created") {
-        setPageFeedback({ type: "success", message: "Candidate and application created successfully." })
-        setAddDialogOpen(false)
-      } else {
-        setPageFeedback({ type: "success", message: "Candidate created successfully." })
-        setAddDialogOpen(false)
-      }
-    } catch {
-      setAddFeedback({ type: "error", message: "Failed to create candidate. Please try again." })
-    } finally {
-      setActionInProgress(false)
-    }
-  }
-
   const newCount = candidates.filter((c) => getDisplayStatus(c) === "Applied").length
   const pipelineCount = candidates.filter((c) => getDisplayStatus(c) === "Interview").length
+
+  const detailApplicationId = detailsCandidate?.applicationSummary?.current?.id || null
 
   return (
     <AppLayout
       title="Candidates"
       description={`${filteredCandidates.length} candidates${newCount > 0 ? ` · ${newCount} new` : ""}${pipelineCount > 0 ? ` · ${pipelineCount} in pipeline` : ""}`}
       actions={
-        <Dialog open={addDialogOpen} onOpenChange={(open) => { setAddDialogOpen(open); if (open) setAddFeedback(null) }}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Add className="h-4 w-4" />
-              Add Candidate
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
-            <ModalHeader>
-              <DialogTitle>Add New Candidate</DialogTitle>
-              <DialogDescription>Add a candidate to your talent pool. Optionally apply them to a job.</DialogDescription>
-            </ModalHeader>
-            {addFeedback && (
-              <div className="rounded-lg border border-error/30 bg-error/5 text-error-foreground px-4 py-3 text-sm">
-                {addFeedback.message}
-              </div>
-            )}
-            <div className="grid gap-4 py-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Full Name *</label>
-                  <Input
-                    placeholder="e.g. John Smith"
-                    value={newCandidate.name}
-                    onChange={(e) => setNewCandidate((p) => ({ ...p, name: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Email *</label>
-                  <Input
-                    type="email"
-                    name="new-candidate-email"
-                    autoComplete="off"
-                    placeholder="john@example.com"
-                    value={newCandidate.email}
-                    onChange={(e) => setNewCandidate((p) => ({ ...p, email: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Phone</label>
-                  <Input
-                    type="tel"
-                    placeholder="+1 555-0100"
-                    value={newCandidate.phone}
-                    onChange={(e) => setNewCandidate((p) => ({ ...p, phone: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Years of Experience</label>
-                  <Input
-                    type="number"
-                    placeholder="5"
-                    min={0}
-                    value={newCandidate.experience}
-                    onChange={(e) => setNewCandidate((p) => ({ ...p, experience: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Applying For (optional)</label>
-                <Select value={newCandidate.jobId} onValueChange={(v) => setNewCandidate((p) => ({ ...p, jobId: v }))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a position" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {jobs.filter((j) => j.status === "Active").map((j) => (
-                      <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Skills (comma-separated)</label>
-                <Input
-                  placeholder="React, TypeScript, Node.js"
-                  value={newCandidate.skills}
-                  onChange={(e) => setNewCandidate((p) => ({ ...p, skills: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Rating</label>
-                <StarRating
-                  rating={newCandidate.rating}
-                  onChange={(r) => setNewCandidate((p) => ({ ...p, rating: r }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Notes</label>
-                <textarea
-                  className="flex min-h-[80px] w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground shadow-sm placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 resize-none"
-                  placeholder="Any notes about this candidate..."
-                  value={newCandidate.notes}
-                  onChange={(e) => setNewCandidate((p) => ({ ...p, notes: e.target.value }))}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-              <Button
-                onClick={handleAddCandidate}
-                disabled={!newCandidate.name || !newCandidate.email}
-              >
-                <Add className="h-4 w-4" />
-                Add Candidate
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button size="sm" onClick={() => setAddDialogOpen(true)}>
+          <Add className="h-4 w-4" />
+          Add Candidate
+        </Button>
       }
     >
+      <AddCandidateDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        jobs={jobs}
+        onComplete={() => {}}
+      />
+
       {pageFeedback && (
         <div className={cn(
           "rounded-lg border px-4 py-3 text-sm mb-4",
@@ -794,6 +754,11 @@ export default function CandidatesPage() {
                         </p>
                       </div>
                     </div>
+                  )}
+
+                  {/* Resume & AI Screening */}
+                  {detailApplicationId && (
+                    <DetailScreeningSection applicationId={detailApplicationId} />
                   )}
                 </div>
 
