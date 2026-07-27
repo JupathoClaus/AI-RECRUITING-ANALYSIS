@@ -67,7 +67,11 @@ export async function requestAiScreening(
   applicationId: string,
   options?: RequestAiScreeningOptions,
 ): Promise<StatusResponse<ScreeningRequestResponse>> {
-  return apiRequest<StatusResponse<ScreeningRequestResponse>>(
+  const raw = await apiRequest<{
+    data: { statusCode: number; message: string; data: ScreeningRequestResponse }
+    status: number
+    headers: Headers
+  }>(
     `/applications/${applicationId}/ai-screenings`,
     {
       method: 'POST',
@@ -75,7 +79,8 @@ export async function requestAiScreening(
       statusInBody: true,
       signal: options?.signal,
     },
-  )
+  );
+  return { data: raw.data.data, status: raw.status, headers: raw.headers }
 }
 
 export async function listAiScreenings(

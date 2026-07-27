@@ -17,31 +17,37 @@ import { requestAiScreening, listAiScreenings, getLatestAiScreening, getAiScreen
 describe('ai-screening.api', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  function nestResponse(status: number, data: { action: string; data: { id: string } }) {
+    return { data: { statusCode: status, message: 'Success', data }, status, headers: new Headers() }
+  }
+
   it('requestAiScreening calls POST with correct route', async () => {
-    mockApiRequest.mockResolvedValue({ data: { action: 'CREATED', data: { id: 's1' } }, status: 202 })
+    mockApiRequest.mockResolvedValue(nestResponse(202, { action: 'CREATED', data: { id: 's1' } }))
     const r = await requestAiScreening('app-1')
     expect(mockApiRequest).toHaveBeenCalledWith('/applications/app-1/ai-screenings', expect.objectContaining({ method: 'POST' }))
     expect(r.data.action).toBe('CREATED')
+    expect(r.data.data.id).toBe('s1')
   })
 
   it('requestAiScreening sends forceRerun', async () => {
-    mockApiRequest.mockResolvedValue({ data: { action: 'CREATED', data: { id: 's2' } }, status: 202 })
+    mockApiRequest.mockResolvedValue(nestResponse(202, { action: 'CREATED', data: { id: 's2' } }))
     await requestAiScreening('app-2', { forceRerun: true })
     expect(mockApiRequest).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ body: { forceRerun: true } }))
   })
 
   it('requestAiScreening forwards signal', async () => {
     const controller = new AbortController()
-    mockApiRequest.mockResolvedValue({ data: { action: 'CREATED', data: { id: 's3' } }, status: 202 })
+    mockApiRequest.mockResolvedValue(nestResponse(202, { action: 'CREATED', data: { id: 's3' } }))
     await requestAiScreening('app-3', { signal: controller.signal })
     expect(mockApiRequest).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal: controller.signal }))
   })
 
   it('requestAiScreening uses statusInBody: true', async () => {
-    mockApiRequest.mockResolvedValue({ data: { action: 'REUSED', data: { id: 's4' } }, status: 200 })
+    mockApiRequest.mockResolvedValue(nestResponse(200, { action: 'REUSED', data: { id: 's4' } }))
     const r = await requestAiScreening('app-4')
     expect(mockApiRequest).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ statusInBody: true }))
     expect(r.status).toBe(200)
+    expect(r.data.action).toBe('REUSED')
   })
 
   it('listAiScreenings calls GET with page and limit', async () => {

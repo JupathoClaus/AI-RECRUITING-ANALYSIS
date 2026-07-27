@@ -43,7 +43,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
               ? resp.message.join(', ')
               : message;
         errorCode =
-          typeof resp.error === 'string' ? resp.error : this.httpStatusToErrorCode(status);
+          typeof resp.code === 'string'
+            ? resp.code
+            : typeof resp.error === 'string'
+              ? resp.error
+              : this.httpStatusToErrorCode(status);
       }
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       const prismaResult = this.handlePrismaError(exception);
