@@ -12,6 +12,8 @@ import { CandidateDeduplicationService } from './candidate-deduplication.service
 import { CreateCandidateDto, UpdateCandidateDto } from './dto/create-candidate.dto';
 import { CandidateQueryDto } from './dto/candidate-query.dto';
 import { mapCandidateToResponse, mapCandidateToDetail } from './mappers/candidate.mapper';
+import { IdempotencyService } from '@common/idempotency/idempotency.service';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class CandidatesService {
@@ -21,6 +23,7 @@ export class CandidatesService {
     private readonly prisma: PrismaService,
     private readonly auditService: CandidateAuditService,
     private readonly deduplicationService: CandidateDeduplicationService,
+    private readonly idempotencyService: IdempotencyService,
   ) {}
 
   normalizeEmail(email?: string | null): string | null {
@@ -36,13 +39,72 @@ export class CandidatesService {
     return digits;
   }
 
+  private computeRequestHash(dto: CreateCandidateDto): string {
+    const normalized = {
+      firstName: dto.firstName?.trim() ?? '',
+      lastName: dto.lastName?.trim() ?? '',
+      email: dto.email?.trim()?.toLowerCase() ?? '',
+      phone: dto.phone?.trim() ?? '',
+      source: dto.source ?? '',
+      currentJobTitle: dto.currentJobTitle?.trim() ?? '',
+      totalExperienceYears: dto.totalExperienceYears ?? null,
+    };
+    return crypto.createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+  }
+
   async create(
     dto: CreateCandidateDto,
     actorUserId?: string,
     actorMembershipId?: string | null,
     companyId?: string,
     requestId?: string,
+    idempotencyKey?: string,
   ) {
+    if (idempotencyKey && companyId && actorUserId) {
+      const claim = await this.idempotencyService.executeTransactional<
+        ReturnType<typeof mapCandidateToDetail>
+      >({
+        key: idempotencyKey,
+        companyId,
+        userId: actorUserId,
+        operation: 'CANDIDATE_CREATE',
+        requestHash: this.computeRequestHash(dto),
+        execute: async (tx) => {
+          const result = await this.executeCreate(
+            dto,
+            actorUserId,
+            actorMembershipId,
+            companyId,
+            requestId,
+            tx,
+          );
+          const detail = result as ReturnType<typeof mapCandidateToDetail>;
+          return { resourceType: 'candidate', resourceId: detail.id, responseJson: detail };
+        },
+      });
+
+      if (claim.status === 'COMPLETED') {
+        return claim.responseJson;
+      }
+      throw new ConflictException({
+        code: 'IDEMPOTENCY_IN_PROGRESS',
+        message: 'Candidate creation is already in progress for this request.',
+      });
+    }
+
+    return this.executeCreate(dto, actorUserId, actorMembershipId, companyId, requestId);
+  }
+
+  private async executeCreate(
+    dto: CreateCandidateDto,
+    actorUserId?: string,
+    actorMembershipId?: string | null,
+    companyId?: string,
+    requestId?: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.prisma;
+
     if (!dto.email && !dto.phone) {
       throw new BadRequestException('At least email or phone is required');
     }
@@ -81,7 +143,7 @@ export class CandidatesService {
       throw new BadRequestException('Salary maximum cannot be less than minimum');
     }
 
-    const candidate = await this.prisma.candidate.create({
+    const candidate = await client.candidate.create({
       data: {
         firstName: dto.firstName.trim(),
         middleName: dto.middleName?.trim() ?? null,
@@ -156,11 +218,12 @@ export class CandidatesService {
       description: `Candidate ${candidate.firstName} ${candidate.lastName} created`,
       metadata: { source: dto.source, hasEmail: !!dto.email, hasPhone: !!dto.phone },
       requestId,
+      tx,
     });
 
     // Auto-create CompanyCandidate so recruiter-created candidates appear in company list
     if (companyId) {
-      await this.prisma.companyCandidate.upsert({
+      await client.companyCandidate.upsert({
         where: { companyId_candidateId: { companyId, candidateId: candidate.id } },
         update: { lastActivityAt: new Date() },
         create: {
@@ -299,7 +362,7 @@ export class CandidatesService {
     };
   }
 
-  async findById(id: string, hasSensitivePermission: boolean) {
+  async findById(id: string, hasSensitivePermission: boolean, companyId?: string) {
     const candidate = await this.prisma.candidate.findUnique({
       where: { id },
       include: {
@@ -315,6 +378,17 @@ export class CandidatesService {
 
     if (!candidate || candidate.status === 'DELETED' || candidate.status === 'ANONYMIZED') {
       throw new NotFoundException(`Candidate with ID ${id} not found`);
+    }
+
+    // Tenant isolation: if companyId is provided, ensure the candidate
+    // belongs to the requesting company via a non-deleted CompanyCandidate link.
+    if (companyId) {
+      const link = await this.prisma.companyCandidate.findFirst({
+        where: { candidateId: id, companyId, deletedAt: null },
+      });
+      if (!link) {
+        throw new NotFoundException(`Candidate with ID ${id} not found`);
+      }
     }
 
     return mapCandidateToDetail(candidate, hasSensitivePermission);

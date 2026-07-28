@@ -10,6 +10,7 @@ import {
   UseGuards,
   HttpStatus,
   HttpCode,
+  Headers,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -106,13 +107,18 @@ export class CandidatesController {
   })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Candidate created' })
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Exact duplicate found' })
-  async create(@Body() dto: CreateCandidateDto, @CurrentUser() user: AuthenticatedPrincipal) {
+  async create(
+    @Body() dto: CreateCandidateDto,
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Headers('Idempotency-Key') idempotencyKey?: string,
+  ) {
     return this.candidatesService.create(
       dto,
       user.userId,
       user.membershipId,
       user.activeCompanyId,
       undefined,
+      idempotencyKey || undefined,
     );
   }
 
@@ -144,7 +150,7 @@ export class CandidatesController {
     @CurrentUser() user: AuthenticatedPrincipal,
   ) {
     const hasSensitive = user.permissions.includes('candidates.view_sensitive');
-    return this.candidatesService.findById(candidateId, hasSensitive);
+    return this.candidatesService.findById(candidateId, hasSensitive, user.activeCompanyId);
   }
 
   @Patch(':candidateId')

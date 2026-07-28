@@ -132,10 +132,11 @@ export interface CreateCandidateRequest {
   totalExperienceYears?: number
 }
 
-export async function createCandidate(dto: CreateCandidateRequest): Promise<CandidateApiDetail> {
+export async function createCandidate(dto: CreateCandidateRequest, idempotencyKey?: string): Promise<CandidateApiDetail> {
   return apiRequest<CandidateApiDetail>("/candidates", {
     method: "POST",
     body: dto,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
   })
 }
 

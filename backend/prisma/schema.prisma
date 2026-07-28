@@ -347,6 +347,8 @@ model CompanyMembership {
   // Phase 5 — AI Interviews
   createdAiInterviews AiInterview[] @relation("AiInterviewCreatedBy")
 
+  sessions UserSession[]
+
   @@unique([userId, companyId])
   @@index([companyId])
   @@index([roleId])
@@ -357,6 +359,7 @@ model UserSession {
   id                       String        @id @default(uuid())
   userId                   String
   activeCompanyId          String?
+  membershipId             String?
   refreshTokenHash         String
   refreshTokenFamilyId     String
   previousRefreshTokenHash String?
@@ -371,12 +374,44 @@ model UserSession {
   createdAt                DateTime      @default(now())
   updatedAt                DateTime      @updatedAt
 
-  user User @relation(fields: [userId], references: [id])
+  user       User               @relation(fields: [userId], references: [id])
+  membership CompanyMembership? @relation(fields: [membershipId], references: [id])
 
   @@index([userId])
   @@index([status])
   @@index([expiresAt])
   @@index([refreshTokenFamilyId])
+  @@index([membershipId])
+}
+
+enum IdempotencyStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model IdempotencyKey {
+  id                 String            @id @default(uuid())
+  key                String
+  companyId          String
+  userId             String
+  operation          String
+  requestHash        String?
+  status             IdempotencyStatus @default(PROCESSING)
+  resourceType       String
+  resourceId         String
+  responseJson       Json?
+  leaseToken         String?
+  processingStartedAt DateTime?
+  expiresAt          DateTime
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@unique([key, companyId, userId, operation])
+  @@index([key, companyId, userId, operation, status])
+  @@index([companyId])
+  @@index([expiresAt])
+  @@index([leaseToken])
 }
 
 model VerificationToken {
@@ -2204,12 +2239,19 @@ enum ResumeExtractionStatus {
   FAILED
 }
 
+enum ExtractionDispatchStatus {
+  PENDING_DISPATCH
+  DISPATCHING
+  DISPATCHED
+  DISPATCH_FAILED
+}
+
 model ResumeTextExtraction {
-  id                  String                 @id @default(uuid())
+  id                  String                       @id @default(uuid())
   storedFileId        String
   companyId           String
   initiatedByUserId   String?
-  status              ResumeExtractionStatus @default(PENDING)
+  status              ResumeExtractionStatus       @default(PENDING)
   extractedText       String?
   extractedTextSha256 String?
   sourceFileSha256    String?
@@ -2218,18 +2260,39 @@ model ResumeTextExtraction {
   mimeType            String?
   failureCode         String?
   failureMessageSafe  String?
+  retryGeneration     Int?
   startedAt           DateTime?
   completedAt         DateTime?
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
 
-  storedFile StoredFile @relation(fields: [storedFileId], references: [id])
+  storedFile StoredFile     @relation(fields: [storedFileId], references: [id])
+  dispatch   ExtractionDispatch?
 
   @@index([storedFileId])
   @@index([companyId])
   @@index([status])
   @@index([storedFileId, companyId, status])
   @@index([createdAt])
+}
+
+model ExtractionDispatch {
+  id                String                     @id @default(uuid())
+  extractionId      String                     @unique
+  dispatchStatus    ExtractionDispatchStatus   @default(PENDING_DISPATCH)
+  dispatchToken     String?
+  jobId             String?
+  dispatchedAt      DateTime?
+  dispatchFailedAt  DateTime?
+  failureCode       String?
+  failureMessage    String?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  extraction ResumeTextExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
+
+  @@index([dispatchStatus])
+  @@index([dispatchToken])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

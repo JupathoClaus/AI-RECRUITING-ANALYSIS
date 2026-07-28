@@ -7,6 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '@database/prisma/prisma.service';
+import { IdempotencyService } from '@common/idempotency/idempotency.service';
 import {
   ApplicationStatus,
   ApplicationActorType,
@@ -49,7 +50,18 @@ export class ApplicationsService {
     private readonly workflowService: ApplicationWorkflowService,
     private readonly companyCandidateService: CompanyCandidateService,
     private readonly inAppNotificationsService: InAppNotificationsService,
+    private readonly idempotencyService: IdempotencyService,
   ) {}
+
+  private computeRequestHash(dto: CreateApplicationDto): string {
+    const normalized: Record<string, unknown> = {
+      candidateId: dto.candidateId,
+      jobId: dto.jobId,
+      source: dto.source,
+    };
+    if (dto.ownerMembershipId) normalized.ownerMembershipId = dto.ownerMembershipId;
+    return crypto.createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+  }
 
   async create(
     dto: CreateApplicationDto,
@@ -57,9 +69,54 @@ export class ApplicationsService {
     userId: string,
     membershipId: string,
     requestId?: string,
+    idempotencyKey?: string,
   ) {
+    if (idempotencyKey && userId) {
+      const claim = await this.idempotencyService.executeTransactional<
+        Awaited<ReturnType<typeof this.findById>>
+      >({
+        key: idempotencyKey,
+        companyId,
+        userId,
+        operation: 'APPLICATION_CREATE',
+        requestHash: this.computeRequestHash(dto),
+        execute: async (tx) => {
+          const result = await this.executeCreate(
+            dto,
+            companyId,
+            userId,
+            membershipId,
+            requestId,
+            tx,
+          );
+          const typed = result as Awaited<ReturnType<typeof this.findById>>;
+          return { resourceType: 'application', resourceId: typed.id, responseJson: typed };
+        },
+      });
+
+      if (claim.status === 'COMPLETED') {
+        return claim.responseJson;
+      }
+      throw new ConflictException({
+        code: 'IDEMPOTENCY_IN_PROGRESS',
+        message: 'Application creation is already in progress for this request.',
+      });
+    }
+    return this.executeCreate(dto, companyId, userId, membershipId, requestId);
+  }
+
+  private async executeCreate(
+    dto: CreateApplicationDto,
+    companyId: string,
+    userId: string,
+    membershipId: string,
+    requestId?: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.prisma;
+
     // Validate job belongs to this company and is accepting applications
-    const job = await this.prisma.job.findFirst({
+    const job = await client.job.findFirst({
       where: { id: dto.jobId, companyId, deletedAt: null },
       include: {
         pipeline: {
@@ -83,11 +140,11 @@ export class ApplicationsService {
     }
 
     // Validate candidate exists
-    const candidate = await this.prisma.candidate.findUnique({ where: { id: dto.candidateId } });
+    const candidate = await client.candidate.findUnique({ where: { id: dto.candidateId } });
     if (!candidate) throw new NotFoundException('Candidate not found');
 
     // Check for duplicate active application
-    const duplicate = await this.prisma.application.findFirst({
+    const duplicate = await client.application.findFirst({
       where: {
         companyId,
         jobId: dto.jobId,
@@ -105,7 +162,7 @@ export class ApplicationsService {
     // Get initial pipeline stage
     const initialStage = job.pipeline?.stages[0];
 
-    return this.prisma.$transaction(async (tx) => {
+    async function runInTransaction(t: Prisma.TransactionClient) {
       // Find or create CompanyCandidate
       const cc = await this.companyCandidateService.findOrCreate(
         companyId,
@@ -115,14 +172,14 @@ export class ApplicationsService {
         dto.ownerMembershipId,
         membershipId,
         userId,
-        tx,
+        t,
       );
 
       // Generate application number
-      const applicationNumber = await this.numberService.generate(companyId, tx);
+      const applicationNumber = await this.numberService.generate(companyId, t);
       const publicReference = crypto.randomUUID().replace(/-/g, '');
 
-      const app = await tx.application.create({
+      const app = await t.application.create({
         data: {
           companyId,
           jobId: dto.jobId,
@@ -145,11 +202,11 @@ export class ApplicationsService {
 
       // Owner assignment
       if (dto.ownerMembershipId) {
-        const ownerMem = await tx.companyMembership.findFirst({
+        const ownerMem = await t.companyMembership.findFirst({
           where: { id: dto.ownerMembershipId, companyId, status: 'ACTIVE' },
         });
         if (ownerMem) {
-          await tx.applicationAssignment.create({
+          await t.applicationAssignment.create({
             data: {
               applicationId: app.id,
               membershipId: dto.ownerMembershipId,
@@ -162,7 +219,7 @@ export class ApplicationsService {
 
       // Screening answers
       if (dto.screeningAnswers?.length) {
-        await tx.applicationScreeningAnswer.createMany({
+        await t.applicationScreeningAnswer.createMany({
           data: dto.screeningAnswers.map((a) => ({
             applicationId: app.id,
             questionId: a.questionId,
@@ -190,11 +247,16 @@ export class ApplicationsService {
         description: `Application ${applicationNumber} created`,
         metadata: { jobId: dto.jobId, source: dto.source },
         requestId,
-        tx,
+        tx: t,
       });
 
-      return this.findById(app.id, companyId, tx);
-    });
+      return this.findById(app.id, companyId, t);
+    }
+
+    if (tx) {
+      return runInTransaction.call(this, tx);
+    }
+    return this.prisma.$transaction((t) => runInTransaction.call(this, t));
   }
 
   async findAll(query: ApplicationQueryDto, companyId: string) {
@@ -404,7 +466,9 @@ export class ApplicationsService {
             },
             screeningQuestions: { where: { deletedAt: null, required: true } },
             ownerMembership: {
-              include: { user: { select: { id: true, firstName: true, lastName: true, email: true } } },
+              include: {
+                user: { select: { id: true, firstName: true, lastName: true, email: true } },
+              },
             },
           },
         },
@@ -497,9 +561,10 @@ export class ApplicationsService {
         const settings = await this.prisma.companySettings.findUnique({ where: { companyId } });
         shouldNotify = settings?.notifyRecruiterOnNewApplication ?? true;
       } catch (err) {
-        const msg = err && typeof err === 'object' && 'message' in err
-          ? String((err as { message: unknown }).message)
-          : 'Unknown error';
+        const msg =
+          err && typeof err === 'object' && 'message' in err
+            ? String((err as { message: unknown }).message)
+            : 'Unknown error';
         this.logger.warn(`Failed to read notification preference, skipping notification: ${msg}`);
         shouldNotify = false;
       }

@@ -66,7 +66,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     let membershipId: string | null = null;
     let role: string = payload.role;
 
-    if (payload.cid && payload.mid) {
+    if (payload.cid || payload.mid) {
+      if (!payload.cid || !payload.mid) {
+        throw new UnauthorizedException('Invalid company session: incomplete claims');
+      }
       const membership = await this.prisma.companyMembership.findUnique({
         where: { id: payload.mid },
         include: {
@@ -85,6 +88,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
       if (!membership || membership.status !== 'ACTIVE') {
         throw new UnauthorizedException('Membership not active');
+      }
+
+      if (membership.userId !== payload.sub) {
+        throw new UnauthorizedException('Membership user mismatch');
+      }
+
+      if (membership.companyId !== payload.cid) {
+        throw new UnauthorizedException('Membership company mismatch');
       }
 
       if (membership.company.status !== 'ACTIVE') {

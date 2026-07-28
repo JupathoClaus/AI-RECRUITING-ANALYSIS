@@ -4,6 +4,7 @@ import { PrismaService } from '@database/prisma/prisma.service';
 import { CandidatesService } from '../candidates.service';
 import { CandidateAuditService } from '../candidate-audit.service';
 import { CandidateDeduplicationService } from '../candidate-deduplication.service';
+import { IdempotencyService } from '@common/idempotency/idempotency.service';
 
 jest.mock('../mappers/candidate.mapper', () => ({
   mapCandidateToResponse: jest.fn((candidate) => ({
@@ -69,6 +70,11 @@ describe('CandidatesService', () => {
     calculateFingerprint: jest.fn(),
   };
 
+  const mockIdempotencyService = {
+    claim: jest.fn(),
+    getRecord: jest.fn(),
+  };
+
   const baseCandidate = {
     id: 'candidate-1',
     firstName: 'John',
@@ -115,6 +121,7 @@ describe('CandidatesService', () => {
           provide: CandidateDeduplicationService,
           useValue: mockDedupService,
         },
+        { provide: IdempotencyService, useValue: mockIdempotencyService },
       ],
     }).compile();
 
@@ -187,7 +194,7 @@ describe('CandidatesService', () => {
           requestId: 'req-1',
         }),
       );
-      expect(result.id).toBe(baseCandidate.id);
+      expect(result!.id).toBe(baseCandidate.id);
     });
 
     it('should reject when neither email nor phone provided', async () => {

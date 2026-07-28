@@ -18,6 +18,7 @@ export class SessionService {
   async create(data: {
     userId: string;
     activeCompanyId?: string | null;
+    membershipId?: string | null;
     ipAddress?: string | null;
     userAgent?: string | null;
     deviceName?: string | null;
@@ -28,6 +29,7 @@ export class SessionService {
     const {
       userId,
       activeCompanyId,
+      membershipId,
       ipAddress,
       userAgent,
       deviceName,
@@ -40,6 +42,7 @@ export class SessionService {
       data: {
         userId,
         activeCompanyId: activeCompanyId ?? null,
+        membershipId: membershipId ?? null,
         ipAddress: ipAddress ?? null,
         userAgent: userAgent ?? null,
         deviceName: deviceName ?? null,
@@ -144,10 +147,10 @@ export class SessionService {
     });
   }
 
-  async updateActiveCompany(sessionId: string, companyId: string): Promise<void> {
+  async updateActiveCompany(sessionId: string, companyId: string, membershipId?: string): Promise<void> {
     await this.prismaService.userSession.update({
       where: { id: sessionId },
-      data: { activeCompanyId: companyId },
+      data: { activeCompanyId: companyId, membershipId: membershipId ?? null },
     });
   }
 

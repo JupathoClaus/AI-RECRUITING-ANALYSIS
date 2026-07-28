@@ -146,6 +146,7 @@ describe('CandidatesController', () => {
         mockUser.membershipId,
         mockUser.activeCompanyId,
         undefined,
+        undefined,
       );
       expect(result).toEqual({ id: 'candidate-1' });
     });

@@ -16,9 +16,9 @@ const STAGES: Record<string, { icon: typeof Loader2; label: string }> = {
 
 export function ScreeningProgress({ workflowState }: Props) {
   const stage = STAGES[workflowState]
-  if (!stage) return null
 
-  const Icon = stage.icon
+  const Icon = stage?.icon || Loader2
+  const label = stage?.label || 'Processing'
 
   return (
     <Card>
@@ -28,7 +28,7 @@ export function ScreeningProgress({ workflowState }: Props) {
             <Icon className="h-8 w-8 text-blue-500" />
           </div>
           <div>
-            <p className="font-medium">{stage.label}</p>
+            <p className="font-medium">{label}</p>
             <p className="text-sm text-muted-foreground">
               This may take a moment. The page will update automatically.
             </p>

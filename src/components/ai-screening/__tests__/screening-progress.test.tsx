@@ -3,24 +3,24 @@ import { render, screen } from '@testing-library/react'
 import { ScreeningProgress } from '../screening-progress'
 
 describe('ScreeningProgress', () => {
-  it('renders nothing for IDLE state', () => {
-    const { container } = render(<ScreeningProgress workflowState="IDLE" />)
-    expect(container.firstChild).toBeNull()
+  it('renders fallback for IDLE state', () => {
+    render(<ScreeningProgress workflowState="IDLE" />)
+    expect(screen.getByText('Processing')).toBeDefined()
   })
 
-  it('renders nothing for APPLICATION_SELECTED', () => {
-    const { container } = render(<ScreeningProgress workflowState="APPLICATION_SELECTED" />)
-    expect(container.firstChild).toBeNull()
+  it('renders fallback for APPLICATION_SELECTED', () => {
+    render(<ScreeningProgress workflowState="APPLICATION_SELECTED" />)
+    expect(screen.getByText('Processing')).toBeDefined()
   })
 
-  it('renders nothing for RESUME_MISSING', () => {
-    const { container } = render(<ScreeningProgress workflowState="RESUME_MISSING" />)
-    expect(container.firstChild).toBeNull()
+  it('renders fallback for RESUME_MISSING', () => {
+    render(<ScreeningProgress workflowState="RESUME_MISSING" />)
+    expect(screen.getByText('Processing')).toBeDefined()
   })
 
-  it('renders nothing for ERROR', () => {
-    const { container } = render(<ScreeningProgress workflowState="ERROR" />)
-    expect(container.firstChild).toBeNull()
+  it('renders fallback for ERROR', () => {
+    render(<ScreeningProgress workflowState="ERROR" />)
+    expect(screen.getByText('Processing')).toBeDefined()
   })
 
   it('renders "Reading resume" for WAITING_FOR_EXTRACTION', () => {

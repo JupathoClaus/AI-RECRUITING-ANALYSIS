@@ -7,6 +7,7 @@ import { ApplicationAuditService } from '../services/application-audit.service';
 import { ApplicationWorkflowService } from '../services/application-workflow.service';
 import { CompanyCandidateService } from '../services/company-candidate.service';
 import { PrismaService } from '@database/prisma/prisma.service';
+import { IdempotencyService } from '@common/idempotency/idempotency.service';
 import { ApplicationStatus, CandidateSource, NotificationType } from '@prisma/client';
 
 const COMPANY_ID = 'company-1';
@@ -97,6 +98,7 @@ describe('ApplicationsService', () => {
         { provide: ApplicationWorkflowService, useValue: workflowService },
         { provide: CompanyCandidateService, useValue: companyCandidateService },
         { provide: InAppNotificationsService, useValue: { create: jest.fn() } },
+        { provide: IdempotencyService, useValue: { claim: jest.fn(), getRecord: jest.fn() } },
       ],
     }).compile();
     service = module.get<ApplicationsService>(ApplicationsService);
@@ -196,7 +198,7 @@ describe('ApplicationsService', () => {
         'u1',
         expect.anything(),
       );
-      expect(result.applicationNumber).toBe('APP-2026-000001');
+      expect(result!.applicationNumber).toBe('APP-2026-000001');
     });
 
     it('generates unique publicReference', async () => {
@@ -240,8 +242,8 @@ describe('ApplicationsService', () => {
         deletedAt: null,
       });
       const result = await service.create(createDto, COMPANY_ID, 'u1', 'm1');
-      expect(result.publicReference).toBeDefined();
-      expect(typeof result.publicReference).toBe('string');
+      expect(result!.publicReference).toBeDefined();
+      expect(typeof result!.publicReference).toBe('string');
     });
   });
 

@@ -43,10 +43,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
               ? resp.message.join(', ')
               : message;
         errorCode =
-          typeof resp.code === 'string'
+          typeof resp.code === 'string' && resp.code.length > 0
             ? resp.code
-            : typeof resp.error === 'string'
-              ? resp.error
+            : typeof resp.errorCode === 'string' && resp.errorCode.length > 0
+              ? resp.errorCode
               : this.httpStatusToErrorCode(status);
       }
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
@@ -136,11 +136,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       401: 'UNAUTHORIZED',
       403: 'FORBIDDEN',
       404: 'NOT_FOUND',
+      408: 'REQUEST_TIMEOUT',
       409: 'CONFLICT',
+      413: 'PAYLOAD_TOO_LARGE',
+      415: 'UNSUPPORTED_MEDIA_TYPE',
       422: 'UNPROCESSABLE_ENTITY',
       429: 'TOO_MANY_REQUESTS',
       500: 'INTERNAL_SERVER_ERROR',
+      502: 'BAD_GATEWAY',
       503: 'SERVICE_UNAVAILABLE',
+      504: 'GATEWAY_TIMEOUT',
     };
     return map[status] || 'ERROR';
   }

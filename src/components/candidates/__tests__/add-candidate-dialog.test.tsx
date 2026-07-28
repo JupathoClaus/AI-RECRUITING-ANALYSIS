@@ -6,7 +6,9 @@ import type { Job } from '@/types'
 const mockCreateCandidate = vi.hoisted(() => vi.fn())
 const mockCreateApplication = vi.hoisted(() => vi.fn())
 const mockSelectApplication = vi.hoisted(() => vi.fn<(...args: unknown[]) => void>())
-const mockHandleUploadResume = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<void>>())
+const mockStoredFile = { id: 'f-1', url: 'http://example.com/x.pdf', filename: 'x.pdf' }
+const mockUploadOk = { ok: true, file: mockStoredFile }
+const mockHandleUploadResume = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>())
 const mockRequestScreening = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<void>>())
 const mockRetryScreening = vi.hoisted(() => vi.fn<(...args: unknown[]) => void>())
 const mockFetchCandidates = vi.hoisted(() => vi.fn())
@@ -102,7 +104,7 @@ async function fillForm() {
 async function clickAddCandidate() {
   mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
   mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-  mockHandleUploadResume.mockResolvedValue(undefined as never)
+  mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
   await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
 }
 
@@ -267,7 +269,7 @@ describe('AddCandidateDialog', () => {
       await fillForm()
       mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
       mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(undefined as never)
+      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
 
       await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
 
@@ -283,7 +285,7 @@ describe('AddCandidateDialog', () => {
       await fillForm()
       mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
       mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(undefined as never)
+      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
 
       await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
 
@@ -300,7 +302,7 @@ describe('AddCandidateDialog', () => {
       await fillForm()
       mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
       mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(undefined as never)
+      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
 
       const btn = screen.getByText('Add Candidate')
       await act(async () => { fireEvent.click(btn) })
@@ -319,7 +321,7 @@ describe('AddCandidateDialog', () => {
       await fillForm()
       mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
       mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(undefined as never)
+      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
 
       await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
 
@@ -340,7 +342,7 @@ describe('AddCandidateDialog', () => {
       await fillForm()
       mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
       mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(undefined as never)
+      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
 
       await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
 

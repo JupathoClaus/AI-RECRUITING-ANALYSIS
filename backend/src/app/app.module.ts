@@ -34,6 +34,7 @@ import { EmailModule } from '../modules/email/email.module';
 import { AiScreeningModule } from '../modules/ai-screening/ai-screening.module';
 import { ResumeProcessingModule } from '../modules/resume-processing/resume-processing.module';
 import { AiInterviewsModule } from '../modules/ai-interviews/ai-interviews.module';
+import { IdempotencyModule } from '../common/idempotency/idempotency.module';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -153,6 +154,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
     AiScreeningModule,
     ResumeProcessingModule,
     AiInterviewsModule,
+    IdempotencyModule,
   ],
 })
 export class AppModule {}

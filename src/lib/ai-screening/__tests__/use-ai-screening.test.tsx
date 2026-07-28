@@ -23,6 +23,7 @@ const mockUploadResume = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<
 const mockRequestAiScreening = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>())
 const mockGetLatestAiScreening = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<AiScreeningResultDto>>())
 const mockGetAiScreeningById = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<AiScreeningResultDto>>())
+const mockGetResumeExtractionStatus = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>())
 
 vi.mock('@/lib/api/client', () => ({
   ApiErrorResponse: MockApiError,
@@ -32,6 +33,7 @@ vi.mock('@/lib/api/ai-screening.api', () => ({
   requestAiScreening: mockRequestAiScreening,
   getLatestAiScreening: mockGetLatestAiScreening,
   getAiScreeningById: mockGetAiScreeningById,
+  getResumeExtractionStatus: mockGetResumeExtractionStatus,
 }))
 
 vi.mock('@/lib/api/files.api', () => ({
@@ -149,8 +151,11 @@ describe('useAiScreening', () => {
       act(() => { result.current.selectApplication(APPLICATION_ID) })
       mockUploadResume.mockRejectedValue(new MockApiError(500, 'UPLOAD_FAILED', 'Server error'))
 
-      await act(async () => { await result.current.handleUploadResume(new File([], 'x.pdf')) })
+      const res = await act(async () => result.current.handleUploadResume(new File([], 'x.pdf')))
 
+      expect(res.ok).toBe(false)
+      expect(res.error).toBe('Server error')
+      expect(res.errorCode).toBe('UPLOAD_FAILED')
       expect(result.current.state.workflowState).toBe('ERROR')
       expect(result.current.state.error).toBe('Server error')
       expect(result.current.state.errorCode).toBe('UPLOAD_FAILED')
@@ -162,13 +167,14 @@ describe('useAiScreening', () => {
       let resolveUpload!: (v: StoredFileResponse) => void
       mockUploadResume.mockReturnValue(new Promise(r => { resolveUpload = r }))
 
-      let promise!: Promise<void>
-      act(() => { promise = result.current.handleUploadResume(new File([], 'x.pdf')) })
+      let promise!: Promise<ReturnType<typeof result.current.handleUploadResume>>
+      act(() => { promise = result.current.handleUploadResume(new File([], 'x.pdf')) as Promise<ReturnType<typeof result.current.handleUploadResume>> })
 
       act(() => { result.current.selectApplication('app-2') })
       act(() => { resolveUpload(storedFile()) })
-      await act(async () => { await promise })
+      const res = await act(async () => await promise)
 
+      expect(res.ok).toBe(false)
       expect(result.current.state.workflowState).toBe('APPLICATION_SELECTED')
       expect(result.current.state.selectedApplicationId).toBe('app-2')
       expect(result.current.state.uploadedFile).toBeNull()
@@ -179,8 +185,10 @@ describe('useAiScreening', () => {
       act(() => { result.current.selectApplication(APPLICATION_ID) })
       mockUploadResume.mockRejectedValue(new DOMException('Aborted', 'AbortError'))
 
-      await act(async () => { await result.current.handleUploadResume(new File([], 'x.pdf')) })
+      const res = await act(async () => result.current.handleUploadResume(new File([], 'x.pdf')))
 
+      expect(res.ok).toBe(false)
+      expect(res.errorCode).toBe('CANCELLED')
       expect(result.current.state.workflowState).toBe('RESUME_MISSING')
     })
 
@@ -188,8 +196,9 @@ describe('useAiScreening', () => {
       const { result } = renderHook(() => useAiScreening())
       mockUploadResume.mockResolvedValue(storedFile())
 
-      await act(async () => { await result.current.handleUploadResume(new File([], 'x.pdf')) })
+      const res = await act(async () => result.current.handleUploadResume(new File([], 'x.pdf')))
 
+      expect(res.ok).toBe(false)
       expect(mockUploadResume).not.toHaveBeenCalled()
     })
   })
@@ -480,6 +489,199 @@ describe('useAiScreening', () => {
 
       expect(result.current.state.workflowState).toBe('TIMED_OUT')
       expect(result.current.state.error).toContain('longer than expected')
+    })
+  })
+
+  describe('waitForExtraction — CQRS polling (GET not POST)', () => {
+    function extractionStatus(overrides?: Record<string, unknown>) {
+      return {
+        id: 'ext-1',
+        status: 'PENDING',
+        createdAt: '2025-01-01T00:00:00Z',
+        ...overrides,
+      }
+    }
+
+    it('polls GET getResumeExtractionStatus, not POST requestAiScreening, while waiting', async () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+
+      mockRequestAiScreening.mockRejectedValueOnce(
+        new MockApiError(409, 'RESUME_EXTRACTION_PENDING', 'Extraction pending'),
+      )
+      mockGetResumeExtractionStatus
+        .mockResolvedValue(extractionStatus({ status: 'PENDING' }))
+
+      await act(async () => { await result.current.requestScreening() })
+      expect(result.current.state.workflowState).toBe('WAITING_FOR_EXTRACTION')
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(1)
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(1)
+      expect(result.current.state.workflowState).toBe('WAITING_FOR_EXTRACTION')
+    })
+
+    it('calls POST requestAiScreening exactly once when extraction completes', async () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+
+      mockRequestAiScreening
+        .mockRejectedValueOnce(new MockApiError(409, 'RESUME_EXTRACTION_PENDING', 'Pending'))
+        .mockResolvedValueOnce(mockRequestResponse(200, screeningResult({ status: 'COMPLETED' })))
+      mockGetResumeExtractionStatus
+        .mockResolvedValue(extractionStatus({ status: 'COMPLETED' }))
+
+      await act(async () => { await result.current.requestScreening() })
+      expect(result.current.state.workflowState).toBe('WAITING_FOR_EXTRACTION')
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(1)
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(2)
+      expect(result.current.state.workflowState).toBe('SCREENING_COMPLETED')
+    })
+
+    it('transitions to SCREENING_COMPLETED when extraction complete and screening reused', async () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+
+      mockRequestAiScreening
+        .mockRejectedValueOnce(new MockApiError(409, 'RESUME_EXTRACTION_PENDING', 'Pending'))
+        .mockResolvedValueOnce(mockRequestResponse(200, screeningResult({ status: 'COMPLETED', overallScore: 92 })))
+      mockGetResumeExtractionStatus
+        .mockResolvedValue(extractionStatus({ status: 'COMPLETED' }))
+
+      await act(async () => { await result.current.requestScreening() })
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+
+      expect(result.current.state.workflowState).toBe('SCREENING_COMPLETED')
+      expect(result.current.state.screeningResult?.overallScore).toBe(92)
+    })
+
+    it('shows EXTRACTION_FAILED without calling POST again', async () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+
+      mockRequestAiScreening.mockRejectedValueOnce(
+        new MockApiError(409, 'RESUME_EXTRACTION_PENDING', 'Pending'),
+      )
+      mockGetResumeExtractionStatus.mockResolvedValue(
+        extractionStatus({ status: 'FAILED', failureCode: 'EXTRACTION_FAILED', failureMessageSafe: 'Could not parse PDF' }),
+      )
+
+      await act(async () => { await result.current.requestScreening() })
+      expect(result.current.state.workflowState).toBe('WAITING_FOR_EXTRACTION')
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+
+      expect(result.current.state.workflowState).toBe('EXTRACTION_FAILED')
+      expect(result.current.state.error).toContain('Could not parse PDF')
+      expect(result.current.state.errorCode).toBe('EXTRACTION_FAILED')
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows PROCESSING status while worker is active', async () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+
+      mockRequestAiScreening.mockRejectedValueOnce(
+        new MockApiError(409, 'RESUME_EXTRACTION_PENDING', 'Pending'),
+      )
+      mockGetResumeExtractionStatus.mockResolvedValue(
+        extractionStatus({ status: 'PROCESSING' }),
+      )
+
+      await act(async () => { await result.current.requestScreening() })
+      expect(result.current.state.workflowState).toBe('WAITING_FOR_EXTRACTION')
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(1)
+      expect(result.current.state.extractionStatus).toBe('PROCESSING')
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(1)
+    })
+
+    it('no repeated POST calls during multiple polling rounds', async () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+
+      mockRequestAiScreening
+        .mockRejectedValueOnce(new MockApiError(409, 'RESUME_EXTRACTION_PENDING', 'Pending'))
+        .mockResolvedValueOnce(mockRequestResponse(200, screeningResult({ status: 'COMPLETED' })))
+      mockGetResumeExtractionStatus
+        .mockResolvedValueOnce(extractionStatus({ status: 'PENDING' }))
+        .mockResolvedValueOnce(extractionStatus({ status: 'PENDING' }))
+        .mockResolvedValueOnce(extractionStatus({ status: 'COMPLETED' }))
+
+      await act(async () => { await result.current.requestScreening() })
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(1)
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(1)
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(1)
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(2)
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(1)
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(3)
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(2)
+      expect(result.current.state.workflowState).toBe('SCREENING_COMPLETED')
+    })
+
+    it('timeout still works during extraction wait', async () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+
+      mockRequestAiScreening.mockRejectedValueOnce(
+        new MockApiError(409, 'RESUME_EXTRACTION_PENDING', 'Pending'),
+      )
+      mockGetResumeExtractionStatus.mockResolvedValue(extractionStatus({ status: 'PENDING' }))
+
+      await act(async () => { await result.current.requestScreening() })
+
+      act(() => { vi.advanceTimersByTime(120000) })
+      await act(async () => { await Promise.resolve() })
+
+      expect(result.current.state.workflowState).toBe('TIMED_OUT')
+      expect(result.current.state.error).toContain('timed out')
+    })
+
+    it('extraction PROCESSING then FAILED transitions to EXTRACTION_FAILED without POST', async () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+
+      mockRequestAiScreening.mockRejectedValueOnce(
+        new MockApiError(409, 'RESUME_EXTRACTION_PENDING', 'Pending'),
+      )
+      mockGetResumeExtractionStatus
+        .mockResolvedValueOnce(extractionStatus({ status: 'PROCESSING' }))
+        .mockResolvedValueOnce(extractionStatus({ status: 'FAILED', failureCode: 'EXTRACTION_FAILED' }))
+
+      await act(async () => { await result.current.requestScreening() })
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(1)
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(1)
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(1)
+
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(2)
+      expect(result.current.state.workflowState).toBe('EXTRACTION_FAILED')
+      expect(mockRequestAiScreening).toHaveBeenCalledTimes(1)
     })
   })
 

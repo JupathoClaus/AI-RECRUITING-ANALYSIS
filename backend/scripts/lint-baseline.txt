@@ -1,0 +1,31 @@
+# Lint Baseline - Pre-existing violations
+# Format: relative_path:rule_id
+# Full lint requires --max-old-space-size=4096 due to project size
+# This baseline tracks known violations; new ones must not be added
+
+src/app/ai-interviews/page.tsx:@typescript-eslint/no-unused-vars
+src/app/ai-screener/page.tsx:@typescript-eslint/no-unused-vars
+src/app/candidates/page.tsx:react-hooks/set-state-in-effect
+src/app/candidates/page.tsx:react-hooks/exhaustive-deps
+src/app/candidates/page.tsx:@typescript-eslint/no-unused-vars
+src/app/interview/access/page.tsx:@next/next/no-img-element
+src/app/interview/complete/page.tsx:react-hooks/set-state-in-effect
+src/app/interview/device-check/page.tsx:react-hooks/set-state-in-effect
+src/app/interview/device-check/page.tsx:@next/next/no-img-element
+src/app/interview/preparation/page.tsx:@next/next/no-img-element
+src/app/interview/session/page.tsx:react-hooks/set-state-in-effect
+src/app/interview/session/page.tsx:@next/next/no-img-element
+src/app/interview/welcome/page.tsx:@next/next/no-img-element
+src/app/pipeline/page.tsx:@typescript-eslint/no-unused-vars
+src/app/pipeline/page.tsx:prefer-const
+src/app/register/page.tsx:@typescript-eslint/no-unused-vars
+src/app/register/page.tsx:@next/next/no-img-element
+src/components/ai-interview/send-ai-interview-modal.tsx:react-hooks/set-state-in-effect
+src/components/ai-interview/send-ai-interview-modal.tsx:@typescript-eslint/no-unused-vars
+src/components/ai-screening/application-selector.tsx:react-hooks/set-state-in-effect
+src/components/layout/sidebar.tsx:@next/next/no-img-element
+src/components/layout/topnav.tsx:@typescript-eslint/no-unused-vars
+src/components/ui/avatar.tsx:@typescript-eslint/no-unused-vars
+src/lib/api/__tests__/client.test.ts:@typescript-eslint/no-unused-vars
+src/store/useStore.ts:@typescript-eslint/no-unused-vars
+src/__tests__/candidates-domain.test.ts:@typescript-eslint/no-unused-vars

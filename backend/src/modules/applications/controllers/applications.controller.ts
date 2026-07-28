@@ -10,6 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Headers,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
@@ -60,13 +61,18 @@ export class ApplicationsController {
   @Post()
   @RequirePermissions('applications.create')
   @ApiOperation({ summary: 'Create a draft application' })
-  async create(@Body() dto: CreateApplicationDto, @CurrentUser() user: AuthenticatedPrincipal) {
+  async create(
+    @Body() dto: CreateApplicationDto,
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Headers('Idempotency-Key') idempotencyKey?: string,
+  ) {
     return this.applicationsService.create(
       dto,
       user.activeCompanyId!,
       user.userId,
       user.membershipId!,
       undefined,
+      idempotencyKey || undefined,
     );
   }
 

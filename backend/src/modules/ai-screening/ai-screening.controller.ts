@@ -14,6 +14,7 @@ import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { TenantMembershipGuard } from '../auth/guards/tenant-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RequireTenantAccess } from '../auth/decorators/tenant-access.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -24,7 +25,7 @@ import { ListAiScreeningsQueryDto } from './dto/list-ai-screenings-query.dto';
 
 @ApiTags('AI Screening')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, TenantMembershipGuard)
 @Controller()
 export class AiScreeningController {
   constructor(private readonly screeningService: AiScreeningService) {}
@@ -95,5 +96,36 @@ export class AiScreeningController {
     @CurrentUser() user: AuthenticatedPrincipal,
   ) {
     return this.screeningService.getScreening(screeningId, user.activeCompanyId!);
+  }
+
+  @Get('applications/:applicationId/resume-extraction')
+  @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')
+  @RequireTenantAccess()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get resume extraction status for an application',
+    description: 'Pure read-only query. Never creates records or enqueues jobs.',
+  })
+  @ApiResponse({ status: 200, description: 'Extraction status' })
+  @ApiResponse({ status: 404, description: 'Application or extraction not found' })
+  async getExtractionStatus(
+    @Param('applicationId') applicationId: string,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    return this.screeningService.getExtractionStatus(applicationId, user.activeCompanyId!);
+  }
+
+  @Post('applications/:applicationId/ai-screenings/retry-extraction')
+  @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')
+  @RequireTenantAccess()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Retry resume extraction for an application after failure' })
+  @ApiResponse({ status: 200, description: 'Extraction retry initiated' })
+  @ApiResponse({ status: 409, description: 'Retry limit reached or no resume file' })
+  async retryExtraction(
+    @Param('applicationId') applicationId: string,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    return this.screeningService.retryExtraction(applicationId, user.activeCompanyId!, user.userId);
   }
 }

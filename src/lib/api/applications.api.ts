@@ -171,10 +171,11 @@ export async function fetchApplicationsByCandidate(candidateId: string, params?:
   return fetchApplications({ candidateId: [candidateId], ...params })
 }
 
-export async function createApplication(dto: CreateApplicationRequest): Promise<ApplicationDetail> {
+export async function createApplication(dto: CreateApplicationRequest, idempotencyKey?: string): Promise<ApplicationDetail> {
   return apiRequest<ApplicationDetail>("/applications", {
     method: "POST",
     body: dto,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
   })
 }
 

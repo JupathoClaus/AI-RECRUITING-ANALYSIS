@@ -21,19 +21,24 @@ jest.mock('fs/promises', () => ({
 describe('AiScreeningController', () => {
   let controller: AiScreeningController;
   let service: AiScreeningService;
+  let mockPrismaService: any;
+  let mockQueue: { add: jest.Mock };
+  let mockResumeQueue: { add: jest.Mock };
 
   beforeEach(async () => {
     jest.resetAllMocks();
     mockReadFile.mockResolvedValue('Parsed resume text.');
 
-    const mockPrismaService = {
+    mockQueue = { add: jest.fn().mockResolvedValue({ id: 'job-1' }) };
+    mockResumeQueue = { add: jest.fn() };
+
+    mockPrismaService = {
       application: { findFirst: jest.fn(), update: jest.fn() },
       aiScreeningResult: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn() },
       storedFile: { findUnique: jest.fn() },
+      resumeTextExtraction: { findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn() },
       $transaction: jest.fn(),
     };
-
-    const mockQueue = { add: jest.fn().mockResolvedValue({ id: 'job-1' }) };
 
     const mockConfigService = {
       get: jest.fn((key: string) => {
@@ -52,7 +57,7 @@ describe('AiScreeningController', () => {
         AiScreeningService, ScreeningInputBuilderService, ResumeTextLoaderService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: getQueueToken(AI_SCREENING_QUEUE), useValue: mockQueue },
-        { provide: getQueueToken('resume-processing'), useValue: { add: jest.fn() } },
+        { provide: getQueueToken('resume-processing'), useValue: mockResumeQueue },
         { provide: ResumeExtractionService, useValue: { requestExtraction: jest.fn() } },
         { provide: ConfigService, useValue: mockConfigService },
       ],
@@ -146,6 +151,184 @@ describe('AiScreeningController', () => {
       jest.spyOn(service, 'getScreening').mockResolvedValue({ id: 's1', status: 'COMPLETED', createdAt: new Date().toISOString() } as any);
       const result = await controller.getScreening('s1', { userId: 'u1', activeCompanyId: 'c1' } as any);
       expect(result.id).toBe('s1');
+    });
+  });
+
+  describe('GET applications/:applicationId/resume-extraction', () => {
+    const user = { userId: 'u1', activeCompanyId: 'c1', role: 'RECRUITER', permissions: [] } as any;
+
+    it('returns extraction status for application', async () => {
+      jest.spyOn(service, 'getExtractionStatus').mockResolvedValue({
+        id: 'ext-1', status: 'PENDING', createdAt: new Date().toISOString(),
+      });
+
+      const result = await controller.getExtractionStatus('app-1', user);
+      expect(result.id).toBe('ext-1');
+      expect(result.status).toBe('PENDING');
+    });
+
+    it('returns PROCESSING status when worker is active', async () => {
+      jest.spyOn(service, 'getExtractionStatus').mockResolvedValue({
+        id: 'ext-1', status: 'PROCESSING', createdAt: new Date().toISOString(), startedAt: new Date().toISOString(),
+      });
+
+      const result = await controller.getExtractionStatus('app-1', user);
+      expect(result.status).toBe('PROCESSING');
+    });
+
+    it('returns COMPLETED status with timestamps', async () => {
+      jest.spyOn(service, 'getExtractionStatus').mockResolvedValue({
+        id: 'ext-1', status: 'COMPLETED', createdAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+      });
+
+      const result = await controller.getExtractionStatus('app-1', user);
+      expect(result.status).toBe('COMPLETED');
+      expect(result.startedAt).toBeDefined();
+      expect(result.completedAt).toBeDefined();
+    });
+
+    it('returns FAILED status with failure details', async () => {
+      jest.spyOn(service, 'getExtractionStatus').mockResolvedValue({
+        id: 'ext-1', status: 'FAILED', failureCode: 'EXTRACTION_FAILED',
+        failureMessageSafe: 'Could not extract text from PDF', createdAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      });
+
+      const result = await controller.getExtractionStatus('app-1', user);
+      expect(result.status).toBe('FAILED');
+      expect(result.failureCode).toBe('EXTRACTION_FAILED');
+      expect(result.failureMessageSafe).toContain('PDF');
+    });
+  });
+
+  describe('CQRS — GET resume-extraction is pure read-only (no mutations)', () => {
+    const user = { userId: 'u1', activeCompanyId: 'c1', role: 'RECRUITER', permissions: [] } as any;
+
+    beforeEach(() => {
+      mockPrismaService.application = {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'app-1', companyId: 'c1', deletedAt: null,
+          resumeFiles: [{ id: 'file-1' }],
+        }),
+        update: jest.fn(),
+      };
+      mockPrismaService.resumeTextExtraction = {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'ext-1', storedFileId: 'file-1', companyId: 'c1', status: 'PENDING',
+          failureCode: null, failureMessageSafe: null,
+          createdAt: new Date(), startedAt: null, completedAt: null,
+        }),
+        findMany: jest.fn(),
+        count: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      };
+    });
+
+    it('never calls create or update on resumeTextExtraction', async () => {
+      await controller.getExtractionStatus('app-1', user);
+
+      expect(mockPrismaService.resumeTextExtraction.findFirst).toHaveBeenCalled();
+      expect(mockPrismaService.resumeTextExtraction.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.resumeTextExtraction.update).not.toHaveBeenCalled();
+    });
+
+    it('never enqueues extraction jobs', async () => {
+      await controller.getExtractionStatus('app-1', user);
+
+      expect(mockResumeQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('never creates or updates aiScreeningResults', async () => {
+      await controller.getExtractionStatus('app-1', user);
+
+      expect(mockPrismaService.aiScreeningResult.findFirst).not.toHaveBeenCalled();
+      expect(mockPrismaService.aiScreeningResult.create).not.toHaveBeenCalled();
+      expect(mockPrismaService.aiScreeningResult.update).not.toHaveBeenCalled();
+    });
+
+    it('never enqueues ai-screening jobs', async () => {
+      await controller.getExtractionStatus('app-1', user);
+
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('is idempotent — repeated calls return same result', async () => {
+      const first = await controller.getExtractionStatus('app-1', user);
+      const second = await controller.getExtractionStatus('app-1', user);
+
+      expect(first.id).toBe(second.id);
+      expect(first.status).toBe(second.status);
+    });
+
+    it('repeated calls leave extraction row count unchanged', async () => {
+      mockPrismaService.resumeTextExtraction.count = jest.fn().mockResolvedValue(1);
+      const countBefore = 1;
+
+      await controller.getExtractionStatus('app-1', user);
+      await controller.getExtractionStatus('app-1', user);
+      await controller.getExtractionStatus('app-1', user);
+
+      expect(mockPrismaService.resumeTextExtraction.count).not.toHaveBeenCalled();
+    });
+
+    it('returns PENDING status without side effects', async () => {
+      const result = await controller.getExtractionStatus('app-1', user);
+
+      expect(result.status).toBe('PENDING');
+      expect(mockPrismaService.resumeTextExtraction.update).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(mockResumeQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('returns FAILED status without triggering retry', async () => {
+      mockPrismaService.resumeTextExtraction.findFirst = jest.fn().mockResolvedValue({
+        id: 'ext-1', storedFileId: 'file-1', companyId: 'c1', status: 'FAILED',
+        failureCode: 'EXTRACTION_FAILED', failureMessageSafe: null,
+        createdAt: new Date(), startedAt: null, completedAt: new Date(),
+      });
+
+      const result = await controller.getExtractionStatus('app-1', user);
+
+      expect(result.status).toBe('FAILED');
+      expect(mockPrismaService.resumeTextExtraction.create).not.toHaveBeenCalled();
+      expect(mockResumeQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('returns COMPLETED status without reusing results', async () => {
+      mockPrismaService.resumeTextExtraction.findFirst = jest.fn().mockResolvedValue({
+        id: 'ext-1', storedFileId: 'file-1', companyId: 'c1', status: 'COMPLETED',
+        failureCode: null, failureMessageSafe: null,
+        createdAt: new Date(), startedAt: new Date(), completedAt: new Date(),
+      });
+
+      const result = await controller.getExtractionStatus('app-1', user);
+
+      expect(result.status).toBe('COMPLETED');
+      expect(mockPrismaService.aiScreeningResult.findFirst).not.toHaveBeenCalled();
+      expect(mockPrismaService.aiScreeningResult.create).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('scopes queries to the active company', async () => {
+      mockPrismaService.application.findFirst = jest.fn().mockResolvedValue({
+        id: 'app-1', companyId: 'c1', deletedAt: null,
+        resumeFiles: [{ id: 'file-1' }],
+      });
+
+      await controller.getExtractionStatus('app-1', user);
+
+      expect(mockPrismaService.application.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ companyId: 'c1' }),
+        }),
+      );
+      expect(mockPrismaService.resumeTextExtraction.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ companyId: 'c1' }),
+        }),
+      );
     });
   });
 });

@@ -103,6 +103,38 @@ export async function getLatestAiScreening(
   )
 }
 
+export async function retryAiScreeningExtraction(
+  applicationId: string,
+  signal?: AbortSignal,
+): Promise<{ extraction: { id: string; status: string } }> {
+  return apiRequest<{ extraction: { id: string; status: string } }>(
+    `/applications/${applicationId}/ai-screenings/retry-extraction`,
+    { method: 'POST', signal },
+  )
+}
+
+export type ExtractionStatusValue = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+
+export interface ExtractionStatusResponse {
+  id: string
+  status: ExtractionStatusValue
+  failureCode?: string
+  failureMessageSafe?: string
+  createdAt: string
+  startedAt?: string
+  completedAt?: string
+}
+
+export async function getResumeExtractionStatus(
+  applicationId: string,
+  signal?: AbortSignal,
+): Promise<ExtractionStatusResponse> {
+  return apiRequest<ExtractionStatusResponse>(
+    `/applications/${applicationId}/resume-extraction`,
+    { signal },
+  )
+}
+
 export async function getAiScreeningById(
   screeningId: string,
   signal?: AbortSignal,

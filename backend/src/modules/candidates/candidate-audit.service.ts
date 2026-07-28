@@ -17,8 +17,10 @@ export class CandidateAuditService {
     description: string;
     metadata?: Record<string, unknown> | null;
     requestId?: string | null;
+    tx?: Prisma.TransactionClient;
   }): Promise<void> {
-    await this.prisma.candidateAuditEvent.create({
+    const client = data.tx ?? this.prisma;
+    await (client as any).candidateAuditEvent.create({
       data: {
         candidateId: data.candidateId,
         companyId: data.companyId ?? null,

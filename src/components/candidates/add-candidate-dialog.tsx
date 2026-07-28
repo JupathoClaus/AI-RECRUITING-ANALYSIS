@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, startTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
@@ -14,6 +14,7 @@ import { TickCircle, DocumentText, Warning2 } from 'iconsax-react'
 import { useAiScreening } from '@/lib/ai-screening/use-ai-screening'
 import { createCandidate } from '@/lib/api/candidates.api'
 import { createApplication } from '@/lib/api/applications.api'
+import { retryAiScreeningExtraction } from '@/lib/api/ai-screening.api'
 import { useStore } from '@/store/useStore'
 import type { Job } from '@/types'
 
@@ -55,7 +56,21 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
   const screening = useAiScreening()
   const submitLock = useRef(false)
   const screenLock = useRef(false)
+  const retryLock = useRef(false)
+  const extractionRetryLock = useRef(false)
+  const [retryPending, setRetryPending] = useState(false)
+  const [extractionRetryPending, setExtractionRetryPending] = useState(false)
   const stepRef = useRef({ candidate: false, application: false })
+  const workflowKeyRef = useRef<string>('')
+  const candidateCreateKeyRef = useRef<string>('')
+  const applicationCreateKeyRef = useRef<string>('')
+
+  const generateWorkflowKeys = useCallback(() => {
+    const wid = crypto.randomUUID()
+    workflowKeyRef.current = wid
+    candidateCreateKeyRef.current = `candidate-create:${wid}`
+    applicationCreateKeyRef.current = `application-create:${wid}`
+  }, [])
 
   const job = jobs.find((j) => j.id === selectedJobId)
 
@@ -73,40 +88,55 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
     setFailTarget(null)
     submitLock.current = false
     screenLock.current = false
+    retryLock.current = false
+    extractionRetryLock.current = false
+    setRetryPending(false)
+    setExtractionRetryPending(false)
     stepRef.current = { candidate: false, application: false }
+    workflowKeyRef.current = ''
+    candidateCreateKeyRef.current = ''
+    applicationCreateKeyRef.current = ''
     screening.selectApplication('')
   }, [screening])
 
   React.useEffect(() => {
-    if (!open) fullReset()
+    if (!open) startTransition(() => fullReset())
   }, [open, fullReset])
 
   React.useEffect(() => {
     if (phase !== 'waiting-extraction') return
     const ws = screening.state.workflowState
-    if (ws === 'RESUME_READY') {
-      setPhase('ready-for-screening')
-    } else if (ws === 'EXTRACTION_FAILED') {
-      setPhase('failed')
-      setFailTarget('extraction')
-      setError(screening.state.error || 'Resume extraction failed. Replace the file and try again.')
-    } else if (ws === 'ERROR' || ws === 'TIMED_OUT') {
-      setPhase('failed')
-      setFailTarget('extraction')
-      setError(screening.state.error || 'Resume extraction timed out.')
-    }
+    startTransition(() => {
+      if (ws === 'RESUME_READY') {
+        setPhase('ready-for-screening')
+      } else if (ws === 'EXTRACTION_FAILED') {
+        setPhase('failed')
+        setFailTarget('extraction')
+        setError(screening.state.error || 'Resume extraction failed. Replace the file and try again.')
+      } else if (ws === 'ERROR' || ws === 'TIMED_OUT') {
+        setPhase('failed')
+        setFailTarget('extraction')
+        setError(screening.state.error || 'Resume extraction timed out.')
+      }
+    })
   }, [phase, screening.state.workflowState, screening.state.error])
 
   React.useEffect(() => {
     if (phase !== 'screening-in-progress') return
     const ws = screening.state.workflowState
-    if (ws === 'SCREENING_COMPLETED') {
-      setPhase('screening-done')
-    } else if (ws === 'SCREENING_FAILED') {
-      setPhase('screening-done')
-      setFailTarget('screening')
-      setError(screening.state.error || 'AI Screening failed.')
-    }
+    startTransition(() => {
+      if (ws === 'SCREENING_COMPLETED') {
+        setPhase('screening-done')
+      } else if (ws === 'SCREENING_FAILED') {
+        setPhase('screening-done')
+        setFailTarget('screening')
+        setError(screening.state.error || 'AI Screening failed.')
+      } else if (ws === 'ERROR' || ws === 'TIMED_OUT' || ws === 'EXTRACTION_FAILED') {
+        setPhase('failed')
+        setFailTarget('screening')
+        setError(screening.state.error || 'Screening could not continue.')
+      }
+    })
   }, [phase, screening.state.workflowState, screening.state.error])
 
   const handleSubmit = async () => {
@@ -116,6 +146,7 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
     setFailTarget(null)
 
     try {
+      generateWorkflowKeys()
       setPhase('creating-candidate')
       const parts = name.trim().split(/\s+/)
       const cand = await createCandidate({
@@ -126,7 +157,7 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
         source: 'RECRUITER_CREATED',
         currentJobTitle: job?.title,
         totalExperienceYears: experience ? Number(experience) : undefined,
-      })
+      }, candidateCreateKeyRef.current || undefined)
       setCandidateId(cand.id)
       stepRef.current.candidate = true
 
@@ -135,13 +166,16 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
         candidateId: cand.id,
         jobId: selectedJobId,
         source: 'RECRUITER_CREATED',
-      })
+      }, applicationCreateKeyRef.current || undefined)
       setApplicationId(app.id)
       stepRef.current.application = true
       screening.selectApplication(app.id)
 
       setPhase('uploading-resume')
-      await screening.handleUploadResume(resumeFile)
+      const uploadResult = await screening.handleUploadResume(resumeFile)
+      if (!uploadResult.ok) {
+        throw new Error(uploadResult.error)
+      }
 
       setPhase('resume-uploaded')
       setPhase('waiting-extraction')
@@ -152,6 +186,7 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
       else setFailTarget('upload')
       setError(msg)
       setPhase('failed')
+    } finally {
       submitLock.current = false
     }
   }
@@ -166,16 +201,17 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
       source: 'RECRUITER_CREATED',
       currentJobTitle: job?.title,
       totalExperienceYears: experience ? Number(experience) : undefined,
-    })
+    }, candidateCreateKeyRef.current || undefined)
     setCandidateId(cand.id)
     const app = await createApplication({
       candidateId: cand.id,
       jobId: selectedJobId,
       source: 'RECRUITER_CREATED',
-    })
+    }, applicationCreateKeyRef.current || undefined)
     setApplicationId(app.id)
     screening.selectApplication(app.id)
-    await screening.handleUploadResume(resumeFile!)
+    const u = await screening.handleUploadResume(resumeFile!)
+    if (!u.ok) throw new Error(u.error)
   }
 
   const buildAppOnly = async () => {
@@ -183,29 +219,29 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
       candidateId: candidateId!,
       jobId: selectedJobId,
       source: 'RECRUITER_CREATED',
-    })
+    }, applicationCreateKeyRef.current || undefined)
     setApplicationId(app.id)
     screening.selectApplication(app.id)
-    await screening.handleUploadResume(resumeFile!)
+    const u = await screening.handleUploadResume(resumeFile!)
+    if (!u.ok) throw new Error(u.error)
   }
 
   const uploadOnly = async () => {
-    await screening.handleUploadResume(resumeFile!)
-  }
-
-  const tryStartScreening = async () => {
-    screening.selectApplication(applicationId!)
-    await screening.requestScreening()
+    const u = await screening.handleUploadResume(resumeFile!)
+    if (!u.ok) throw new Error(u.error)
   }
 
   const handleRetry = async () => {
-    if (!name.trim() || !email.trim() || !selectedJobId || !resumeFile) {
-      setError('All required fields must be filled.')
+    if (retryLock.current || !name.trim() || !email.trim() || !selectedJobId || !resumeFile) {
+      if (!name.trim() || !email.trim() || !selectedJobId || !resumeFile) {
+        setError('All required fields must be filled.')
+      }
       return
     }
+    retryLock.current = true
+    setRetryPending(true)
     setError(null)
     setFailTarget(null)
-    submitLock.current = true
 
     try {
       if (failTarget === 'candidate') {
@@ -220,7 +256,26 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Retry failed'
       setError(msg)
-      submitLock.current = false
+    } finally {
+      retryLock.current = false
+      setRetryPending(false)
+    }
+  }
+
+  const handleRetryExtraction = async () => {
+    if (extractionRetryLock.current || !applicationId) return
+    extractionRetryLock.current = true
+    setExtractionRetryPending(true)
+    setError(null)
+    try {
+      await retryAiScreeningExtraction(applicationId)
+      setPhase('waiting-extraction')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Retry failed'
+      setError(msg)
+    } finally {
+      extractionRetryLock.current = false
+      setExtractionRetryPending(false)
     }
   }
 
@@ -228,13 +283,14 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
     setResumeFile(file)
     setPhase('uploading-resume')
     try {
-      await screening.handleUploadResume(file)
+      const u = await screening.handleUploadResume(file)
+      if (!u.ok) throw new Error(u.error)
       setPhase('resume-uploaded')
       setPhase('waiting-extraction')
     } catch {
       setError('Failed to upload resume. Please try again.')
       setPhase('failed')
-      setFailTarget('extraction')
+      setFailTarget('upload')
     }
   }
 
@@ -242,25 +298,36 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
     if (screenLock.current) return
     screenLock.current = true
     setPhase('screening-in-progress')
+    setFailTarget(null)
+    setError(null)
     try {
       await screening.requestScreening()
     } catch {
-      if (screening.state.workflowState === 'SCREENING_COMPLETED' || screening.state.workflowState === 'SCREENING_FAILED') {
-        setPhase('screening-done')
-      } else {
-        setPhase('failed')
-        setFailTarget('screening')
-        setError('Failed to start AI screening.')
-        screenLock.current = false
-      }
+      setPhase('failed')
+      setFailTarget('screening')
+      setError('Failed to start AI screening.')
+    } finally {
+      screenLock.current = false
     }
   }
 
-  const handleRetryScreening = () => {
-    screenLock.current = false
+  const handleRetryScreening = async () => {
+    if (retryLock.current) return
+    retryLock.current = true
+    setRetryPending(true)
     setPhase('screening-in-progress')
     setFailTarget(null)
-    screening.retryScreening()
+    setError(null)
+    try {
+      await screening.requestScreening()
+    } catch {
+      setPhase('failed')
+      setFailTarget('screening')
+      setError('AI Screening retry failed.')
+    } finally {
+      retryLock.current = false
+      setRetryPending(false)
+    }
   }
 
   const handleClose = () => {
@@ -276,7 +343,7 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
   }
 
   const handleCancel = () => {
-    if (submitLock.current || screenLock.current) return
+    if (submitLock.current || screenLock.current || retryLock.current || extractionRetryLock.current) return
     onOpenChange(false)
   }
 
@@ -292,7 +359,7 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
             <p className="text-xs text-muted-foreground text-center">
               Candidate and application will be recreated.
             </p>
-            <Button onClick={handleRetry} size="sm">Retry from Candidate Creation</Button>
+            <Button onClick={handleRetry} size="sm" disabled={retryPending}>Retry from Candidate Creation</Button>
           </div>
         )
       case 'application':
@@ -301,7 +368,7 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
             <p className="text-xs text-muted-foreground text-center">
               Candidate was created. Only the application will be retried.
             </p>
-            <Button onClick={handleRetry} size="sm">Retry Application Creation</Button>
+            <Button onClick={handleRetry} size="sm" disabled={retryPending}>Retry Application Creation</Button>
           </div>
         )
       case 'upload':
@@ -310,20 +377,25 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
             <p className="text-xs text-muted-foreground text-center">
               Candidate and application were created. Only the resume upload will be retried.
             </p>
-            <Button onClick={handleRetry} size="sm">Retry Resume Upload</Button>
+            <Button onClick={handleRetry} size="sm" disabled={retryPending}>Retry Resume Upload</Button>
           </div>
         )
       case 'extraction':
         return (
           <div className="flex flex-col items-center gap-3">
             <p className="text-xs text-muted-foreground text-center">
-              Resume extraction failed. No dedicated retry-extraction API is available.
-              Select a different file to replace the current resume.
+              Resume extraction did not complete.
             </p>
-            <ResumeUploadArea
-              onUpload={handleReplaceResume}
-              uploading={screening.state.uploadProgress}
-            />
+            <div className="flex gap-2">
+              <Button onClick={handleRetryExtraction} size="sm" disabled={extractionRetryPending}>
+                Retry Extraction
+              </Button>
+              <span className="text-xs text-muted-foreground self-center">or</span>
+              <ResumeUploadArea
+                onUpload={handleReplaceResume}
+                uploading={screening.state.uploadProgress}
+              />
+            </div>
           </div>
         )
       case 'screening':
@@ -332,7 +404,7 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
             <p className="text-xs text-muted-foreground text-center">
               Screening did not complete successfully.
             </p>
-            <Button onClick={handleRetryScreening} size="sm">Retry AI Screening</Button>
+            <Button onClick={handleRetryScreening} size="sm" disabled={retryPending}>Retry AI Screening</Button>
           </div>
         )
       default:
@@ -506,6 +578,7 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
                   {failTarget === 'upload' && 'Resume could not be uploaded.'}
                   {failTarget === 'extraction' && 'Resume extraction did not complete.'}
                   {failTarget === 'screening' && 'AI Screening did not complete.'}
+                  {!failTarget && 'The workflow could not continue.'}
                 </p>
               </div>
             </div>
@@ -515,6 +588,14 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
                 The candidate record exists. You can access it from the candidates table.
               </p>
             )}
+          </div>
+        )}
+
+        {phase !== 'idle' && phase !== 'creating-candidate' && phase !== 'creating-application' && phase !== 'uploading-resume' && phase !== 'resume-uploaded' && phase !== 'waiting-extraction' && phase !== 'ready-for-screening' && phase !== 'screening-in-progress' && phase !== 'screening-done' && phase !== 'failed' && (
+          <div className="py-6 text-center">
+            <p className="text-sm font-medium text-foreground">The workflow could not continue</p>
+            <p className="text-xs text-muted-foreground mt-1">An unexpected state was reached. Please close and try again.</p>
+            <Button variant="outline" size="sm" className="mt-3" onClick={handleClose}>Close</Button>
           </div>
         )}
 

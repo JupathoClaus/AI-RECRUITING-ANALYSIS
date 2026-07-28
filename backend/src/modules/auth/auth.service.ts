@@ -372,6 +372,7 @@ export class AuthService {
     const session = await this.sessionService.create({
       userId: user.id,
       activeCompanyId: activeMembership.company.id,
+      membershipId: activeMembership.id,
       ipAddress: ip,
       userAgent,
       refreshTokenHash: refreshTokenData.hashedToken,
@@ -471,7 +472,7 @@ export class AuthService {
       throw new BadRequestException('Company is not active');
     }
 
-    await this.sessionService.updateActiveCompany(sessionId, companyId);
+    await this.sessionService.updateActiveCompany(sessionId, companyId, membership.id);
 
     const permissions = membership.role.rolePermissions.map((rp) => rp.permission.code);
 
@@ -566,23 +567,63 @@ export class AuthService {
     const newRefresh = this.tokenService.generateRefreshToken();
     await this.sessionService.updateRefreshToken(session.id, newRefresh.hashedToken);
 
-    let role = session.user.status === UserStatus.PENDING_VERIFICATION ? 'VIEWER' : 'COMPANY_ADMIN';
-    let membershipId: string | null = null;
+    let role: string;
+    let membershipId: string | null;
 
     if (session.activeCompanyId) {
-      const membership = await this.prisma.companyMembership.findUnique({
-        where: {
-          userId_companyId: {
-            userId: session.userId,
-            companyId: session.activeCompanyId,
-          },
-        },
-        include: { role: true },
-      });
-      if (membership && membership.status === MembershipStatus.ACTIVE) {
-        role = membership.role.code;
-        membershipId = membership.id;
+      if (!session.membershipId) {
+        await this.sessionService.revoke(session.id, 'Legacy company session missing membershipId');
+        throw new UnauthorizedException({
+          code: AUTH_ERROR_CODES.SESSION_REVOKED,
+          message: 'Company session missing membership binding. Please log in again.',
+        });
       }
+
+      const membership = await this.prisma.companyMembership.findUnique({
+        where: { id: session.membershipId },
+        include: { role: true, company: true },
+      });
+
+      if (!membership || membership.status !== MembershipStatus.ACTIVE) {
+        await this.sessionService.revoke(session.id, 'No active membership for company context');
+        throw new UnauthorizedException({
+          code: AUTH_ERROR_CODES.MEMBERSHIP_INACTIVE,
+          message: 'No active membership found for this company',
+        });
+      }
+
+      if (membership.userId !== session.userId) {
+        await this.sessionService.revoke(session.id, 'Membership user mismatch');
+        throw new UnauthorizedException({
+          code: AUTH_ERROR_CODES.SESSION_REVOKED,
+          message: 'Session user does not match membership',
+        });
+      }
+
+      if (membership.companyId !== session.activeCompanyId) {
+        await this.sessionService.revoke(session.id, 'Membership company mismatch');
+        throw new UnauthorizedException({
+          code: AUTH_ERROR_CODES.SESSION_REVOKED,
+          message: 'Session company does not match membership',
+        });
+      }
+
+      if (membership.company.status !== 'ACTIVE') {
+        await this.sessionService.revoke(session.id, 'Company not active');
+        throw new UnauthorizedException({
+          code: AUTH_ERROR_CODES.MEMBERSHIP_INACTIVE,
+          message: 'Company is not active',
+        });
+      }
+
+      role = membership.role.code;
+      membershipId = membership.id;
+    } else {
+      await this.sessionService.revoke(session.id, 'Non-company sessions are not supported');
+      throw new UnauthorizedException({
+        code: AUTH_ERROR_CODES.SESSION_REVOKED,
+        message: 'Company context required. Please log in again.',
+      });
     }
 
     const accessToken = await this.tokenService.generateAccessToken(

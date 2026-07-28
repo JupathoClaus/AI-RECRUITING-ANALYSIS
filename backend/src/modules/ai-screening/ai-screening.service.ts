@@ -19,6 +19,7 @@ import { computeScreeningFingerprint } from './utils/screening-input-fingerprint
 import { AI_SCREENING_QUEUE, AI_SCREENING_JOB } from './queue/ai-screening-queue.constants';
 import { AiScreeningJobData } from './queue/ai-screening-job-data.interface';
 import { AiScreeningResponseDto } from './dto/ai-screening-response.dto';
+import { ResumeExtractionStatusDto } from './dto/resume-extraction-status.dto';
 
 export interface ScreeningResultOrAction {
   action: 'CREATED' | 'REUSED';
@@ -222,6 +223,33 @@ export class AiScreeningService {
     throw new ServiceUnavailableException('Could not create screening attempt due to concurrent access.');
   }
 
+  async retryExtraction(
+    applicationId: string,
+    companyId: string,
+    userId: string,
+  ): Promise<{ extraction: { id: string; status: string } }> {
+    const application = await this.prisma.application.findFirst({
+      where: { id: applicationId, companyId, deletedAt: null },
+      select: {
+        id: true,
+        resumeFiles: {
+          where: { category: 'RESUME', status: 'ACTIVE', deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!application) throw new NotFoundException('Application not found');
+
+    const resumeFile = application.resumeFiles[0];
+    if (!resumeFile) throw new ConflictException('No resume file found for this application.');
+
+    const result = await this.extractionService.retryExtraction(resumeFile.id, companyId, userId);
+    return { extraction: result.extraction };
+  }
+
   async getScreening(screeningId: string, companyId: string): Promise<AiScreeningResponseDto> {
     const screening = await this.prisma.aiScreeningResult.findFirst({
       where: { id: screeningId, companyId },
@@ -242,6 +270,61 @@ export class AiScreeningService {
     });
     if (!screening) throw new NotFoundException('No screening result found for this application');
     return this.mapToDto(screening);
+  }
+
+  async getExtractionStatus(
+    applicationId: string,
+    companyId: string,
+  ): Promise<ResumeExtractionStatusDto> {
+    const application = await this.prisma.application.findFirst({
+      where: { id: applicationId, companyId, deletedAt: null },
+      select: {
+        id: true,
+        resumeFiles: {
+          where: { category: 'RESUME', status: 'ACTIVE', deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!application) {
+      throw new NotFoundException('Application not found');
+    }
+
+    const resumeFile = application.resumeFiles[0];
+    if (!resumeFile) {
+      throw new NotFoundException('No resume file found for this application');
+    }
+
+    const extraction = await this.prisma.resumeTextExtraction.findFirst({
+      where: { storedFileId: resumeFile.id, companyId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        failureCode: true,
+        failureMessageSafe: true,
+        createdAt: true,
+        startedAt: true,
+        completedAt: true,
+      },
+    });
+
+    if (!extraction) {
+      throw new NotFoundException('No extraction found for this application');
+    }
+
+    const dto = new ResumeExtractionStatusDto();
+    dto.id = extraction.id;
+    dto.status = extraction.status;
+    dto.failureCode = extraction.failureCode ?? undefined;
+    dto.failureMessageSafe = extraction.failureMessageSafe ?? undefined;
+    dto.createdAt = extraction.createdAt.toISOString();
+    dto.startedAt = extraction.startedAt?.toISOString();
+    dto.completedAt = extraction.completedAt?.toISOString();
+    return dto;
   }
 
   async listScreenings(
