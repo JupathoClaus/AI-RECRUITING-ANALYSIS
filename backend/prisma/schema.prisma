@@ -391,21 +391,21 @@ enum IdempotencyStatus {
 }
 
 model IdempotencyKey {
-  id                 String            @id @default(uuid())
-  key                String
-  companyId          String
-  userId             String
-  operation          String
-  requestHash        String?
-  status             IdempotencyStatus @default(PROCESSING)
-  resourceType       String
-  resourceId         String
-  responseJson       Json?
-  leaseToken         String?
+  id                  String            @id @default(uuid())
+  key                 String
+  companyId           String
+  userId              String
+  operation           String
+  requestHash         String?
+  status              IdempotencyStatus @default(PROCESSING)
+  resourceType        String
+  resourceId          String
+  responseJson        Json?
+  leaseToken          String?
   processingStartedAt DateTime?
-  expiresAt          DateTime
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  expiresAt           DateTime
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
 
   @@unique([key, companyId, userId, operation])
   @@index([key, companyId, userId, operation, status])
@@ -2247,11 +2247,11 @@ enum ExtractionDispatchStatus {
 }
 
 model ResumeTextExtraction {
-  id                  String                       @id @default(uuid())
+  id                  String                 @id @default(uuid())
   storedFileId        String
   companyId           String
   initiatedByUserId   String?
-  status              ResumeExtractionStatus       @default(PENDING)
+  status              ResumeExtractionStatus @default(PENDING)
   extractedText       String?
   extractedTextSha256 String?
   sourceFileSha256    String?
@@ -2263,10 +2263,10 @@ model ResumeTextExtraction {
   retryGeneration     Int?
   startedAt           DateTime?
   completedAt         DateTime?
-  createdAt           DateTime                     @default(now())
-  updatedAt           DateTime                     @updatedAt
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
-  storedFile StoredFile     @relation(fields: [storedFileId], references: [id])
+  storedFile StoredFile          @relation(fields: [storedFileId], references: [id])
   dispatch   ExtractionDispatch?
 
   @@index([storedFileId])
@@ -2277,22 +2277,28 @@ model ResumeTextExtraction {
 }
 
 model ExtractionDispatch {
-  id                String                     @id @default(uuid())
-  extractionId      String                     @unique
-  dispatchStatus    ExtractionDispatchStatus   @default(PENDING_DISPATCH)
-  dispatchToken     String?
-  jobId             String?
-  dispatchedAt      DateTime?
-  dispatchFailedAt  DateTime?
-  failureCode       String?
-  failureMessage    String?
-  createdAt         DateTime                   @default(now())
-  updatedAt         DateTime                   @updatedAt
+  id               String                   @id @default(uuid())
+  extractionId     String                   @unique
+  dispatchStatus   ExtractionDispatchStatus @default(PENDING_DISPATCH)
+  dispatchToken    String?
+  jobId            String?
+  dispatchAttempts Int                      @default(0)
+  lastErrorCode    String?
+  leaseStartedAt   DateTime?
+  nextAttemptAt    DateTime?
+  dispatchedAt     DateTime?
+  dispatchFailedAt DateTime?
+  failureCode      String?
+  failureMessage   String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   extraction ResumeTextExtraction @relation(fields: [extractionId], references: [id], onDelete: Cascade)
 
   @@index([dispatchStatus])
   @@index([dispatchToken])
+  @@index([dispatchStatus, nextAttemptAt])
+  @@index([dispatchStatus, leaseStartedAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

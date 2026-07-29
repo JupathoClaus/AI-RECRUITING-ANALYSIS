@@ -38,9 +38,16 @@ export class LocalStorageProvider implements StorageProvider {
     return { storageKey, checksumSha256, sizeBytes: buffer.length };
   }
 
-  async get(storageKey: string): Promise<{ stream: ReadStream; mimeType: string; sizeBytes: number }> {
+  async get(
+    storageKey: string,
+  ): Promise<{ stream: ReadStream; mimeType: string; sizeBytes: number }> {
     const absolutePath = this.resolveSafe(storageKey);
-    const stat = await import('fs/promises').then((fs) => fs.stat(absolutePath));
+    let stat;
+    try {
+      stat = await import('fs/promises').then((fs) => fs.stat(absolutePath));
+    } catch (err) {
+      throw err;
+    }
     const ext = storageKey.split('.').pop()?.toLowerCase() || '';
     const mimeMap: Record<string, string> = {
       pdf: 'application/pdf',

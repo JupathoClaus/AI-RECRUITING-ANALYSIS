@@ -54,7 +54,7 @@ export class IdempotencyService {
   }
 
   private async checkHashOrThrow(
-    existing: { requestHash: string | null; id: string; resourceType: string; resourceId: string; responseJson: unknown },
+    existing: { requestHash: string | null },
     requestHash: string,
   ): Promise<void> {
     if (existing.requestHash && existing.requestHash !== requestHash) {
@@ -93,6 +93,8 @@ export class IdempotencyService {
 
             if (existing) {
               if (existing.status === 'COMPLETED') {
+                await this.checkHashOrThrow(existing, requestHash);
+
                 if (existing.expiresAt < new Date()) {
                   const reclaimed = await tx.idempotencyKey.updateMany({
                     where: {
@@ -111,9 +113,19 @@ export class IdempotencyService {
                     },
                   });
                   if (reclaimed.count === 1) {
-                    return this.executeAndComplete(tx, key, companyId, userId, operation, leaseToken, execute);
+                    return this.executeAndComplete(
+                      tx,
+                      key,
+                      companyId,
+                      userId,
+                      operation,
+                      leaseToken,
+                      execute,
+                    );
                   }
-                  const updated = await tx.idempotencyKey.findUnique({ where: { id: existing.id } });
+                  const updated = await tx.idempotencyKey.findUnique({
+                    where: { id: existing.id },
+                  });
                   if (updated?.status === 'COMPLETED') {
                     return {
                       status: 'COMPLETED' as const,
@@ -128,8 +140,6 @@ export class IdempotencyService {
                     resourceId: updated?.resourceId ?? '',
                   };
                 }
-
-                await this.checkHashOrThrow(existing, requestHash);
                 return {
                   status: 'COMPLETED' as const,
                   resourceType: existing.resourceType,
@@ -169,10 +179,20 @@ export class IdempotencyService {
                 });
 
                 if (renewed.count === 1) {
-                  return this.executeAndComplete(tx, key, companyId, userId, operation, leaseToken, execute);
+                  return this.executeAndComplete(
+                    tx,
+                    key,
+                    companyId,
+                    userId,
+                    operation,
+                    leaseToken,
+                    execute,
+                  );
                 }
 
-                const afterRenew = await tx.idempotencyKey.findUnique({ where: { id: existing.id } });
+                const afterRenew = await tx.idempotencyKey.findUnique({
+                  where: { id: existing.id },
+                });
                 if (afterRenew?.status === 'COMPLETED') {
                   return {
                     status: 'COMPLETED' as const,
@@ -209,7 +229,12 @@ export class IdempotencyService {
                 if (acquired.count === 0) {
                   const owned = await tx.idempotencyKey.findUnique({
                     where: { id: existing.id },
-                    select: { status: true, resourceType: true, resourceId: true, responseJson: true },
+                    select: {
+                      status: true,
+                      resourceType: true,
+                      resourceId: true,
+                      responseJson: true,
+                    },
                   });
                   if (owned?.status === 'COMPLETED') {
                     return {
@@ -226,7 +251,15 @@ export class IdempotencyService {
                   };
                 }
 
-                return this.executeAndComplete(tx, key, companyId, userId, operation, leaseToken, execute);
+                return this.executeAndComplete(
+                  tx,
+                  key,
+                  companyId,
+                  userId,
+                  operation,
+                  leaseToken,
+                  execute,
+                );
               }
             }
 
@@ -246,7 +279,15 @@ export class IdempotencyService {
               },
             });
 
-            return this.executeAndComplete(tx, key, companyId, userId, operation, leaseToken, execute);
+            return this.executeAndComplete(
+              tx,
+              key,
+              companyId,
+              userId,
+              operation,
+              leaseToken,
+              execute,
+            );
           },
           {
             isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -261,6 +302,12 @@ export class IdempotencyService {
             `Serialization conflict (P2034) on idempotency attempt ${attempt + 1}/${MAX_SERIALIZATION_RETRIES}, retrying`,
           );
           continue;
+        }
+        if (prismaErr.code === 'P2034') {
+          throw new ServiceUnavailableException({
+            code: 'IDEMPOTENCY_CONCURRENCY_EXHAUSTED',
+            message: 'Could not acquire idempotency lock due to concurrent access.',
+          });
         }
         throw err;
       }

@@ -11,6 +11,19 @@ export class ResumeFileReaderService {
     private readonly storage: LocalStorageProvider,
   ) {}
 
+  async fileExists(storedFileId: string, companyId: string): Promise<boolean> {
+    const file = await this.prisma.storedFile.findFirst({
+      where: { id: storedFileId, companyId, category: 'RESUME', status: 'ACTIVE', deletedAt: null },
+      select: { storageKey: true },
+    });
+    if (!file) return false;
+    try {
+      return await this.storage.exists(file.storageKey);
+    } catch {
+      return false;
+    }
+  }
+
   async readStoredFile(
     storedFileId: string,
     companyId: string,

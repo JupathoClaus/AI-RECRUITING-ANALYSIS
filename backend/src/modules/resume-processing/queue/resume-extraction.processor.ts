@@ -5,7 +5,10 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { ResumeFileReaderService } from '../services/resume-file-reader.service';
 import { ResumeTextExtractorService } from '../services/resume-text-extractor.service';
-import { RESUME_EXTRACTION_QUEUE, RESUME_EXTRACTION_JOB } from './resume-extraction-queue.constants';
+import {
+  RESUME_EXTRACTION_QUEUE,
+  RESUME_EXTRACTION_JOB,
+} from './resume-extraction-queue.constants';
 import { ResumeExtractionJobData } from './resume-extraction-job-data.interface';
 
 @Processor(RESUME_EXTRACTION_QUEUE, { concurrency: 2 })
@@ -57,7 +60,9 @@ export class ResumeExtractionProcessor extends WorkerHost {
     if (extraction.status === 'PROCESSING') {
       const isSameJob = job.id === extractionId;
       if (!isSameJob) {
-        throw new UnrecoverableError(`Extraction ${extractionId} is already PROCESSING by another worker`);
+        throw new UnrecoverableError(
+          `Extraction ${extractionId} is already PROCESSING by another worker`,
+        );
       }
       if (job.attemptsMade === 0) {
         throw new UnrecoverableError(`Extraction ${extractionId} is already PROCESSING`);
@@ -75,13 +80,24 @@ export class ResumeExtractionProcessor extends WorkerHost {
     }
 
     const isLastAttempt = job.attemptsMade >= (job.opts.attempts ?? 3) - 1;
-    let fileData: { buffer: Buffer; mimeType: string; originalName: string; checksumSha256: string; sizeBytes: number };
+    let fileData: {
+      buffer: Buffer;
+      mimeType: string;
+      originalName: string;
+      checksumSha256: string;
+      sizeBytes: number;
+    };
+
     try {
       fileData = await this.fileReader.readStoredFile(storedFileId, companyId);
     } catch (err) {
       if (err instanceof UnrecoverableError) throw err;
       if (isLastAttempt) {
-        await this.failTerminal(extractionId, 'STORAGE_READ_FAILED', 'Failed to read the stored resume file.');
+        await this.failTerminal(
+          extractionId,
+          'STORAGE_READ_FAILED',
+          'Failed to read the stored resume file.',
+        );
         throw new UnrecoverableError((err as Error).message);
       }
       throw err;
@@ -96,9 +112,13 @@ export class ResumeExtractionProcessor extends WorkerHost {
       });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      const isPermanent = ['ENCRYPTED_PDF', 'INVALID_PDF', 'CORRUPT_DOCX', 'UNSUPPORTED_MIME_TYPE', 'EMPTY_EXTRACTION'].some(
-        (c) => errMsg.startsWith(c),
-      );
+      const isPermanent = [
+        'ENCRYPTED_PDF',
+        'INVALID_PDF',
+        'CORRUPT_DOCX',
+        'UNSUPPORTED_MIME_TYPE',
+        'EMPTY_EXTRACTION',
+      ].some((c) => errMsg.startsWith(c));
 
       if (isPermanent) {
         await this.failTerminal(extractionId, errMsg);
@@ -114,8 +134,8 @@ export class ResumeExtractionProcessor extends WorkerHost {
     }
 
     try {
-      await this.prisma.resumeTextExtraction.update({
-        where: { id: extractionId },
+      const updateResult = await this.prisma.resumeTextExtraction.updateMany({
+        where: { id: extractionId, status: 'PROCESSING' },
         data: {
           status: 'COMPLETED',
           extractedText: result.text,
@@ -125,9 +145,35 @@ export class ResumeExtractionProcessor extends WorkerHost {
           completedAt: new Date(),
         },
       });
+      if (updateResult.count === 0) {
+        const reRead = await this.prisma.resumeTextExtraction.findUnique({
+          where: { id: extractionId },
+          select: { status: true },
+        });
+        if (!reRead) {
+          throw new UnrecoverableError(`Extraction record ${extractionId} was deleted`);
+        }
+        if (reRead.status === 'COMPLETED') {
+          this.logger.warn(`Extraction ${extractionId} already COMPLETED, skipping`);
+          return;
+        }
+        if (reRead.status === 'FAILED') {
+          throw new UnrecoverableError(
+            `Extraction ${extractionId} was marked FAILED by another worker`,
+          );
+        }
+        throw new Error(
+          `PERSIST_FAILED: extraction ${extractionId} status=${reRead.status} update returned 0 rows`,
+        );
+      }
     } catch (err) {
+      if (err instanceof UnrecoverableError) throw err;
       if (isLastAttempt) {
-        await this.failTerminal(extractionId, 'PERSIST_FAILED', 'Failed to save extraction result.');
+        await this.failTerminal(
+          extractionId,
+          'PERSIST_FAILED',
+          'Failed to save extraction result.',
+        );
         throw new UnrecoverableError((err as Error).message);
       }
       this.logger.error(`Failed to persist extraction result: ${(err as Error).message}`);
@@ -135,14 +181,25 @@ export class ResumeExtractionProcessor extends WorkerHost {
     }
   }
 
-  private async failTerminal(extractionId: string, failureCode: string, failureMessageSafe?: string): Promise<void> {
+  private async failTerminal(
+    extractionId: string,
+    failureCode: string,
+    failureMessageSafe?: string,
+  ): Promise<void> {
     try {
-      await this.prisma.resumeTextExtraction.update({
+      await this.prisma.resumeTextExtraction.updateMany({
         where: { id: extractionId },
-        data: { status: 'FAILED', failureCode, failureMessageSafe: failureMessageSafe ?? failureCode, completedAt: new Date() },
+        data: {
+          status: 'FAILED',
+          failureCode,
+          failureMessageSafe: failureMessageSafe ?? failureCode,
+          completedAt: new Date(),
+        },
       });
     } catch (err) {
-      this.logger.error(`Failed to mark extraction ${extractionId} as FAILED: ${(err as Error).message}`);
+      this.logger.error(
+        `Failed to mark extraction ${extractionId} as FAILED: ${(err as Error).message}`,
+      );
     }
   }
 

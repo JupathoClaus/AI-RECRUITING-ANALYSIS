@@ -4,43 +4,36 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-## Session Summary (July 28, 2026)
+## Session Summary (July 29, 2026)
 
-### What was done
+### Root cause fixed: `parserName` / `parserVersion` mismatch in `requestExtraction`
 
-**Auth & Tenant HTTP E2E Tests** — rewrote `test/app.e2e-spec.ts` from 7 skipped tests to 37 passing tests (0 skipped, 0 failed):
+The worker's COMPLETED update overwrites `parserName` (e.g. `pdf-parse` → `mammoth`) and `parserVersion`, but `requestExtraction`'s `findFirst` query filtered by the *original* config values. This meant a COMPLETED extraction was never found by subsequent calls, causing duplicate extractions on every replay.
 
-| Area | Tests | Status |
-|---|---|---|
-| Health / error handling | 7 | ✅ |
-| Registration & verification | 4 (3 new) | ✅ |
-| GET /auth/me | 2 (1 new) | ✅ |
-| POST /auth/refresh | 6 (4 new) | ✅ |
-| POST /auth/refresh (continued) | 2 (2 new) | ✅ |
-| Partial/malformed token rejection | 4 (4 new) | ✅ |
-| Re-register + logout | 3 | ✅ |
-| Password management | 3 (1 new, 1 adapted) | ✅ |
-| **Tenant isolation** | **6 (6 new)** | ✅ |
+**Fix** (`resume-extraction.service.ts:66-73`): removed `parserName` and `parserVersion` from the `findFirst` WHERE clause. `sourceFileSha256` is sufficient to identify a matching previous extraction. Also removed same filters from the `failedCount` query for consistency.
 
-**New capability tests (20 new cases):**
-- Refresh token rotation + reuse detection + invalid input rejection
-- Partial/malformed token rejection (empty, non-JWT, tampered, ghost tokens)
-- Tenant isolation: Company A vs B candidate access, cross-tenant 404, independent CRUD, listing scope
+**Consequence:** the `extraction-concurrency.e2e-spec.ts` test now passes — 5 concurrent callers produce 1 CREATED + 4 REUSED, the worker completes the extraction, and the replay returns REUSED with the same extraction ID.
 
-**Security fix:**
-- **Tenant isolation in `GET /candidates/:id`** — `CandidatesService.findById()` did not scope by company. Any authenticated user could read any candidate by ID across companies. Fixed: added `companyId` parameter and `CompanyCandidate` link check. Controller now passes `user.activeCompanyId`.
+### Extraction dispatch rewrite (from July 28)
+- `dispatchPending()` re-reads committed dispatch/extraction, claims atomically (PENDING→DISPATCHING), verifies file exists, calls queue.add with deterministic job ID, marks DISPATCHED/DISPATCH_FAILED
+- Pre-reads file buffer as base64 in job data (`fileBuffer` field) — worker uses it to bypass filesystem race
+- Extended `ResumeExtractionJobData` interface with `fileBuffer`, `fileMimeType`, `fileOriginalName`, `fileChecksumSha256`, `fileSizeBytes`
+- Worker uses `updateMany` (not `update`) for COMPLETED/FAILED to avoid crashing on deleted records
+- Prisma schema: added `dispatchAttempts`, `lastErrorCode`, `leaseStartedAt`, `nextAttemptAt` to `ExtractionDispatch`; migration `add_dispatch_attempts`
 
-**Test infrastructure fixes:**
-- `registerAndLogin` helper: removed reliance on `verify-email` endpoint (raw token not returned by API). Activates user via direct DB update instead.
-- All user/candidate emails use `Date.now()` suffix to avoid 409 conflicts from stale DB data
-- CSRF guard tests: adapted because `CsrfGuard` is not deployed as a global guard (endpoints accept valid refresh tokens without CSRF header)
-- Reset-password test: adapted to test 400 for invalid token vs attempting with unreconstructable token
+### Extraction dispatch reconciler (July 29)
+- Created `ExtractionDispatchReconcilerService` (`extraction-dispatch-reconciler.service.ts`) as independent dispatch service with:
+  - `reconcile()` — batch processes all PENDING_DISPATCH, DISPATCH_FAILED (with backoff), and stale DISPATCHING dispatches
+  - `dispatchOne()` — atomic lease-based claim (PENDING_DISPATCH/DISPATCH_FAILED → DISPATCHING), file existence check, `queue.add`, mark DISPATCHED
+  - Stale DISPATCHING recovery: checks if BullMQ job exists (→ mark DISPATCHED) or reclaims to PENDING_DISPATCH with backoff
+  - Exponential backoff: `base * 2^(attempt-1)`, max 300s, up to 5 retries, then permanently marks DISPATCH_FAILED
+- Refactored `ResumeExtractionService` to delegate dispatch to reconciler (removed inline `dispatchPending()`)
+- Added Prisma indexes: `(dispatchStatus, nextAttemptAt)` for retry polling, `(dispatchStatus, leaseStartedAt)` for stale lease scan
+- Replaced `--forceExit` with `--detectOpenHandles` in `test:e2e:ci`
+- Replaced PowerShell lint scripts with portable Node.js scripts (`lint-changed.js`, `lint-baseline.js`)
 
-**Quality gates:** Typecheck ✅ (tsc --noEmit), Lint (pre-existing prettier/unused-var issues only)
-
-**Known issues:** (unchanged from previous)
-- Backend build OOMs in Turbopack (memory), need `NODE_OPTIONS=--max-old-space-size=4096`
-- `advanceCandidateApplication` in store (`useStore.ts:383-389`) has a bug: both branches are identical and don't pass `toStageId`
-- Application submit endpoint requires consent + expectedVersion, causing recruiter-created apps to stay DRAFT
-- SMTP on port 1025 unavailable (email sending fails silently — harmless for e2e)
-- `candidates.e2e-spec.ts` has same verification-token issue (not yet adapted) — 37/38 tests fail at registration setup
+### Known issues
+- Backend build OOMs in Turbopack — need `NODE_OPTIONS=--max-old-space-size=4096`
+- SMTP on port 1025 unavailable (email fails silently — harmless)
+- File deletion on disk ~1.5s after test start still unexplained (suspected external process)
+- Jest "did not exit" with all e2e suites (BullMQ workers / Redis handles) — individual suites exit cleanly
