@@ -186,14 +186,15 @@ describe('Auth (e2e)', () => {
           DELETE FROM "User" WHERE id = uid;
         END $$;
       `);
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 
-  async function registerAndLogin(user: typeof userA): Promise<{ accessToken: string; refreshToken: string }> {
-    await request(app.getHttpServer())
-      .post('/api/v1/auth/register-company')
-      .send(user)
-      .expect(201);
+  async function registerAndLogin(
+    user: typeof userA,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    await request(app.getHttpServer()).post('/api/v1/auth/register-company').send(user).expect(201);
     // The verification token is sent by email, not returned in API response.
     // Activate the user directly via DB for testing purposes.
     const norm = user.email.toLowerCase().trim();
@@ -225,7 +226,9 @@ describe('Auth (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
     app.useGlobalFilters(new GlobalExceptionFilter());
     app.useGlobalInterceptors(new TransformInterceptor());
     app.setGlobalPrefix('api/v1');
@@ -306,9 +309,7 @@ describe('Auth (e2e)', () => {
     });
 
     it('returns 401 without Authorization header', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/v1/auth/me')
-        .expect(401);
+      const res = await request(app.getHttpServer()).get('/api/v1/auth/me').expect(401);
       expect(res.body.statusCode).toBe(401);
     });
   });

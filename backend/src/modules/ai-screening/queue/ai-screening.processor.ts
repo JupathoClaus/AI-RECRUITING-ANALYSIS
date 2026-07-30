@@ -41,7 +41,9 @@ export class AiScreeningProcessor extends WorkerHost {
     }
 
     if (job.name !== AI_SCREENING_JOB) {
-      throw new UnrecoverableError(`Unexpected job name: ${job.name}. Expected: ${AI_SCREENING_JOB}`);
+      throw new UnrecoverableError(
+        `Unexpected job name: ${job.name}. Expected: ${AI_SCREENING_JOB}`,
+      );
     }
 
     const screening = await this.prisma.aiScreeningResult.findUnique({
@@ -56,8 +58,10 @@ export class AiScreeningProcessor extends WorkerHost {
       throw new UnrecoverableError('Screening record does not match job identifiers');
     }
 
-    if (screening.status === 'COMPLETED' ||
-        (screening.status === 'FAILED' && screening.completedAt != null)) {
+    if (
+      screening.status === 'COMPLETED' ||
+      (screening.status === 'FAILED' && screening.completedAt != null)
+    ) {
       this.logger.warn(`Screening ${screeningId} already ${screening.status}, skipping`);
       return;
     }
@@ -65,12 +69,16 @@ export class AiScreeningProcessor extends WorkerHost {
     if (screening.status === 'RUNNING') {
       const isSameJob = job.id === screeningId;
       if (!isSameJob) {
-        throw new UnrecoverableError(`Screening ${screeningId} is already RUNNING by another worker`);
+        throw new UnrecoverableError(
+          `Screening ${screeningId} is already RUNNING by another worker`,
+        );
       }
       if (job.attemptsMade === 0) {
         throw new UnrecoverableError(`Screening ${screeningId} is already RUNNING`);
       }
-      this.logger.warn(`Screening ${screeningId} retry attempt ${job.attemptsMade + 1}, continuing`);
+      this.logger.warn(
+        `Screening ${screeningId} retry attempt ${job.attemptsMade + 1}, continuing`,
+      );
     }
 
     if (screening.status === 'PENDING') {
@@ -117,7 +125,10 @@ export class AiScreeningProcessor extends WorkerHost {
         throw new UnrecoverableError('No resume file available');
       }
 
-      const completedExtraction = await this.resumeLoader.loadCompletedExtraction(resumeFile.id, companyId);
+      const completedExtraction = await this.resumeLoader.loadCompletedExtraction(
+        resumeFile.id,
+        companyId,
+      );
       if (!completedExtraction || completedExtraction.parsedText.trim().length < 10) {
         throw new UnrecoverableError('Resume has no completed extraction');
       }
@@ -141,8 +152,11 @@ export class AiScreeningProcessor extends WorkerHost {
       });
 
       if (currentFingerprint !== inputFingerprint) {
-        await this.failTerminal(screeningId, 'STALE_FINGERPRINT',
-          'Source data changed since screening was requested. Please re-request.');
+        await this.failTerminal(
+          screeningId,
+          'STALE_FINGERPRINT',
+          'Source data changed since screening was requested. Please re-request.',
+        );
         return;
       }
     } catch (err) {
@@ -171,22 +185,34 @@ export class AiScreeningProcessor extends WorkerHost {
         }
 
         if (isLastAttempt) {
-          this.logger.warn(`Screening ${screeningId} exhausted retries (${job.attemptsMade + 1}/${job.opts.attempts ?? 3})`);
+          this.logger.warn(
+            `Screening ${screeningId} exhausted retries (${job.attemptsMade + 1}/${job.opts.attempts ?? 3})`,
+          );
           await this.failTerminal(screeningId, err.safeCode, err.safeMessage);
           throw new UnrecoverableError(err.safeMessage);
         }
 
-        this.logger.warn(`Screening ${screeningId} retryable error (attempt ${job.attemptsMade + 1}): ${err.message}`);
+        this.logger.warn(
+          `Screening ${screeningId} retryable error (attempt ${job.attemptsMade + 1}): ${err.message}`,
+        );
         throw err;
       }
 
       if (isLastAttempt) {
-        this.logger.error(`Screening ${screeningId} final attempt failed: ${(err as Error).message}`);
-        await this.failTerminal(screeningId, 'PROCESSING_ERROR', 'Screening processing failed after all retries.');
+        this.logger.error(
+          `Screening ${screeningId} final attempt failed: ${(err as Error).message}`,
+        );
+        await this.failTerminal(
+          screeningId,
+          'PROCESSING_ERROR',
+          'Screening processing failed after all retries.',
+        );
         throw new UnrecoverableError((err as Error).message);
       }
 
-      this.logger.error(`Screening ${screeningId} retryable error (attempt ${job.attemptsMade + 1}): ${(err as Error).message}`);
+      this.logger.error(
+        `Screening ${screeningId} retryable error (attempt ${job.attemptsMade + 1}): ${(err as Error).message}`,
+      );
       throw err;
     }
 
@@ -198,10 +224,13 @@ export class AiScreeningProcessor extends WorkerHost {
           overallScore: result.overallScore,
           recommendation: result.recommendation,
           confidence: result.confidence,
-          matchedQualifications: result.matchedQualifications.length > 0 ? result.matchedQualifications : undefined,
-          missingQualifications: result.missingQualifications.length > 0 ? result.missingQualifications : undefined,
-          evidence: result.evidence.length > 0 ? result.evidence as never : undefined,
-          criteriaScores: result.criteriaScores.length > 0 ? result.criteriaScores as never : undefined,
+          matchedQualifications:
+            result.matchedQualifications.length > 0 ? result.matchedQualifications : undefined,
+          missingQualifications:
+            result.missingQualifications.length > 0 ? result.missingQualifications : undefined,
+          evidence: result.evidence.length > 0 ? (result.evidence as never) : undefined,
+          criteriaScores:
+            result.criteriaScores.length > 0 ? (result.criteriaScores as never) : undefined,
           uncertainties: result.uncertainties.length > 0 ? result.uncertainties : undefined,
           riskFlags: result.riskFlags.length > 0 ? result.riskFlags : undefined,
           explanation: result.explanation,
@@ -214,7 +243,9 @@ export class AiScreeningProcessor extends WorkerHost {
         },
       });
     } catch (err) {
-      this.logger.error(`Failed to persist screening result ${screeningId}: ${(err as Error).message}`);
+      this.logger.error(
+        `Failed to persist screening result ${screeningId}: ${(err as Error).message}`,
+      );
       throw err;
     }
   }
@@ -235,7 +266,9 @@ export class AiScreeningProcessor extends WorkerHost {
         },
       });
     } catch (err) {
-      this.logger.error(`Failed to mark screening ${screeningId} as FAILED: ${(err as Error).message}`);
+      this.logger.error(
+        `Failed to mark screening ${screeningId} as FAILED: ${(err as Error).message}`,
+      );
     }
   }
 

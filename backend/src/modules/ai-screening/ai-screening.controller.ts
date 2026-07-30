@@ -35,14 +35,18 @@ export class AiScreeningController {
   @RequireTenantAccess()
   @ApiOperation({
     summary: 'Request AI screening for an application',
-    description: 'Returns 202 if a new screening is queued, 200 if an existing reusable result is returned.',
+    description:
+      'Returns 202 if a new screening is queued, 200 if an existing reusable result is returned.',
   })
   @ApiResponse({ status: 200, description: 'Existing reusable screening result' })
   @ApiResponse({ status: 202, description: 'New screening queued' })
   @ApiResponse({ status: 401, description: 'Unauthenticated' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Application not found' })
-  @ApiResponse({ status: 409, description: 'Conflict (extraction pending/missing resume/job description)' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict (extraction pending/missing resume/job description)',
+  })
   @ApiResponse({ status: 503, description: 'Queue unavailable' })
   async requestScreening(
     @Param('applicationId') applicationId: string,
@@ -71,7 +75,12 @@ export class AiScreeningController {
     @Query() query: ListAiScreeningsQueryDto,
     @CurrentUser() user: AuthenticatedPrincipal,
   ) {
-    return this.screeningService.listScreenings(applicationId, user.activeCompanyId!, query.page ?? 1, query.limit ?? 20);
+    return this.screeningService.listScreenings(
+      applicationId,
+      user.activeCompanyId!,
+      query.page ?? 1,
+      query.limit ?? 20,
+    );
   }
 
   @Get('applications/:applicationId/ai-screenings/latest')

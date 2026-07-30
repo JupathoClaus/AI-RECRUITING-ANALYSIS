@@ -85,22 +85,19 @@ export default function InterviewDeviceCheckPage() {
       return
     }
 
-    const online = navigator.onLine
-    if (online !== isOnline) setIsOnline(online)
-
     const handleOnline = () => setIsOnline(true)
     const handleOffline = () => setIsOnline(false)
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOffline)
 
-    checkDevices()
+    queueMicrotask(() => void checkDevices())
 
     return () => {
       window.removeEventListener("online", handleOnline)
       window.removeEventListener("offline", handleOffline)
       stopMediaTracks()
     }
-  }, [accessToken, router, checkDevices, stopMediaTracks, isOnline])
+  }, [accessToken, router, checkDevices, stopMediaTracks])
 
   const canStart =
     cameraStatus === "available" &&

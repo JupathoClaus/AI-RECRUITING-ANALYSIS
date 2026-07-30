@@ -1,5 +1,8 @@
 import { ConfigService } from '@nestjs/config';
-import { ScreeningInputBuilderService, ApplicationData } from '../services/screening-input-builder.service';
+import {
+  ScreeningInputBuilderService,
+  ApplicationData,
+} from '../services/screening-input-builder.service';
 import { CompletedExtraction } from '../services/resume-text-loader.service';
 import { ScreeningInput } from '../domain/screening-input.type';
 
@@ -25,13 +28,15 @@ function createMockApplication(overrides?: Partial<ApplicationData>): Applicatio
         { skill: { displayName: 'React' }, importance: 'REQUIRED' },
         { skill: { displayName: 'GraphQL' }, importance: 'PREFERRED' },
       ],
-      screeningQuestions: [
-        { id: 'q1', question: 'Years of experience?', required: true },
-      ],
+      screeningQuestions: [{ id: 'q1', question: 'Years of experience?', required: true }],
     },
     candidate: { id: 'cand-1' },
     screeningAnswers: [
-      { questionId: 'q1', question: { question: 'Years of experience?', required: true }, textAnswer: '5 years' },
+      {
+        questionId: 'q1',
+        question: { question: 'Years of experience?', required: true },
+        textAnswer: '5 years',
+      },
     ],
     ...overrides,
   };
@@ -114,7 +119,10 @@ describe('ScreeningInputBuilderService', () => {
 
   it('enforces text limits on resume', () => {
     const longResume = 'A'.repeat(20000);
-    const input = builder.build(createMockApplication(), { ...MOCK_RESUME_TEXT, parsedText: longResume });
+    const input = builder.build(createMockApplication(), {
+      ...MOCK_RESUME_TEXT,
+      parsedText: longResume,
+    });
     expect(input.resumeText.length).toBeLessThanOrEqual(15000 + 25); // 15000 + truncation suffix
   });
 

@@ -45,10 +45,13 @@ export function isProhibitedReasoningDetected(result: ProviderScreeningResult): 
   return checkFields(textFields);
 }
 
-export function applyProhibitedReasoningGuard(result: ProviderScreeningResult): ProviderScreeningResult {
+export function applyProhibitedReasoningGuard(
+  result: ProviderScreeningResult,
+): ProviderScreeningResult {
   if (!isProhibitedReasoningDetected(result)) return result;
 
-  const safeExplanation = 'Screening result flagged for review due to potential non-job-related reasoning.';
+  const safeExplanation =
+    'Screening result flagged for review due to potential non-job-related reasoning.';
 
   return {
     overallScore: 0,

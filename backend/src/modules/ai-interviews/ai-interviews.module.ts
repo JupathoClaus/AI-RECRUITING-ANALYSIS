@@ -27,11 +27,7 @@ import { TavusClientService } from './services/tavus-client.service';
       inject: [ConfigService],
     }),
   ],
-  controllers: [
-    AiInterviewsController,
-    PublicAiInterviewsController,
-    TavusCallbackController,
-  ],
+  controllers: [AiInterviewsController, PublicAiInterviewsController, TavusCallbackController],
   providers: [
     AiInterviewsService,
     AiInterviewCodeService,

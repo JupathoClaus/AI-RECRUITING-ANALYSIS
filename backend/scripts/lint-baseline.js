@@ -1,225 +1,134 @@
-/* eslint-disable @typescript-eslint/no-var-requires, no-console, @typescript-eslint/no-unused-vars */
-const { readFileSync, writeFileSync, existsSync, readdirSync } = require('fs');
-const { resolve } = require('path');
+/* eslint-disable @typescript-eslint/no-var-requires, no-console */
+const { readFileSync, writeFileSync, existsSync, readdirSync, mkdtempSync, rmSync } = require('fs');
+const { resolve, relative, sep } = require('path');
+const { tmpdir } = require('os');
 
-const EXIT_PASS = 0;
-const EXIT_FAIL = 1;
-const EXIT_ERROR = 2;
+const backendRoot = resolve(__dirname, '..');
+const baselineFile = resolve(__dirname, 'lint-baseline.json');
 
-const baselineFile = resolve(__dirname, 'lint-baseline.txt');
-const repoRoot = resolve(__dirname, '..');
-
-function listTsFiles(dir) {
+function listTypeScript(dir) {
   const files = [];
-  try {
-    const entries = readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const full = resolve(dir, entry.name);
-      if (
-        entry.isDirectory() &&
-        !entry.name.startsWith('.') &&
-        entry.name !== 'node_modules' &&
-        entry.name !== 'dist'
-      ) {
-        files.push(...listTsFiles(full));
-      } else if (entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
-        files.push(full);
-      }
-    }
-  } catch {}
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist')
+      continue;
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) files.push(...listTypeScript(full));
+    else if (entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts'))
+      files.push(full);
+  }
   return files;
 }
 
-function getSourceFiles() {
-  return [...listTsFiles(resolve(repoRoot, 'src')), ...listTsFiles(resolve(repoRoot, 'test'))];
+function sourceFiles() {
+  return [resolve(backendRoot, 'src'), resolve(backendRoot, 'test')].flatMap(listTypeScript);
 }
 
-function extractViolations(output) {
-  const violations = new Set();
-  for (const line of output.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const msgIdx = trimmed.indexOf(' - ');
-    if (msgIdx === -1) continue;
-    const before = trimmed.slice(0, msgIdx);
-    const after = trimmed.slice(msgIdx + 3);
-    const ruleMatch = after.match(/^(.+?)\s+\(([^)]+)\)$/);
-    if (!ruleMatch) continue;
-    const fullMsg = ruleMatch[1];
-    const rule = ruleMatch[2];
-    const locMatch = before.match(/^(.+):\s+line\s+(\d+),\s+col\s+(\d+),\s+(Warning|Error)$/);
-    if (!locMatch) continue;
-    const path = locMatch[1];
-    const severity = locMatch[4];
-    violations.add(`${path}:${fullMsg.toLowerCase()}:${rule}`);
+function normalizeFile(file) {
+  return relative(backendRoot, file).split(sep).join('/');
+}
+
+function summarize(results) {
+  const counts = {};
+  for (const result of results) {
+    const file = normalizeFile(result.filePath);
+    for (const message of result.messages) {
+      if (!message.ruleId || message.severity === 0) continue;
+      const severity = message.severity === 2 ? 'error' : 'warning';
+      const key = `${file}|${message.ruleId}|${severity}`;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
   }
-  return [...violations].sort();
+  return Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-async function runESLint(files) {
-  if (files.length === 0) return { exitCode: 0, stdout: '', stderr: '' };
-  try {
-    const { ESLint } = require('eslint');
-    const eslint = new ESLint({ useEslintrc: true, cache: false, fix: false, cwd: repoRoot });
-    const results = await eslint.lintFiles(files);
-    const formatter = await eslint.loadFormatter('compact');
-    const resultText = formatter.format(results);
-    const errorCount = results.reduce((s, r) => s + r.errorCount + r.warningCount, 0);
-    return { exitCode: errorCount > 0 ? 1 : 0, stdout: resultText, stderr: '' };
-  } catch (err) {
-    return { exitCode: -1, stdout: '', stderr: err.message };
+function validateBaseline(value) {
+  if (
+    !value ||
+    value.version !== 1 ||
+    typeof value.violations !== 'object' ||
+    Array.isArray(value.violations)
+  ) {
+    throw new Error('Malformed lint baseline: expected { version: 1, violations: object }');
   }
-}
-
-function validateBaselineLines(lines) {
-  const errors = [];
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    if (line.split(':').length < 3) errors.push(`Malformed baseline line: ${line}`);
+  for (const [key, count] of Object.entries(value.violations)) {
+    if (!key.includes('|') || !Number.isInteger(count) || count < 0) {
+      throw new Error(`Malformed lint baseline entry: ${key}`);
+    }
   }
-  return errors;
+  return value;
 }
 
-function createBaseline(violations) {
-  const content = violations.join('\n') + (violations.length > 0 ? '\n' : '');
-  writeFileSync(baselineFile, content, 'utf-8');
-  console.log(`Baseline created at ${baselineFile} with ${violations.length} violation(s).`);
+async function lint(files) {
+  const { ESLint } = require('eslint');
+  const eslint = new ESLint({ cwd: backendRoot, useEslintrc: true, cache: false, fix: false });
+  const ignored = [];
+  for (const file of files) if (await eslint.isPathIgnored(file)) ignored.push(normalizeFile(file));
+  if (ignored.length) throw new Error(`Intended lint targets are ignored: ${ignored.join(', ')}`);
+  return eslint.lintFiles(files);
 }
 
 async function selfTest() {
-  let failures = 0;
-  const test = (name, fn) => {
+  const temp = mkdtempSync(resolve(tmpdir(), 'talentai-lint-baseline-'));
+  try {
+    const valid = validateBaseline({ version: 1, violations: { 'src/a.ts|rule|error': 1 } });
+    if (valid.violations['src/a.ts|rule|error'] !== 1) throw new Error('valid baseline rejected');
+    let malformedRejected = false;
     try {
-      fn();
-      console.log(`  PASS: ${name}`);
-    } catch (err) {
-      failures++;
-      console.error(`  FAIL: ${name}: ${err.message}`);
+      validateBaseline({ version: 2, violations: [] });
+    } catch {
+      malformedRejected = true;
     }
-  };
-
-  console.log('--- Self-tests ---');
-
-  test('extractViolations parses compact format', () => {
-    const out = [
-      'D:\\test.ts: line 10, col 5, Warning - Unexpected any (no-any)',
-      'D:\\test.ts: line 20, col 3, Error - Missing return type (@typescript-eslint/explicit-function-return-type)',
-    ].join('\n');
-    const v = extractViolations(out);
-    if (v.length !== 2) throw new Error(`Expected 2 violations, got ${v.length}`);
-    if (!v.some((x) => x.includes('no-any'))) throw new Error(`Expected no-any`);
-    if (!v.some((x) => x.includes('explicit-function-return-type')))
-      throw new Error(`Expected explicit-function-return-type`);
-  });
-
-  test('extractViolations skips headers and empty lines', () => {
-    const out = '# header\n\nD:\\test.ts: line 1, col 1, Error - x (rule)\n';
-    const v = extractViolations(out);
-    if (v.length !== 1) throw new Error(`Expected 1 violation, got ${v.length}`);
-  });
-
-  test('validateBaselineLines passes for valid lines', () => {
-    const errs = validateBaselineLines(['src/a.ts:error:@typescript-eslint/no-explicit-any']);
-    if (errs.length !== 0) throw new Error(`Expected 0 errors, got ${errs.length}`);
-  });
-
-  test('validateBaselineLines rejects malformed lines', () => {
-    const errs = validateBaselineLines(['garbage line']);
-    if (errs.length !== 1) throw new Error(`Expected 1 error, got ${errs.length}`);
-  });
-
-  test('listTsFiles returns .ts files', () => {
-    const files = getSourceFiles();
-    if (files.length === 0) throw new Error('No .ts files found');
-    if (!files.every((f) => f.endsWith('.ts'))) throw new Error('Non-.ts file in list');
-  });
-
-  test('runESLint returns exitCode >= 0 for real files', async () => {
-    const files = getSourceFiles().slice(0, 3);
-    if (files.length === 0) return;
-    const result = await runESLint(files);
-    if (result.exitCode === -1) throw new Error(`ESLint crashed: ${result.stderr}`);
-  });
-
-  test('runESLint returns exit 0 for empty file list', async () => {
-    const result = await runESLint([]);
-    if (result.exitCode !== 0) throw new Error('Expected exit 0');
-  });
-
-  if (failures > 0) {
-    console.error(`\n${failures} self-test(s) FAILED`);
-    process.exit(EXIT_ERROR);
+    if (!malformedRejected) throw new Error('malformed baseline accepted');
+    const summary = summarize([
+      {
+        filePath: resolve(backendRoot, 'src/a.ts'),
+        messages: [
+          { ruleId: 'rule', severity: 2 },
+          { ruleId: 'rule', severity: 2 },
+        ],
+      },
+    ]);
+    if (summary['src/a.ts|rule|error'] !== 2)
+      throw new Error('violation counts are not deterministic');
+    writeFileSync(resolve(temp, 'ok'), 'ok');
+    console.log('PASS: lint baseline self-tests');
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
   }
-  console.log(`\nAll self-tests passed.`);
 }
 
 async function main() {
-  const argv = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  if (args.includes('--self-test')) return selfTest();
 
-  if (argv.includes('--self-test')) {
-    await selfTest();
+  const files = sourceFiles();
+  if (!files.length) throw new Error('No backend TypeScript targets discovered');
+  const current = summarize(await lint(files));
+
+  if (args.includes('--update')) {
+    writeFileSync(
+      baselineFile,
+      `${JSON.stringify({ version: 1, violations: current }, null, 2)}\n`,
+    );
+    console.log(
+      `Updated ${normalizeFile(baselineFile)} with ${Object.keys(current).length} fingerprints`,
+    );
     return;
   }
 
-  const updateBaseline = argv.includes('--update');
-  const files = getSourceFiles();
-
-  const result = await runESLint(files);
-  if (result.exitCode === -1) {
-    console.error(`ERROR: ESLint failed to run: ${result.stderr}`);
-    process.exit(EXIT_ERROR);
+  if (!existsSync(baselineFile))
+    throw new Error(`Missing committed lint baseline: ${baselineFile}`);
+  const baseline = validateBaseline(JSON.parse(readFileSync(baselineFile, 'utf8')));
+  const growth = [];
+  for (const [key, count] of Object.entries(current)) {
+    const allowed = baseline.violations[key] ?? 0;
+    if (count > allowed) growth.push(`${key}: ${allowed} -> ${count}`);
   }
-
-  const currentViolations = extractViolations(result.stdout);
-
-  if (!existsSync(baselineFile) || updateBaseline) {
-    createBaseline(currentViolations);
-    process.exit(EXIT_PASS);
-  }
-
-  let baselineContent;
-  try {
-    baselineContent = readFileSync(baselineFile, 'utf-8');
-  } catch (err) {
-    console.error(`ERROR: Cannot read baseline file: ${err.message}`);
-    process.exit(EXIT_ERROR);
-  }
-
-  const baselineLines = baselineContent.trim().split('\n').filter(Boolean);
-  const validationErrors = validateBaselineLines(baselineLines);
-  if (validationErrors.length > 0) {
-    for (const e of validationErrors) console.error(`ERROR: ${e}`);
-    process.exit(EXIT_ERROR);
-  }
-
-  const baselineSet = new Set(baselineLines);
-  const currentSet = new Set(currentViolations);
-  const newViolations = currentViolations.filter((v) => !baselineSet.has(v));
-  const fixedViolations = baselineLines.filter((v) => !currentSet.has(v));
-
-  if (newViolations.length > 0) {
-    console.error(`FAIL: ${newViolations.length} new violation(s).`);
-    for (const v of newViolations) console.error(`  NEW: ${v}`);
-    console.error('Fix or run with --update.');
-    process.exit(EXIT_FAIL);
-  }
-
-  console.log(
-    `PASS: No new violations (${baselineLines.length} known, ${currentViolations.length} current).`,
-  );
-  if (fixedViolations.length > 0) {
-    console.log(`${fixedViolations.length} previous violation(s) fixed (--update to refresh).`);
-    for (const v of fixedViolations) console.log(`  FIXED: ${v}`);
-  }
-
-  process.exit(EXIT_PASS);
+  if (growth.length) throw new Error(`Lint baseline grew:\n${growth.join('\n')}`);
+  console.log(`PASS: lint baseline (${Object.keys(current).length} current fingerprints)`);
 }
 
-if (require.main === module) {
-  main().catch((err) => {
-    console.error(`FATAL: ${err.message}`);
-    process.exit(EXIT_ERROR);
-  });
-}
-
-module.exports = { extractViolations, validateBaselineLines, runESLint, getSourceFiles };
+main().catch((error) => {
+  console.error(`FAIL: ${error.message}`);
+  process.exit(1);
+});

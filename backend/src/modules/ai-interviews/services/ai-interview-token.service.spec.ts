@@ -108,7 +108,7 @@ describe('AiInterviewTokenService', () => {
         { sub: interviewId, purpose: 'talentai-ai-interview-access', cv: codeHash.slice(0, 16) },
         { secret: testSecret, expiresIn: '0s' },
       );
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
       expect(() => service.verify(expiredToken)).toThrow(UnauthorizedException);
     });
 
@@ -142,7 +142,7 @@ describe('AiInterviewTokenService', () => {
         { sub: interviewId, purpose: 'talentai-ai-interview-access', cv: codeHash.slice(0, 16) },
         { secret: testSecret, expiresIn: '0s' },
       );
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
       const result = service.extractInterviewId(expiredToken);
       expect(result).toBeNull();
     });
@@ -150,11 +150,10 @@ describe('AiInterviewTokenService', () => {
 
   describe('secret not configured', () => {
     it('should throw when secret is empty', () => {
-      const svc = new AiInterviewTokenService(
-        jwtService,
-        { get: () => '' } as any,
+      const svc = new AiInterviewTokenService(jwtService, { get: () => '' } as any);
+      expect(() => svc.generate('id', 'hash')).toThrow(
+        'AI_INTERVIEW_ACCESS_TOKEN_SECRET is not configured',
       );
-      expect(() => svc.generate('id', 'hash')).toThrow('AI_INTERVIEW_ACCESS_TOKEN_SECRET is not configured');
     });
   });
 });

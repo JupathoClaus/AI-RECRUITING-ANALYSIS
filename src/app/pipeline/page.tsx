@@ -93,8 +93,6 @@ function mapStageToPipeline(stage: PipelineStageDto, idx: number): PipelineStage
   }
 }
 
-let defaultPipeline: PipelineStage[] = []
-
 const statusBadgeVariant: Record<string, "default" | "success" | "warning" | "error" | "secondary" | "info"> = {
   Applied: "info",
   Screening: "warning",
@@ -220,18 +218,29 @@ export default function PipelinePage() {
   const [stageSaving, setStageSaving] = React.useState(false)
 
   React.useEffect(() => {
-    if (jobFilter && jobFilter !== "all") {
-      setPipelineLoading(true)
-      getJobPipeline(jobFilter).then((p) => {
-        setPipeline(p)
-        setStages((p.stages || []).sort((a, b) => a.sortOrder - b.sortOrder).map((s, i) => mapStageToPipeline(s, i)))
-      }).catch(() => {
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      if (jobFilter && jobFilter !== "all") {
+        setPipelineLoading(true)
+        void getJobPipeline(jobFilter).then((p) => {
+          if (!active) return
+          setPipeline(p)
+          setStages((p.stages || []).sort((a, b) => a.sortOrder - b.sortOrder).map((s, i) => mapStageToPipeline(s, i)))
+        }).catch(() => {
+          if (!active) return
+          setPipeline(null)
+          setStages([])
+        }).finally(() => {
+          if (active) setPipelineLoading(false)
+        })
+      } else {
         setPipeline(null)
         setStages([])
-      }).finally(() => setPipelineLoading(false))
-    } else {
-      setPipeline(null)
-      setStages([])
+      }
+    })
+    return () => {
+      active = false
     }
   }, [jobFilter])
 

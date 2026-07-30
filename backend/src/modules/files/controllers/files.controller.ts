@@ -64,9 +64,7 @@ export class FilesController {
     @Param('applicationId') applicationId: string,
     @UploadedFile(
       new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({ maxSize: 10485760 }),
-        ],
+        validators: [new MaxFileSizeValidator({ maxSize: 10485760 })],
         fileIsRequired: true,
       }),
     )
@@ -95,11 +93,7 @@ export class FilesController {
     @CurrentUser() user: AuthenticatedPrincipal,
     @Res() res: Response,
   ) {
-    const result = await this.filesService.downloadFile(
-      fileId,
-      user.activeCompanyId!,
-      user.userId,
-    );
+    const result = await this.filesService.downloadFile(fileId, user.activeCompanyId!, user.userId);
 
     res.setHeader('Content-Type', result.mimeType);
     res.setHeader('Content-Disposition', `attachment; filename="${result.originalName}"`);
@@ -115,10 +109,7 @@ export class FilesController {
     @Param('applicationId') applicationId: string,
     @CurrentUser() user: AuthenticatedPrincipal,
   ) {
-    const file = await this.filesService.getApplicationResume(
-      applicationId,
-      user.activeCompanyId!,
-    );
+    const file = await this.filesService.getApplicationResume(applicationId, user.activeCompanyId!);
     return file;
   }
 
@@ -126,10 +117,7 @@ export class FilesController {
   @RequirePermissions('applications.update')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Archive a file (soft delete)' })
-  async archiveFile(
-    @Param('fileId') fileId: string,
-    @CurrentUser() user: AuthenticatedPrincipal,
-  ) {
+  async archiveFile(@Param('fileId') fileId: string, @CurrentUser() user: AuthenticatedPrincipal) {
     return this.filesService.archiveFile(fileId, user.activeCompanyId!, user.userId);
   }
 }

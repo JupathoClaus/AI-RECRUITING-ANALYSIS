@@ -1,4 +1,7 @@
-import { isProhibitedReasoningDetected, applyProhibitedReasoningGuard } from '../providers/prohibited-reasoning.guard';
+import {
+  isProhibitedReasoningDetected,
+  applyProhibitedReasoningGuard,
+} from '../providers/prohibited-reasoning.guard';
 import { ScreeningRecommendation } from '../domain/screening-recommendation.enum';
 import { ScreeningConfidence } from '../domain/screening-confidence.enum';
 import { ProviderScreeningResult } from '../domain/screening-result.type';
@@ -9,11 +12,20 @@ const BASE_RESULT: ProviderScreeningResult = {
   confidence: ScreeningConfidence.HIGH,
   matchedQualifications: ['TypeScript'],
   missingQualifications: [],
-  evidence: [{ criterion: 'skills', sourceCategory: 'RESUME' as any, sourceText: 'Good skills', assessment: 'match' }],
+  evidence: [
+    {
+      criterion: 'skills',
+      sourceCategory: 'RESUME' as any,
+      sourceText: 'Good skills',
+      assessment: 'match',
+    },
+  ],
   uncertainties: [],
   riskFlags: [],
   explanation: 'Candidate has strong technical background.',
-  criteriaScores: [{ criterion: 'skills', score: 85, maximumScore: 100, weight: 0.5, explanation: 'Good match' }],
+  criteriaScores: [
+    { criterion: 'skills', score: 85, maximumScore: 100, weight: 0.5, explanation: 'Good match' },
+  ],
   prohibitedReasoningDetected: false,
 };
 
@@ -51,7 +63,10 @@ describe('isProhibitedReasoningDetected', () => {
   });
 
   it('does not flag safe technical terms', () => {
-    const r = { ...BASE_RESULT, explanation: 'The candidate has the right years of experience for a senior role.' };
+    const r = {
+      ...BASE_RESULT,
+      explanation: 'The candidate has the right years of experience for a senior role.',
+    };
     expect(isProhibitedReasoningDetected(r)).toBe(false);
   });
 });
@@ -99,7 +114,15 @@ describe('applyProhibitedReasoningGuard', () => {
   it('detects ethnicity in criteria score explanation', () => {
     const r = {
       ...BASE_RESULT,
-      criteriaScores: [{ criterion: 'fit', score: 50, maximumScore: 100, weight: 0.5, explanation: 'ethnicity concern' }],
+      criteriaScores: [
+        {
+          criterion: 'fit',
+          score: 50,
+          maximumScore: 100,
+          weight: 0.5,
+          explanation: 'ethnicity concern',
+        },
+      ],
     };
     expect(isProhibitedReasoningDetected(r)).toBe(true);
     const result = applyProhibitedReasoningGuard(r);

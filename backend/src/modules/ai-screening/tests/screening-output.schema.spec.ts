@@ -24,7 +24,13 @@ const VALID_SHORTLIST = {
   riskFlags: [],
   explanation: 'Strong match for all required skills.',
   criteriaScores: [
-    { criterion: 'skills', score: 90, maximumScore: 100, weight: 0.5, explanation: 'Good skills match' },
+    {
+      criterion: 'skills',
+      score: 90,
+      maximumScore: 100,
+      weight: 0.5,
+      explanation: 'Good skills match',
+    },
   ],
   prohibitedReasoningDetected: false,
 };
@@ -48,7 +54,13 @@ const VALID_NOT_SHORTLIST = {
   riskFlags: ['MISSING_REQUIRED_SKILLS'],
   explanation: 'Candidate does not meet minimum requirements.',
   criteriaScores: [
-    { criterion: 'skills', score: 10, maximumScore: 100, weight: 0.5, explanation: 'Skills not found' },
+    {
+      criterion: 'skills',
+      score: 10,
+      maximumScore: 100,
+      weight: 0.5,
+      explanation: 'Skills not found',
+    },
   ],
   prohibitedReasoningDetected: false,
 };
@@ -71,7 +83,13 @@ const VALID_HUMAN_REVIEW = {
   riskFlags: [],
   explanation: 'Cannot evaluate due to insufficient data.',
   criteriaScores: [
-    { criterion: 'overall', score: 0, maximumScore: 100, weight: 1, explanation: 'Cannot evaluate' },
+    {
+      criterion: 'overall',
+      score: 0,
+      maximumScore: 100,
+      weight: 1,
+      explanation: 'Cannot evaluate',
+    },
   ],
   prohibitedReasoningDetected: false,
 };
@@ -124,9 +142,9 @@ describe('validateScreeningOutput', () => {
   });
 
   it('rejects unknown top-level property', () => {
-    expect(() =>
-      validateScreeningOutput({ ...VALID_SHORTLIST, unknownField: 'test' }),
-    ).toThrow('Unknown property');
+    expect(() => validateScreeningOutput({ ...VALID_SHORTLIST, unknownField: 'test' })).toThrow(
+      'Unknown property',
+    );
   });
 
   it('rejects unknown nested evidence property', () => {
@@ -209,27 +227,25 @@ describe('validateScreeningOutput', () => {
   });
 
   it('rejects score below 0', () => {
-    expect(() =>
-      validateScreeningOutput({ ...VALID_SHORTLIST, overallScore: -1 }),
-    ).toThrow('overallScore');
+    expect(() => validateScreeningOutput({ ...VALID_SHORTLIST, overallScore: -1 })).toThrow(
+      'overallScore',
+    );
   });
 
   it('rejects score above 100', () => {
-    expect(() =>
-      validateScreeningOutput({ ...VALID_SHORTLIST, overallScore: 101 }),
-    ).toThrow('overallScore');
+    expect(() => validateScreeningOutput({ ...VALID_SHORTLIST, overallScore: 101 })).toThrow(
+      'overallScore',
+    );
   });
 
   it('rejects unknown enum values', () => {
-    expect(() =>
-      validateScreeningOutput({ ...VALID_SHORTLIST, recommendation: 'MAYBE' }),
-    ).toThrow('recommendation');
+    expect(() => validateScreeningOutput({ ...VALID_SHORTLIST, recommendation: 'MAYBE' })).toThrow(
+      'recommendation',
+    );
   });
 
   it('rejects missing evidence', () => {
-    expect(() =>
-      validateScreeningOutput({ ...VALID_SHORTLIST, evidence: [] }),
-    ).toThrow('evidence');
+    expect(() => validateScreeningOutput({ ...VALID_SHORTLIST, evidence: [] })).toThrow('evidence');
   });
 
   it('rejects SHORTLIST without qualifications', () => {
@@ -261,9 +277,9 @@ describe('validateScreeningOutput', () => {
   });
 
   it('rejects empty explanation', () => {
-    expect(() =>
-      validateScreeningOutput({ ...VALID_HUMAN_REVIEW, explanation: '' }),
-    ).toThrow('explanation must be a non-empty string');
+    expect(() => validateScreeningOutput({ ...VALID_HUMAN_REVIEW, explanation: '' })).toThrow(
+      'explanation must be a non-empty string',
+    );
   });
 
   it('rejects criteriaScore with score > maximumScore', () => {

@@ -2,7 +2,10 @@
  * Pure calculation for time-to-hire metrics.
  * Negative durations return null for both fields.
  */
-export function calculateTimeToHire(submittedAt: Date | null, hiredAt: Date | null): { durationHours: number | null; daysToHire: number | null } {
+export function calculateTimeToHire(
+  submittedAt: Date | null,
+  hiredAt: Date | null,
+): { durationHours: number | null; daysToHire: number | null } {
   if (!submittedAt || !hiredAt) return { durationHours: null, daysToHire: null };
 
   const ms = hiredAt.getTime() - submittedAt.getTime();

@@ -10,9 +10,11 @@ const MARITAL_LABEL_REGEX = /^(marital\s*status|marital\s*condition)\s*[::\-]?\s
 
 const NATIONALITY_LABEL_REGEX = /^(nationality|citizenship)\s*[::\-]?\s*.+/gim;
 
-const SOCIAL_URL_REGEX = /https?:\/\/(?:www\.)?(linkedin\.com|facebook\.com|twitter\.com|x\.com|instagram\.com)\/[A-Za-z0-9._%-]+/gi;
+const SOCIAL_URL_REGEX =
+  /https?:\/\/(?:www\.)?(linkedin\.com|facebook\.com|twitter\.com|x\.com|instagram\.com)\/[A-Za-z0-9._%-]+/gi;
 
-const ADDRESS_LABEL_REGEX = /^(address|residential\s*address|current\s*address|permanent\s*address|home\s*address)\s*[::\-]?\s*.+/gim;
+const ADDRESS_LABEL_REGEX =
+  /^(address|residential\s*address|current\s*address|permanent\s*address|home\s*address)\s*[::\-]?\s*.+/gim;
 
 export function redactResumeText(raw: string): string {
   let result = raw;

@@ -37,10 +37,7 @@ export class PublicAiInterviewsController {
   @Post('public/start')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Start AI interview' })
-  async startInterview(
-    @Headers('authorization') auth: string,
-    @Body() dto: StartAiInterviewDto,
-  ) {
+  async startInterview(@Headers('authorization') auth: string, @Body() dto: StartAiInterviewDto) {
     const token = this.extractBearerToken(auth);
     return this.aiInterviewsService.startInterview(token, dto);
   }
@@ -55,7 +52,10 @@ export class PublicAiInterviewsController {
 
   private extractBearerToken(auth?: string): string {
     if (!auth || !auth.startsWith('Bearer ')) {
-      throw new UnauthorizedException({ code: 'MISSING_TOKEN', message: 'Authorization header required' });
+      throw new UnauthorizedException({
+        code: 'MISSING_TOKEN',
+        message: 'Authorization header required',
+      });
     }
     return auth.slice(7);
   }

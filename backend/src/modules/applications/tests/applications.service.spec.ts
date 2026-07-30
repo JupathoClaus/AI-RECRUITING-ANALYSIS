@@ -253,9 +253,15 @@ describe('ApplicationsService', () => {
 
     function setupSubmitMocks(overrides?: Record<string, unknown>) {
       prisma.application.findFirst.mockResolvedValue(makeSubmitApp(overrides));
-      prisma.candidate.findUnique.mockResolvedValue({ id: CANDIDATE_ID, firstName: 'John', lastName: 'Doe' });
+      prisma.candidate.findUnique.mockResolvedValue({
+        id: CANDIDATE_ID,
+        firstName: 'John',
+        lastName: 'Doe',
+      });
       workflowService.transition.mockResolvedValue({
-        id: 'app-1', companyId: COMPANY_ID, status: ApplicationStatus.SUBMITTED,
+        id: 'app-1',
+        companyId: COMPANY_ID,
+        status: ApplicationStatus.SUBMITTED,
       });
     }
 
@@ -265,7 +271,9 @@ describe('ApplicationsService', () => {
 
     it('sends notification when notifyRecruiterOnNewApplication is true', async () => {
       setupSubmitMocks();
-      prisma.companySettings.findUnique.mockResolvedValue({ notifyRecruiterOnNewApplication: true });
+      prisma.companySettings.findUnique.mockResolvedValue({
+        notifyRecruiterOnNewApplication: true,
+      });
       await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
       expect(inAppNotificationsService.create).toHaveBeenCalledTimes(1);
       expect(inAppNotificationsService.create).toHaveBeenCalledWith(
@@ -281,7 +289,9 @@ describe('ApplicationsService', () => {
 
     it('does not send notification when notifyRecruiterOnNewApplication is false', async () => {
       setupSubmitMocks();
-      prisma.companySettings.findUnique.mockResolvedValue({ notifyRecruiterOnNewApplication: false });
+      prisma.companySettings.findUnique.mockResolvedValue({
+        notifyRecruiterOnNewApplication: false,
+      });
       await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
       expect(inAppNotificationsService.create).not.toHaveBeenCalled();
     });
@@ -307,7 +317,9 @@ describe('ApplicationsService', () => {
 
     it('handles notification create internal failure gracefully', async () => {
       setupSubmitMocks();
-      prisma.companySettings.findUnique.mockResolvedValue({ notifyRecruiterOnNewApplication: true });
+      prisma.companySettings.findUnique.mockResolvedValue({
+        notifyRecruiterOnNewApplication: true,
+      });
       const result = await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
       expect(inAppNotificationsService.create).toHaveBeenCalledTimes(1);
       expect(result).toBeDefined();
@@ -317,10 +329,15 @@ describe('ApplicationsService', () => {
       setupSubmitMocks({
         job: {
           ...makeSubmitApp().job,
-          ownerMembership: { userId: USER_ID, user: { id: USER_ID, firstName: 'Recruiter', lastName: 'One' } },
+          ownerMembership: {
+            userId: USER_ID,
+            user: { id: USER_ID, firstName: 'Recruiter', lastName: 'One' },
+          },
         },
       });
-      prisma.companySettings.findUnique.mockResolvedValue({ notifyRecruiterOnNewApplication: true });
+      prisma.companySettings.findUnique.mockResolvedValue({
+        notifyRecruiterOnNewApplication: true,
+      });
       await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
       expect(inAppNotificationsService.create).not.toHaveBeenCalled();
     });

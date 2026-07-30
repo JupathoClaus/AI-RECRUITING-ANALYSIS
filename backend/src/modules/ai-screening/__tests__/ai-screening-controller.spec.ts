@@ -11,7 +11,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { ResumeExtractionService } from '../../resume-processing/services/resume-extraction.service';
 
-const mockRes = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn() } as any);
+const mockRes = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn() }) as any;
 
 const mockReadFile = jest.fn().mockResolvedValue('Parsed resume text.');
 jest.mock('fs/promises', () => ({
@@ -34,18 +34,34 @@ describe('AiScreeningController', () => {
 
     mockPrismaService = {
       application: { findFirst: jest.fn(), update: jest.fn() },
-      aiScreeningResult: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn() },
+      aiScreeningResult: {
+        findFirst: jest.fn(),
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
       storedFile: { findUnique: jest.fn() },
-      resumeTextExtraction: { findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), update: jest.fn() },
+      resumeTextExtraction: {
+        findFirst: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+      },
       $transaction: jest.fn(),
     };
 
     const mockConfigService = {
       get: jest.fn((key: string) => {
         const config: Record<string, unknown> = {
-          'aiScreening.provider': 'mock', 'aiScreening.openAiModel': 'gpt-4o-mini',
-          'aiScreening.promptVersion': 'v1', 'aiScreening.schemaVersion': 'v1',
-          'app.uploadDir': './uploads', 'app.resumeTextParserSuffix': '_parsed.txt',
+          'aiScreening.provider': 'mock',
+          'aiScreening.openAiModel': 'gpt-4o-mini',
+          'aiScreening.promptVersion': 'v1',
+          'aiScreening.schemaVersion': 'v1',
+          'app.uploadDir': './uploads',
+          'app.resumeTextParserSuffix': '_parsed.txt',
         };
         return config[key];
       }),
@@ -54,7 +70,9 @@ describe('AiScreeningController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AiScreeningController],
       providers: [
-        AiScreeningService, ScreeningInputBuilderService, ResumeTextLoaderService,
+        AiScreeningService,
+        ScreeningInputBuilderService,
+        ResumeTextLoaderService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: getQueueToken(AI_SCREENING_QUEUE), useValue: mockQueue },
         { provide: getQueueToken('resume-processing'), useValue: mockResumeQueue },
@@ -62,8 +80,10 @@ describe('AiScreeningController', () => {
         { provide: ConfigService, useValue: mockConfigService },
       ],
     })
-      .overrideGuard(JwtAuthGuard).useValue({ canActivate: jest.fn(() => true) })
-      .overrideGuard(RolesGuard).useValue({ canActivate: jest.fn(() => true) })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: jest.fn(() => true) })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: jest.fn(() => true) })
       .compile();
 
     controller = module.get<AiScreeningController>(AiScreeningController);
@@ -74,12 +94,23 @@ describe('AiScreeningController', () => {
     it('returns CREATED action for new screening', async () => {
       jest.spyOn(service, 'requestScreening').mockResolvedValue({
         action: 'CREATED',
-        data: { id: 'screen-1', applicationId: 'app-1', status: 'PENDING', createdAt: new Date().toISOString() } as any,
+        data: {
+          id: 'screen-1',
+          applicationId: 'app-1',
+          status: 'PENDING',
+          createdAt: new Date().toISOString(),
+        } as any,
       });
 
       const result = await controller.requestScreening(
-        'app-1', { forceRerun: false },
-        { userId: 'user-1', activeCompanyId: 'company-1', role: 'HR_MANAGER', permissions: [] } as any,
+        'app-1',
+        { forceRerun: false },
+        {
+          userId: 'user-1',
+          activeCompanyId: 'company-1',
+          role: 'HR_MANAGER',
+          permissions: [],
+        } as any,
         mockRes(),
       );
 
@@ -90,12 +121,23 @@ describe('AiScreeningController', () => {
     it('returns REUSED action for existing screening', async () => {
       jest.spyOn(service, 'requestScreening').mockResolvedValue({
         action: 'REUSED',
-        data: { id: 'screen-1', applicationId: 'app-1', status: 'COMPLETED', createdAt: new Date().toISOString() } as any,
+        data: {
+          id: 'screen-1',
+          applicationId: 'app-1',
+          status: 'COMPLETED',
+          createdAt: new Date().toISOString(),
+        } as any,
       });
 
       const result = await controller.requestScreening(
-        'app-1', { forceRerun: false },
-        { userId: 'user-1', activeCompanyId: 'company-1', role: 'HR_MANAGER', permissions: [] } as any,
+        'app-1',
+        { forceRerun: false },
+        {
+          userId: 'user-1',
+          activeCompanyId: 'company-1',
+          role: 'HR_MANAGER',
+          permissions: [],
+        } as any,
         mockRes(),
       );
 
@@ -110,8 +152,14 @@ describe('AiScreeningController', () => {
       });
 
       const result = await controller.requestScreening(
-        'app-1', { forceRerun: true },
-        { userId: 'user-1', activeCompanyId: 'company-1', role: 'HR_MANAGER', permissions: [] } as any,
+        'app-1',
+        { forceRerun: true },
+        {
+          userId: 'user-1',
+          activeCompanyId: 'company-1',
+          role: 'HR_MANAGER',
+          permissions: [],
+        } as any,
         mockRes(),
       );
 
@@ -125,8 +173,14 @@ describe('AiScreeningController', () => {
       });
 
       await controller.requestScreening(
-        'app-1', { forceRerun: false },
-        { userId: 'user-1', activeCompanyId: 'company-1', role: 'RECRUITER', permissions: [] } as any,
+        'app-1',
+        { forceRerun: false },
+        {
+          userId: 'user-1',
+          activeCompanyId: 'company-1',
+          role: 'RECRUITER',
+          permissions: [],
+        } as any,
         mockRes(),
       );
 
@@ -136,20 +190,39 @@ describe('AiScreeningController', () => {
 
   describe('GET endpoints', () => {
     it('listScreenings returns data', async () => {
-      jest.spyOn(service, 'listScreenings').mockResolvedValue({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 });
-      const result = await controller.listScreenings('app-1', { page: 1, limit: 20 }, { userId: 'u1', activeCompanyId: 'c1' } as any);
+      jest
+        .spyOn(service, 'listScreenings')
+        .mockResolvedValue({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 });
+      const result = await controller.listScreenings('app-1', { page: 1, limit: 20 }, {
+        userId: 'u1',
+        activeCompanyId: 'c1',
+      } as any);
       expect(result.data).toEqual([]);
     });
 
     it('getLatestScreening returns result', async () => {
-      jest.spyOn(service, 'getLatestScreening').mockResolvedValue({ id: 's1', status: 'COMPLETED', createdAt: new Date().toISOString() } as any);
-      const result = await controller.getLatestScreening('app-1', { userId: 'u1', activeCompanyId: 'c1' } as any);
+      jest.spyOn(service, 'getLatestScreening').mockResolvedValue({
+        id: 's1',
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+      } as any);
+      const result = await controller.getLatestScreening('app-1', {
+        userId: 'u1',
+        activeCompanyId: 'c1',
+      } as any);
       expect(result.id).toBe('s1');
     });
 
     it('getScreening returns result', async () => {
-      jest.spyOn(service, 'getScreening').mockResolvedValue({ id: 's1', status: 'COMPLETED', createdAt: new Date().toISOString() } as any);
-      const result = await controller.getScreening('s1', { userId: 'u1', activeCompanyId: 'c1' } as any);
+      jest.spyOn(service, 'getScreening').mockResolvedValue({
+        id: 's1',
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+      } as any);
+      const result = await controller.getScreening('s1', {
+        userId: 'u1',
+        activeCompanyId: 'c1',
+      } as any);
       expect(result.id).toBe('s1');
     });
   });
@@ -159,7 +232,9 @@ describe('AiScreeningController', () => {
 
     it('returns extraction status for application', async () => {
       jest.spyOn(service, 'getExtractionStatus').mockResolvedValue({
-        id: 'ext-1', status: 'PENDING', createdAt: new Date().toISOString(),
+        id: 'ext-1',
+        status: 'PENDING',
+        createdAt: new Date().toISOString(),
       });
 
       const result = await controller.getExtractionStatus('app-1', user);
@@ -169,7 +244,10 @@ describe('AiScreeningController', () => {
 
     it('returns PROCESSING status when worker is active', async () => {
       jest.spyOn(service, 'getExtractionStatus').mockResolvedValue({
-        id: 'ext-1', status: 'PROCESSING', createdAt: new Date().toISOString(), startedAt: new Date().toISOString(),
+        id: 'ext-1',
+        status: 'PROCESSING',
+        createdAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(),
       });
 
       const result = await controller.getExtractionStatus('app-1', user);
@@ -178,8 +256,11 @@ describe('AiScreeningController', () => {
 
     it('returns COMPLETED status with timestamps', async () => {
       jest.spyOn(service, 'getExtractionStatus').mockResolvedValue({
-        id: 'ext-1', status: 'COMPLETED', createdAt: new Date().toISOString(),
-        startedAt: new Date().toISOString(), completedAt: new Date().toISOString(),
+        id: 'ext-1',
+        status: 'COMPLETED',
+        createdAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
       });
 
       const result = await controller.getExtractionStatus('app-1', user);
@@ -190,8 +271,11 @@ describe('AiScreeningController', () => {
 
     it('returns FAILED status with failure details', async () => {
       jest.spyOn(service, 'getExtractionStatus').mockResolvedValue({
-        id: 'ext-1', status: 'FAILED', failureCode: 'EXTRACTION_FAILED',
-        failureMessageSafe: 'Could not extract text from PDF', createdAt: new Date().toISOString(),
+        id: 'ext-1',
+        status: 'FAILED',
+        failureCode: 'EXTRACTION_FAILED',
+        failureMessageSafe: 'Could not extract text from PDF',
+        createdAt: new Date().toISOString(),
         completedAt: new Date().toISOString(),
       });
 
@@ -208,16 +292,24 @@ describe('AiScreeningController', () => {
     beforeEach(() => {
       mockPrismaService.application = {
         findFirst: jest.fn().mockResolvedValue({
-          id: 'app-1', companyId: 'c1', deletedAt: null,
+          id: 'app-1',
+          companyId: 'c1',
+          deletedAt: null,
           resumeFiles: [{ id: 'file-1' }],
         }),
         update: jest.fn(),
       };
       mockPrismaService.resumeTextExtraction = {
         findFirst: jest.fn().mockResolvedValue({
-          id: 'ext-1', storedFileId: 'file-1', companyId: 'c1', status: 'PENDING',
-          failureCode: null, failureMessageSafe: null,
-          createdAt: new Date(), startedAt: null, completedAt: null,
+          id: 'ext-1',
+          storedFileId: 'file-1',
+          companyId: 'c1',
+          status: 'PENDING',
+          failureCode: null,
+          failureMessageSafe: null,
+          createdAt: new Date(),
+          startedAt: null,
+          completedAt: null,
         }),
         findMany: jest.fn(),
         count: jest.fn(),
@@ -284,9 +376,15 @@ describe('AiScreeningController', () => {
 
     it('returns FAILED status without triggering retry', async () => {
       mockPrismaService.resumeTextExtraction.findFirst = jest.fn().mockResolvedValue({
-        id: 'ext-1', storedFileId: 'file-1', companyId: 'c1', status: 'FAILED',
-        failureCode: 'EXTRACTION_FAILED', failureMessageSafe: null,
-        createdAt: new Date(), startedAt: null, completedAt: new Date(),
+        id: 'ext-1',
+        storedFileId: 'file-1',
+        companyId: 'c1',
+        status: 'FAILED',
+        failureCode: 'EXTRACTION_FAILED',
+        failureMessageSafe: null,
+        createdAt: new Date(),
+        startedAt: null,
+        completedAt: new Date(),
       });
 
       const result = await controller.getExtractionStatus('app-1', user);
@@ -298,9 +396,15 @@ describe('AiScreeningController', () => {
 
     it('returns COMPLETED status without reusing results', async () => {
       mockPrismaService.resumeTextExtraction.findFirst = jest.fn().mockResolvedValue({
-        id: 'ext-1', storedFileId: 'file-1', companyId: 'c1', status: 'COMPLETED',
-        failureCode: null, failureMessageSafe: null,
-        createdAt: new Date(), startedAt: new Date(), completedAt: new Date(),
+        id: 'ext-1',
+        storedFileId: 'file-1',
+        companyId: 'c1',
+        status: 'COMPLETED',
+        failureCode: null,
+        failureMessageSafe: null,
+        createdAt: new Date(),
+        startedAt: new Date(),
+        completedAt: new Date(),
       });
 
       const result = await controller.getExtractionStatus('app-1', user);
@@ -313,7 +417,9 @@ describe('AiScreeningController', () => {
 
     it('scopes queries to the active company', async () => {
       mockPrismaService.application.findFirst = jest.fn().mockResolvedValue({
-        id: 'app-1', companyId: 'c1', deletedAt: null,
+        id: 'app-1',
+        companyId: 'c1',
+        deletedAt: null,
         resumeFiles: [{ id: 'file-1' }],
       });
 

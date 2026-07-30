@@ -42,7 +42,10 @@ export class AiInterviewsController {
   @Get('by-application/:applicationId')
   @RequirePermissions('interviews.read')
   @ApiOperation({ summary: 'Get AI interviews for an application' })
-  async findByApplication(@Param('applicationId') applicationId: string, @CurrentUser() user: AuthenticatedPrincipal) {
+  async findByApplication(
+    @Param('applicationId') applicationId: string,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
     return this.aiInterviewsService.findByApplication(applicationId, user.activeCompanyId!);
   }
 

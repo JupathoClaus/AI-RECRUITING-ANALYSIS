@@ -1,4 +1,7 @@
-import { computeScreeningFingerprint, FingerprintContext } from '../utils/screening-input-fingerprint';
+import {
+  computeScreeningFingerprint,
+  FingerprintContext,
+} from '../utils/screening-input-fingerprint';
 import { ScreeningInput } from '../domain/screening-input.type';
 
 const BASE_INPUT: ScreeningInput = {
@@ -103,7 +106,9 @@ describe('computeScreeningFingerprint', () => {
 
   it('changed jobUpdatedAt changes fingerprint', () => {
     const fp1 = computeScreeningFingerprint(createContext());
-    const fp2 = computeScreeningFingerprint(createContext({ jobUpdatedAt: '2025-02-01T00:00:00.000Z' }));
+    const fp2 = computeScreeningFingerprint(
+      createContext({ jobUpdatedAt: '2025-02-01T00:00:00.000Z' }),
+    );
     expect(fp1).not.toBe(fp2);
   });
 

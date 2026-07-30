@@ -11,12 +11,14 @@ function InterviewCompleteContent() {
   const searchParams = useSearchParams()
   const isSubmitted = searchParams.get("submitted") === "true"
 
-  const [candidateName, setCandidateName] = React.useState("")
-  const [jobTitle, setJobTitle] = React.useState("")
+  const [candidateName] = React.useState(() =>
+    typeof window === "undefined" ? "" : sessionStorage.getItem("ai-interview-candidate-name") || "",
+  )
+  const [jobTitle] = React.useState(() =>
+    typeof window === "undefined" ? "" : sessionStorage.getItem("ai-interview-job-title") || "",
+  )
 
   React.useEffect(() => {
-    setCandidateName(sessionStorage.getItem("ai-interview-candidate-name") || "")
-    setJobTitle(sessionStorage.getItem("ai-interview-job-title") || "")
     return () => {
       clearInterviewSession()
     }

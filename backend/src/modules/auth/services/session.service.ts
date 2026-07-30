@@ -147,7 +147,11 @@ export class SessionService {
     });
   }
 
-  async updateActiveCompany(sessionId: string, companyId: string, membershipId?: string): Promise<void> {
+  async updateActiveCompany(
+    sessionId: string,
+    companyId: string,
+    membershipId?: string,
+  ): Promise<void> {
     await this.prismaService.userSession.update({
       where: { id: sessionId },
       data: { activeCompanyId: companyId, membershipId: membershipId ?? null },

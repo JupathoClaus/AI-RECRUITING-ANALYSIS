@@ -149,33 +149,21 @@ export class ExtractionDispatchReconcilerService {
       if (existingJob) {
         const existingState = await existingJob.getState();
         if (existingState === 'completed') {
-          await this.prisma.extractionDispatch.updateMany({
-            where: { extractionId, dispatchToken: leaseToken },
-            data: {
-              dispatchStatus: 'DISPATCHED',
-              dispatchToken: null,
-              dispatchedAt: new Date(),
-              jobId,
-            },
-          });
+          await this.markDispatched(extractionId, leaseToken, jobId);
           return;
         }
         if (existingState === 'failed') {
-          await existingJob.remove();
+          // The enqueue operation succeeded. Processing failure is terminal
+          // for this extraction generation and is recovered only by the
+          // explicit extraction retry workflow.
+          await this.markDispatched(extractionId, leaseToken, jobId);
+          return;
         } else if (
           existingState === 'waiting' ||
           existingState === 'delayed' ||
           existingState === 'active'
         ) {
-          await this.prisma.extractionDispatch.updateMany({
-            where: { extractionId, dispatchToken: leaseToken },
-            data: {
-              dispatchStatus: 'DISPATCHED',
-              dispatchToken: null,
-              dispatchedAt: new Date(),
-              jobId,
-            },
-          });
+          await this.markDispatched(extractionId, leaseToken, jobId);
           return;
         }
       }
@@ -190,15 +178,7 @@ export class ExtractionDispatchReconcilerService {
         { jobId },
       );
 
-      await this.prisma.extractionDispatch.updateMany({
-        where: { extractionId, dispatchToken: leaseToken },
-        data: {
-          dispatchStatus: 'DISPATCHED',
-          dispatchToken: null,
-          dispatchedAt: new Date(),
-          jobId,
-        },
-      });
+      await this.markDispatched(extractionId, leaseToken, jobId);
     } catch (err) {
       this.logger.error(`Failed to enqueue extraction job: ${(err as Error).message}`);
       await this.markDispatchFailed(extractionId, leaseToken, 'QUEUE_FAILURE');
@@ -232,7 +212,8 @@ export class ExtractionDispatchReconcilerService {
           jobState === 'waiting' ||
           jobState === 'delayed' ||
           jobState === 'active' ||
-          jobState === 'completed'
+          jobState === 'completed' ||
+          jobState === 'failed'
         ) {
           await this.prisma.extractionDispatch.updateMany({
             where: {
@@ -248,31 +229,6 @@ export class ExtractionDispatchReconcilerService {
           });
           this.logger.warn(
             `Stale DISPATCHING → DISPATCHED for extraction ${dispatch.extractionId}: job ${jobState}`,
-          );
-        } else if (jobState === 'failed') {
-          try {
-            const job = await this.extractionQueue.getJob(dispatch.extractionId);
-            if (job) await job.remove();
-          } catch {
-            /* empty */
-          }
-          const nextAttemptAt = new Date(Date.now() + DISPATCH_LEASE_TTL_MS);
-          await this.prisma.extractionDispatch.updateMany({
-            where: {
-              id: dispatch.id,
-              dispatchStatus: 'DISPATCHING',
-              leaseStartedAt: dispatch.leaseStartedAt,
-            },
-            data: {
-              dispatchStatus: 'PENDING_DISPATCH',
-              dispatchToken: null,
-              leaseStartedAt: null,
-              dispatchAttempts: { increment: 1 },
-              nextAttemptAt,
-            },
-          });
-          this.logger.warn(
-            `Stale DISPATCHING → PENDING_DISPATCH for extraction ${dispatch.extractionId}: removed failed BullMQ job`,
           );
         } else {
           const nextAttemptAt = new Date(Date.now() + DISPATCH_LEASE_TTL_MS);
@@ -312,6 +268,26 @@ export class ExtractionDispatchReconcilerService {
       return (await job.getState()) as JobState;
     } catch {
       return null;
+    }
+  }
+
+  private async markDispatched(
+    extractionId: string,
+    leaseToken: string,
+    jobId: string,
+  ): Promise<void> {
+    const updated = await this.prisma.extractionDispatch.updateMany({
+      where: { extractionId, dispatchToken: leaseToken, dispatchStatus: 'DISPATCHING' },
+      data: {
+        dispatchStatus: 'DISPATCHED',
+        dispatchToken: null,
+        leaseStartedAt: null,
+        dispatchedAt: new Date(),
+        jobId,
+      },
+    });
+    if (updated.count !== 1) {
+      throw new Error(`DISPATCH_OWNERSHIP_LOST: ${extractionId}`);
     }
   }
 

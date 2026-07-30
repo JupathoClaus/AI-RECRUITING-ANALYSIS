@@ -67,7 +67,9 @@ describe('ReportsController (HTTP integration)', () => {
 
     app = module.createNestApplication();
     app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+    );
     await app.init();
   });
 
@@ -75,16 +77,30 @@ describe('ReportsController (HTTP integration)', () => {
     jest.clearAllMocks();
     mockReportsService.getCandidateEvaluation.mockResolvedValue(emptyPaginated);
     mockReportsService.getInterviewSummary.mockResolvedValue(emptyPaginated);
-    mockReportsService.getPipeline.mockResolvedValue({ stages: [], totalApplications: 0, hiredCount: 0, rejectedCount: 0, activeCount: 0 });
+    mockReportsService.getPipeline.mockResolvedValue({
+      stages: [],
+      totalApplications: 0,
+      hiredCount: 0,
+      rejectedCount: 0,
+      activeCount: 0,
+    });
     mockReportsService.getTimeToHire.mockResolvedValue(emptyPaginated);
     mockReportsService.getSourceEffectiveness.mockResolvedValue([]);
     mockReportsService.getJobSummary.mockResolvedValue(emptyPaginated);
     mockReportsService.getActivity.mockResolvedValue(emptyPaginated);
-    mockReportsService.getJobOptions.mockResolvedValue({ data: [], meta: { page: 1, limit: 50, total: 0, totalPages: 0, hasMore: false } });
-    mockReportsService.getDepartmentOptions.mockResolvedValue({ data: [], meta: { page: 1, limit: 50, total: 0, totalPages: 0, hasMore: false } });
+    mockReportsService.getJobOptions.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 50, total: 0, totalPages: 0, hasMore: false },
+    });
+    mockReportsService.getDepartmentOptions.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 50, total: 0, totalPages: 0, hasMore: false },
+    });
   });
 
-  afterAll(async () => { await app.close(); });
+  afterAll(async () => {
+    await app.close();
+  });
 
   // ── Authentication ──
 
@@ -94,16 +110,27 @@ describe('ReportsController (HTTP integration)', () => {
     });
 
     it('invalid token returns 401', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation`).set('Authorization', 'Bearer bad').expect(401);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation`)
+        .set('Authorization', 'Bearer bad')
+        .expect(401);
     });
 
     it('authenticated request succeeds', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation`).set('Authorization', 'Bearer test-token').expect(200);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(200);
     });
 
     it('every service call receives company-a from principal', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation`).set('Authorization', 'Bearer test-token');
-      expect(mockReportsService.getCandidateEvaluation).toHaveBeenCalledWith('company-a', expect.anything());
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation`)
+        .set('Authorization', 'Bearer test-token');
+      expect(mockReportsService.getCandidateEvaluation).toHaveBeenCalledWith(
+        'company-a',
+        expect.anything(),
+      );
     });
   });
 
@@ -121,7 +148,10 @@ describe('ReportsController (HTTP integration)', () => {
     ];
     for (const [route, fn] of dataRoutes) {
       it(`GET /reports/${route} calls ${fn}`, async () => {
-        await request(app.getHttpServer()).get(`${BASE}/reports/${route}`).set('Authorization', 'Bearer test-token').expect(200);
+        await request(app.getHttpServer())
+          .get(`${BASE}/reports/${route}`)
+          .set('Authorization', 'Bearer test-token')
+          .expect(200);
         expect(mockReportsService[fn]).toHaveBeenCalledWith('company-a', expect.anything());
       });
     }
@@ -129,48 +159,92 @@ describe('ReportsController (HTTP integration)', () => {
     const exportRouteTest = (route: string, mockSetup: () => void) => {
       it(`GET /reports/${route}/export returns CSV`, async () => {
         mockSetup();
-        await request(app.getHttpServer()).get(`${BASE}/reports/${route}/export`).set('Authorization', 'Bearer test-token').expect(200);
+        await request(app.getHttpServer())
+          .get(`${BASE}/reports/${route}/export`)
+          .set('Authorization', 'Bearer test-token')
+          .expect(200);
       });
     };
 
-    exportRouteTest('candidate-evaluation', () => mockReportsService.getCandidateEvaluation.mockResolvedValue(emptyPaginated));
-    exportRouteTest('interview-summary', () => mockReportsService.getInterviewSummary.mockResolvedValue(emptyPaginated));
-    exportRouteTest('pipeline', () => mockReportsService.getPipeline.mockResolvedValue({ stages: [{ stage: 'SUBMITTED', count: 5 }], totalApplications: 5, hiredCount: 1, rejectedCount: 0, activeCount: 4 }));
-    exportRouteTest('time-to-hire', () => mockReportsService.getTimeToHire.mockResolvedValue(emptyPaginated));
-    exportRouteTest('source-effectiveness', () => mockReportsService.getSourceEffectiveness.mockResolvedValue([]));
-    exportRouteTest('job-summary', () => mockReportsService.getJobSummary.mockResolvedValue(emptyPaginated));
-    exportRouteTest('activity', () => mockReportsService.getActivity.mockResolvedValue(emptyPaginated));
+    exportRouteTest('candidate-evaluation', () =>
+      mockReportsService.getCandidateEvaluation.mockResolvedValue(emptyPaginated),
+    );
+    exportRouteTest('interview-summary', () =>
+      mockReportsService.getInterviewSummary.mockResolvedValue(emptyPaginated),
+    );
+    exportRouteTest('pipeline', () =>
+      mockReportsService.getPipeline.mockResolvedValue({
+        stages: [{ stage: 'SUBMITTED', count: 5 }],
+        totalApplications: 5,
+        hiredCount: 1,
+        rejectedCount: 0,
+        activeCount: 4,
+      }),
+    );
+    exportRouteTest('time-to-hire', () =>
+      mockReportsService.getTimeToHire.mockResolvedValue(emptyPaginated),
+    );
+    exportRouteTest('source-effectiveness', () =>
+      mockReportsService.getSourceEffectiveness.mockResolvedValue([]),
+    );
+    exportRouteTest('job-summary', () =>
+      mockReportsService.getJobSummary.mockResolvedValue(emptyPaginated),
+    );
+    exportRouteTest('activity', () =>
+      mockReportsService.getActivity.mockResolvedValue(emptyPaginated),
+    );
   });
 
   // ── Validation ──
 
   describe('validation', () => {
     it('valid date range passes', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-01-01&dateTo=2026-06-30`).set('Authorization', 'Bearer test-token').expect(200);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-01-01&dateTo=2026-06-30`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(200);
     });
 
     it('reversed date range returns 400', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-06-30&dateTo=2026-01-01`).set('Authorization', 'Bearer test-token').expect(400);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-06-30&dateTo=2026-01-01`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(400);
     });
 
     it('malformed date returns 400', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=not-a-date`).set('Authorization', 'Bearer test-token').expect(400);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?dateFrom=not-a-date`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(400);
     });
 
     it('invalid job UUID returns 400', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?jobIds=not-a-uuid`).set('Authorization', 'Bearer test-token').expect(400);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?jobIds=not-a-uuid`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(400);
     });
 
     it('invalid status returns 400', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?statuses=INVALID_STATUS`).set('Authorization', 'Bearer test-token').expect(400);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?statuses=INVALID_STATUS`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(400);
     });
 
     it('page=0 returns 400', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?page=0`).set('Authorization', 'Bearer test-token').expect(400);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?page=0`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(400);
     });
 
     it('limit above max returns 400', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?limit=201`).set('Authorization', 'Bearer test-token').expect(400);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?limit=201`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(400);
     });
   });
 
@@ -178,7 +252,9 @@ describe('ReportsController (HTTP integration)', () => {
 
   describe('array transformation', () => {
     it('repeated statuses route works', async () => {
-      const res = await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?statuses=HIRED&statuses=REJECTED`).set('Authorization', 'Bearer test-token');
+      const res = await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?statuses=HIRED&statuses=REJECTED`)
+        .set('Authorization', 'Bearer test-token');
       expect(res.status).toBe(200);
     });
   });
@@ -187,20 +263,74 @@ describe('ReportsController (HTTP integration)', () => {
 
   describe('export behavior', () => {
     it('export returns CSV content type', async () => {
-      mockReportsService.getCandidateEvaluation.mockResolvedValue({ data: [{ applicationId: 'a1', candidateName: 'A', email: 'a@b.com', jobTitle: 'Dev', jobDepartment: null, applicationStatus: 'HIRED', source: 'LINKEDIN', submittedAt: null, interviewStatus: null, interviewResult: null, rejectionReason: null }], meta: { total: 1, page: 1, limit: 5000, totalPages: 1 } });
-      const res = await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation/export`).set('Authorization', 'Bearer test-token').expect(200);
+      mockReportsService.getCandidateEvaluation.mockResolvedValue({
+        data: [
+          {
+            applicationId: 'a1',
+            candidateName: 'A',
+            email: 'a@b.com',
+            jobTitle: 'Dev',
+            jobDepartment: null,
+            applicationStatus: 'HIRED',
+            source: 'LINKEDIN',
+            submittedAt: null,
+            interviewStatus: null,
+            interviewResult: null,
+            rejectionReason: null,
+          },
+        ],
+        meta: { total: 1, page: 1, limit: 5000, totalPages: 1 },
+      });
+      const res = await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation/export`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(200);
       expect(res.headers['content-type']).toContain('text/csv');
     });
 
     it('not truncated below 5001', async () => {
-      mockReportsService.getCandidateEvaluation.mockResolvedValue({ data: Array(5000).fill({ applicationId: 'a', candidateName: 'A', email: 'a@b.com', jobTitle: 'Dev', jobDepartment: null, applicationStatus: 'HIRED', source: 'LINKEDIN', submittedAt: null, interviewStatus: null, interviewResult: null, rejectionReason: null }), meta: { total: 5000, page: 1, limit: 5000, totalPages: 1 } });
-      const res = await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation/export`).set('Authorization', 'Bearer test-token');
+      mockReportsService.getCandidateEvaluation.mockResolvedValue({
+        data: Array(5000).fill({
+          applicationId: 'a',
+          candidateName: 'A',
+          email: 'a@b.com',
+          jobTitle: 'Dev',
+          jobDepartment: null,
+          applicationStatus: 'HIRED',
+          source: 'LINKEDIN',
+          submittedAt: null,
+          interviewStatus: null,
+          interviewResult: null,
+          rejectionReason: null,
+        }),
+        meta: { total: 5000, page: 1, limit: 5000, totalPages: 1 },
+      });
+      const res = await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation/export`)
+        .set('Authorization', 'Bearer test-token');
       expect(res.headers['x-export-truncated']).toBeUndefined();
     });
 
     it('truncated at 5001', async () => {
-      mockReportsService.getCandidateEvaluation.mockResolvedValue({ data: Array(5000).fill({ applicationId: 'a', candidateName: 'A', email: 'a@b.com', jobTitle: 'Dev', jobDepartment: null, applicationStatus: 'HIRED', source: 'LINKEDIN', submittedAt: null, interviewStatus: null, interviewResult: null, rejectionReason: null }), meta: { total: 5001, page: 1, limit: 5000, totalPages: 2 } });
-      const res = await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation/export`).set('Authorization', 'Bearer test-token');
+      mockReportsService.getCandidateEvaluation.mockResolvedValue({
+        data: Array(5000).fill({
+          applicationId: 'a',
+          candidateName: 'A',
+          email: 'a@b.com',
+          jobTitle: 'Dev',
+          jobDepartment: null,
+          applicationStatus: 'HIRED',
+          source: 'LINKEDIN',
+          submittedAt: null,
+          interviewStatus: null,
+          interviewResult: null,
+          rejectionReason: null,
+        }),
+        meta: { total: 5001, page: 1, limit: 5000, totalPages: 2 },
+      });
+      const res = await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation/export`)
+        .set('Authorization', 'Bearer test-token');
       expect(res.headers['x-export-truncated']).toBe('true');
       expect(res.headers['x-export-total-count']).toBe('5001');
       expect(res.headers['x-export-returned-count']).toBe('5000');
@@ -211,19 +341,31 @@ describe('ReportsController (HTTP integration)', () => {
 
   describe('strict date validation', () => {
     it('accepts 2024-02-29 (leap year)', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2024-02-29`).set('Authorization', 'Bearer test-token').expect(200);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?dateFrom=2024-02-29`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(200);
     });
 
     it('rejects 2025-02-29 (non-leap)', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2025-02-29`).set('Authorization', 'Bearer test-token').expect(400);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?dateFrom=2025-02-29`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(400);
     });
 
     it('rejects 2026-02-30', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-02-30`).set('Authorization', 'Bearer test-token').expect(400);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-02-30`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(400);
     });
 
     it('rejects ISO timestamp', async () => {
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-07-24T00:00:00Z`).set('Authorization', 'Bearer test-token').expect(400);
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?dateFrom=2026-07-24T00:00:00Z`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(400);
     });
   });
 
@@ -231,14 +373,22 @@ describe('ReportsController (HTTP integration)', () => {
 
   describe('tenant isolation', () => {
     it('unknown query param is rejected by whitelist', async () => {
-      const res = await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation?companyId=company-b`).set('Authorization', 'Bearer test-token');
+      const res = await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation?companyId=company-b`)
+        .set('Authorization', 'Bearer test-token');
       expect(res.status).toBe(400);
     });
 
     it('service always receives company-a from principal', async () => {
       // No tenant override possible — whitelist blocks unknown params
-      await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation`).set('Authorization', 'Bearer test-token').expect(200);
-      expect(mockReportsService.getCandidateEvaluation).toHaveBeenCalledWith('company-a', expect.anything());
+      await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(200);
+      expect(mockReportsService.getCandidateEvaluation).toHaveBeenCalledWith(
+        'company-a',
+        expect.anything(),
+      );
     });
   });
 
@@ -247,10 +397,27 @@ describe('ReportsController (HTTP integration)', () => {
   describe('CSV safety', () => {
     it('export returns CSV content type', async () => {
       mockReportsService.getCandidateEvaluation.mockResolvedValue({
-        data: [{ applicationId: 'a1', candidateName: '=SUM(A1:A10)', email: 'a@b.com', jobTitle: 'Dev', jobDepartment: null, applicationStatus: 'HIRED', source: 'LINKEDIN', submittedAt: null, interviewStatus: null, interviewResult: null, rejectionReason: null }],
+        data: [
+          {
+            applicationId: 'a1',
+            candidateName: '=SUM(A1:A10)',
+            email: 'a@b.com',
+            jobTitle: 'Dev',
+            jobDepartment: null,
+            applicationStatus: 'HIRED',
+            source: 'LINKEDIN',
+            submittedAt: null,
+            interviewStatus: null,
+            interviewResult: null,
+            rejectionReason: null,
+          },
+        ],
         meta: { total: 1, page: 1, limit: 5000, totalPages: 1 },
       });
-      const res = await request(app.getHttpServer()).get(`${BASE}/reports/candidate-evaluation/export`).set('Authorization', 'Bearer test-token').expect(200);
+      const res = await request(app.getHttpServer())
+        .get(`${BASE}/reports/candidate-evaluation/export`)
+        .set('Authorization', 'Bearer test-token')
+        .expect(200);
       expect(res.headers['content-type']).toContain('text/csv');
     });
   });

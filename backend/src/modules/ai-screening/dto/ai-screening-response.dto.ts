@@ -28,7 +28,8 @@ export class AiScreeningResponseDto {
   @ApiPropertyOptional() matchedQualifications?: string[];
   @ApiPropertyOptional() missingQualifications?: string[];
   @ApiPropertyOptional({ type: [ScreeningEvidenceDto] }) evidence?: ScreeningEvidenceDto[];
-  @ApiPropertyOptional({ type: [ScreeningCriterionScoreDto] }) criteriaScores?: ScreeningCriterionScoreDto[];
+  @ApiPropertyOptional({ type: [ScreeningCriterionScoreDto] })
+  criteriaScores?: ScreeningCriterionScoreDto[];
   @ApiPropertyOptional() uncertainties?: string[];
   @ApiPropertyOptional() riskFlags?: string[];
   @ApiPropertyOptional() explanation?: string;

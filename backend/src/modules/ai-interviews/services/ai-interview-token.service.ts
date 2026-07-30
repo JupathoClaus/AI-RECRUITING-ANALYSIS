@@ -50,13 +50,19 @@ export class AiInterviewTokenService {
       });
 
       if (payload.purpose !== 'talentai-ai-interview-access') {
-        throw new UnauthorizedException({ code: 'INVALID_TOKEN_PURPOSE', message: 'Invalid token purpose' });
+        throw new UnauthorizedException({
+          code: 'INVALID_TOKEN_PURPOSE',
+          message: 'Invalid token purpose',
+        });
       }
 
       return payload;
     } catch (error) {
       if (error instanceof UnauthorizedException) throw error;
-      throw new UnauthorizedException({ code: 'INVALID_ACCESS_TOKEN', message: 'Invalid or expired access token' });
+      throw new UnauthorizedException({
+        code: 'INVALID_ACCESS_TOKEN',
+        message: 'Invalid or expired access token',
+      });
     }
   }
 

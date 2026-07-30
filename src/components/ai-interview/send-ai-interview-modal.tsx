@@ -94,7 +94,7 @@ export function SendAiInterviewModal({
 
   React.useEffect(() => {
     if (open) {
-      loadExisting()
+      queueMicrotask(() => void loadExisting())
     }
   }, [open, loadExisting])
 

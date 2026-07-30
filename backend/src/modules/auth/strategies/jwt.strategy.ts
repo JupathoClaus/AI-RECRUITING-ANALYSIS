@@ -51,6 +51,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Session expired');
     }
 
+    if (session.userId !== payload.sub) {
+      throw new UnauthorizedException('Session user mismatch');
+    }
+
+    const tokenHasCompanyContext = Boolean(payload.cid || payload.mid);
+    const sessionHasCompanyContext = Boolean(session.activeCompanyId || session.membershipId);
+    if (tokenHasCompanyContext !== sessionHasCompanyContext) {
+      throw new UnauthorizedException('Invalid company session: context mismatch');
+    }
+
     const userStatus = session.user.status;
     if (userStatus === 'SUSPENDED' || userStatus === 'DISABLED' || userStatus === 'DELETED') {
       throw new UnauthorizedException('Account not accessible');
@@ -69,6 +79,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (payload.cid || payload.mid) {
       if (!payload.cid || !payload.mid) {
         throw new UnauthorizedException('Invalid company session: incomplete claims');
+      }
+      if (session.activeCompanyId !== payload.cid || session.membershipId !== payload.mid) {
+        throw new UnauthorizedException('Invalid company session: claim mismatch');
       }
       const membership = await this.prisma.companyMembership.findUnique({
         where: { id: payload.mid },

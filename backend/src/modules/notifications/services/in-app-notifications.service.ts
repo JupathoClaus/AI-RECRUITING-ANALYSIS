@@ -32,10 +32,7 @@ export class InAppNotificationsService {
   private buildUserScope(userId: string, companyId?: string): Prisma.UserNotificationWhereInput {
     const base: Prisma.UserNotificationWhereInput = { userId };
     if (companyId) {
-      base.OR = [
-        { companyId },
-        { companyId: null },
-      ];
+      base.OR = [{ companyId }, { companyId: null }];
     } else {
       base.companyId = null;
     }
@@ -50,11 +47,18 @@ export class InAppNotificationsService {
       where.type = { in: [NotificationType.AI_SCREENING_COMPLETED, NotificationType.SYSTEM] };
     }
     if (query.category === 'application') {
-      where.type = { in: [NotificationType.APPLICATION_SUBMITTED, NotificationType.APPLICATION_STAGE_CHANGED] };
+      where.type = {
+        in: [NotificationType.APPLICATION_SUBMITTED, NotificationType.APPLICATION_STAGE_CHANGED],
+      };
     }
     if (query.category === 'interview') {
       where.type = {
-        in: [NotificationType.INTERVIEW_SCHEDULED, NotificationType.INTERVIEW_RESCHEDULED, NotificationType.INTERVIEW_CANCELLED, NotificationType.INTERVIEW_COMPLETED],
+        in: [
+          NotificationType.INTERVIEW_SCHEDULED,
+          NotificationType.INTERVIEW_RESCHEDULED,
+          NotificationType.INTERVIEW_CANCELLED,
+          NotificationType.INTERVIEW_COMPLETED,
+        ],
       };
     }
     if (query.category === 'invitation') {
@@ -137,9 +141,10 @@ export class InAppNotificationsService {
         },
       });
     } catch (err) {
-      const message = err && typeof err === 'object' && 'message' in err
-        ? String((err as { message: unknown }).message)
-        : 'Unknown error';
+      const message =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Unknown error';
       this.logger.warn(`Failed to create notification: ${message}`);
     }
   }

@@ -1,4 +1,13 @@
-import { IsOptional, IsArray, IsEnum, IsInt, Min, Max, ArrayMaxSize, IsUUID } from 'class-validator';
+import {
+  IsOptional,
+  IsArray,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+  ArrayMaxSize,
+  IsUUID,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApplicationStatus } from '@prisma/client';
 import { IsDateOnly } from '../../../common/validation/is-date-only.decorator';

@@ -80,7 +80,6 @@ describe('redactResumeText', () => {
     expect(redactResumeText('')).toBe('');
   });
 
-
   it('does not corrupt unrelated content', () => {
     const text = 'Experienced developer with 5 years of TypeScript and React experience.';
     const result = redactResumeText(text);

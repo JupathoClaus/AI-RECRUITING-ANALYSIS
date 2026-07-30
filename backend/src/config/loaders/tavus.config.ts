@@ -8,6 +8,12 @@ export default registerAs('tavus', () => ({
   callbackBaseUrl: process.env.TAVUS_CALLBACK_BASE_URL || '',
   callbackSecret: process.env.TAVUS_CALLBACK_SECRET || '',
   maxCallDurationSeconds: parseInt(process.env.TAVUS_MAX_CALL_DURATION_SECONDS || '600', 10),
-  participantAbsentTimeoutSeconds: parseInt(process.env.TAVUS_PARTICIPANT_ABSENT_TIMEOUT_SECONDS || '120', 10),
-  participantLeftTimeoutSeconds: parseInt(process.env.TAVUS_PARTICIPANT_LEFT_TIMEOUT_SECONDS || '60', 10),
+  participantAbsentTimeoutSeconds: parseInt(
+    process.env.TAVUS_PARTICIPANT_ABSENT_TIMEOUT_SECONDS || '120',
+    10,
+  ),
+  participantLeftTimeoutSeconds: parseInt(
+    process.env.TAVUS_PARTICIPANT_LEFT_TIMEOUT_SECONDS || '60',
+    10,
+  ),
 }));

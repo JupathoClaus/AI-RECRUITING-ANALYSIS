@@ -4,7 +4,10 @@ import { ScreeningInput } from '../domain/screening-input.type';
 import { ProviderScreeningResult } from '../domain/screening-result.type';
 import { buildResumeScreeningPrompt } from '../prompts/resume-screening.prompt';
 import { validateScreeningOutput } from '../schemas/screening-output.schema';
-import { SCREENING_OUTPUT_JSON_SCHEMA, SCREENING_OUTPUT_SCHEMA_NAME } from '../schemas/screening-output-json-schema';
+import {
+  SCREENING_OUTPUT_JSON_SCHEMA,
+  SCREENING_OUTPUT_SCHEMA_NAME,
+} from '../schemas/screening-output-json-schema';
 import { applyProhibitedReasoningGuard } from './prohibited-reasoning.guard';
 import {
   AiScreeningProviderError,
@@ -108,7 +111,8 @@ export class OpenAiScreeningProvider implements AiScreeningProvider {
         }
         throw new AiScreeningProviderError({
           message: `OpenAI response error: ${err.code} - ${err.message}`,
-          safeMessage: 'The AI screening provider encountered an unexpected error. Please try again.',
+          safeMessage:
+            'The AI screening provider encountered an unexpected error. Please try again.',
           safeCode: 'PROVIDER_UNEXPECTED_ERROR',
           retryable: true,
           providerName: 'openai',
@@ -185,7 +189,10 @@ export class OpenAiScreeningProvider implements AiScreeningProvider {
             : typeof headers?.['retry-after'] === 'string'
               ? parseInt(headers['retry-after'] as string, 10) * 1000
               : undefined;
-        throw new AiScreeningRateLimitError('openai', isNaN(retryAfterMs ?? NaN) ? undefined : retryAfterMs);
+        throw new AiScreeningRateLimitError(
+          'openai',
+          isNaN(retryAfterMs ?? NaN) ? undefined : retryAfterMs,
+        );
       }
       if (status >= 500) {
         throw new AiScreeningProviderError({
@@ -197,8 +204,7 @@ export class OpenAiScreeningProvider implements AiScreeningProvider {
         });
       }
 
-      const msg =
-        typeof sdkError['message'] === 'string' ? (sdkError['message'] as string) : '';
+      const msg = typeof sdkError['message'] === 'string' ? (sdkError['message'] as string) : '';
       if (msg.includes('API key')) {
         throw new AiScreeningAuthenticationError('openai');
       }
@@ -224,7 +230,9 @@ export class OpenAiScreeningProvider implements AiScreeningProvider {
       if (Array.isArray(content)) {
         for (const part of content) {
           if (typeof part === 'object' && part !== null && part['type'] === 'refusal') {
-            return typeof part['refusal'] === 'string' ? part['refusal'] : 'Model refused to respond';
+            return typeof part['refusal'] === 'string'
+              ? part['refusal']
+              : 'Model refused to respond';
           }
         }
       }

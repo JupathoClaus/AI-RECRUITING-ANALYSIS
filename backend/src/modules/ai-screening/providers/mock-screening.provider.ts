@@ -231,7 +231,8 @@ export class MockScreeningProvider implements AiScreeningProvider {
       ],
       uncertainties: [],
       riskFlags: [],
-      explanation: 'Candidate strongly matches all required qualifications with verified experience.',
+      explanation:
+        'Candidate strongly matches all required qualifications with verified experience.',
       criteriaScores: [
         {
           criterion: 'technical_skills',
@@ -334,9 +335,13 @@ export class MockScreeningProvider implements AiScreeningProvider {
           isRequired: true,
         },
       ],
-      uncertainties: ['Resume text is empty or insufficient', 'Job description lacks sufficient detail'],
+      uncertainties: [
+        'Resume text is empty or insufficient',
+        'Job description lacks sufficient detail',
+      ],
       riskFlags: ['INSUFFICIENT_EVIDENCE'],
-      explanation: 'There is insufficient information to evaluate this candidate. Human review is required.',
+      explanation:
+        'There is insufficient information to evaluate this candidate. Human review is required.',
       criteriaScores: [
         {
           criterion: 'overall',
@@ -369,7 +374,8 @@ export class MockScreeningProvider implements AiScreeningProvider {
       ],
       uncertainties: ['Screening result flagged for prohibited reasoning'],
       riskFlags: ['PROHIBITED_REASONING_DETECTED'],
-      explanation: 'Screening result flagged for review due to potential non-job-related reasoning.',
+      explanation:
+        'Screening result flagged for review due to potential non-job-related reasoning.',
       criteriaScores: [],
       prohibitedReasoningDetected: true,
       providerMetadata: { provider: 'mock', promptVersion: 'v1' },

@@ -3,17 +3,18 @@ import { resolve } from 'path';
 import { ConfigService } from '@nestjs/config';
 import { ResumeTextExtractorService } from '../services/resume-text-extractor.service';
 
-const mockConfig = (): ConfigService => ({
-  get: (key: string) => {
-    const cfg: Record<string, unknown> = {
-      'resumeExtraction.maxTextChars': 50000,
-      'resumeExtraction.minTextChars': 20,
-      'resumeExtraction.timeoutMs': 30000,
-    };
-    return cfg[key];
-  },
-  getJSON: jest.fn(),
-} as any);
+const mockConfig = (): ConfigService =>
+  ({
+    get: (key: string) => {
+      const cfg: Record<string, unknown> = {
+        'resumeExtraction.maxTextChars': 50000,
+        'resumeExtraction.minTextChars': 20,
+        'resumeExtraction.timeoutMs': 30000,
+      };
+      return cfg[key];
+    },
+    getJSON: jest.fn(),
+  }) as any;
 
 const FIXTURES = resolve(__dirname, '../../../../test/fixtures/resumes');
 
@@ -40,14 +41,19 @@ describe('ResumeTextExtractorService (real binary)', () => {
 
     it('fails for empty/blank PDF', async () => {
       const buf = readFileSync(resolve(FIXTURES, 'empty-resume.pdf'));
-      await expect(extractor.extract({ buffer: buf as never, mimeType: 'application/pdf' })).rejects.toThrow('EMPTY_EXTRACTION');
+      await expect(
+        extractor.extract({ buffer: buf as never, mimeType: 'application/pdf' }),
+      ).rejects.toThrow('EMPTY_EXTRACTION');
     });
   });
 
   describe('DOCX extraction', () => {
     it('extracts text from real DOCX fixture', async () => {
       const buf = readFileSync(resolve(FIXTURES, 'sample-resume.docx'));
-      const result = await extractor.extract({ buffer: buf as never, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      const result = await extractor.extract({
+        buffer: buf as never,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      });
       expect(result.text).toContain('TypeScript');
       expect(result.text).toContain('NestJS');
       expect(result.text).toContain('PostgreSQL');
@@ -62,12 +68,19 @@ describe('ResumeTextExtractorService (real binary)', () => {
   describe('error handling', () => {
     it('fails for unsupported MIME type', async () => {
       const buf = Buffer.from('some text');
-      await expect(extractor.extract({ buffer: buf as never, mimeType: 'text/plain' })).rejects.toThrow('UNSUPPORTED_MIME_TYPE');
+      await expect(
+        extractor.extract({ buffer: buf as never, mimeType: 'text/plain' }),
+      ).rejects.toThrow('UNSUPPORTED_MIME_TYPE');
     });
 
     it('fails for corrupt DOCX', async () => {
       const buf = Buffer.from('not a valid docx');
-      await expect(extractor.extract({ buffer: buf as never, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })).rejects.toThrow('CORRUPT_DOCX');
+      await expect(
+        extractor.extract({
+          buffer: buf as never,
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        }),
+      ).rejects.toThrow('CORRUPT_DOCX');
     });
   });
 });

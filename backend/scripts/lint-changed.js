@@ -1,166 +1,93 @@
-/* eslint-disable @typescript-eslint/no-var-requires, no-console, @typescript-eslint/no-unused-vars */
-const { execSync } = require('child_process');
+/* eslint-disable @typescript-eslint/no-var-requires, no-console */
+const { execFileSync } = require('child_process');
 const { existsSync } = require('fs');
-const { resolve } = require('path');
-
-const EXIT_PASS = 0;
-const EXIT_FAIL = 1;
-const EXIT_ERROR = 2;
+const { resolve, relative, sep } = require('path');
 
 const repoRoot = resolve(__dirname, '../..');
-const eslintBin = resolve(__dirname, '..', 'node_modules', '.bin', 'eslint');
+const backendRoot = resolve(repoRoot, 'backend');
 
-function getBaseSha(argv) {
-  const baseIdx = argv.indexOf('--base');
-  if (baseIdx !== -1 && baseIdx + 1 < argv.length) {
-    return argv[baseIdx + 1];
+function git(args) {
+  return execFileSync('git', ['-C', repoRoot, ...args], { encoding: 'utf8' }).trim();
+}
+
+function resolveBase(args) {
+  const index = args.indexOf('--base');
+  const requested = index >= 0 ? args[index + 1] : process.env.LINT_BASE_SHA;
+  if (index >= 0 && !requested) throw new Error('--base requires a revision');
+  const candidate = requested || 'origin/backend-stabilization';
+  git(['rev-parse', '--verify', `${candidate}^{commit}`]);
+  return git(['merge-base', candidate, 'HEAD']);
+}
+
+function lines(value) {
+  return value ? value.split(/\r?\n/).filter(Boolean) : [];
+}
+
+function discover(base) {
+  const pathspec = ['--', 'backend/src', 'backend/test'];
+  const files = new Set([
+    ...lines(git(['diff', '--name-only', `${base}..HEAD`, ...pathspec])),
+    ...lines(git(['diff', '--name-only', ...pathspec])),
+    ...lines(git(['diff', '--cached', '--name-only', ...pathspec])),
+    ...lines(git(['ls-files', '--others', '--exclude-standard', ...pathspec])),
+  ]);
+  return [...files]
+    .filter((file) => file.endsWith('.ts') && !file.endsWith('.d.ts'))
+    .sort()
+    .map((file) => resolve(repoRoot, file));
+}
+
+function display(file) {
+  return relative(backendRoot, file).split(sep).join('/');
+}
+
+async function run(files) {
+  if (!files.length) return;
+  const { ESLint } = require('eslint');
+  const eslint = new ESLint({ cwd: backendRoot, useEslintrc: true, cache: false, fix: false });
+  for (const file of files) {
+    if (!existsSync(file))
+      throw new Error(`Discovered lint target does not exist: ${display(file)}`);
+    if (await eslint.isPathIgnored(file))
+      throw new Error(`Discovered lint target is ignored: ${display(file)}`);
   }
-  if (process.env.LINT_BASE_SHA) return process.env.LINT_BASE_SHA;
+  const results = await eslint.lintFiles(files);
+  const errors = results.flatMap((result) =>
+    result.messages
+      .filter((message) => message.severity === 2)
+      .map(
+        (message) =>
+          `${display(result.filePath)}:${message.line}:${message.column} ${message.ruleId}: ${message.message}`,
+      ),
+  );
+  if (errors.length) throw new Error(`Changed-file lint errors:\n${errors.join('\n')}`);
+}
+
+async function selfTest() {
+  if (lines('a\nb').length !== 2) throw new Error('line parsing failed');
+  let missingBaseRejected = false;
   try {
-    const mergeBase = execSync(
-      `git -C "${repoRoot}" merge-base HEAD main 2>nul || git -C "${repoRoot}" rev-parse HEAD~1`,
-      { encoding: 'utf-8' },
-    ).trim();
-    return mergeBase || 'HEAD~1';
+    git(['rev-parse', '--verify', 'definitely-not-a-release-base^{commit}']);
   } catch {
-    return 'HEAD~1';
+    missingBaseRejected = true;
   }
+  if (!missingBaseRejected) throw new Error('missing release base was accepted');
+  console.log('PASS: changed-file lint self-tests');
 }
 
-function getChangedFiles(baseSha) {
-  try {
-    const output = execSync(
-      `git -C "${repoRoot}" diff --name-only "${baseSha}" HEAD -- "backend/src/*.ts" "backend/test/*.ts"`,
-      { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 },
-    ).trim();
-    return output
-      .split('\n')
-      .filter(Boolean)
-      .map((f) => f.replace(/^backend\//, ''))
-      .filter((f) => f.endsWith('.ts'));
-  } catch {
-    return [];
-  }
+async function main() {
+  const args = process.argv.slice(2);
+  if (args.includes('--self-test')) return selfTest();
+  const base = resolveBase(args);
+  const files = discover(base);
+  console.log(`Lint base: ${base}`);
+  console.log(`Lint targets (${files.length}):`);
+  files.forEach((file) => console.log(`  ${display(file)}`));
+  await run(files);
+  console.log('PASS: changed-file lint');
 }
 
-function runESLint(files) {
-  const fileList = files.map((f) => `"${resolve(repoRoot, 'backend', f)}"`).join(' ');
-  try {
-    execSync(`"${eslintBin}" ${fileList}`, {
-      encoding: 'utf-8',
-      stdio: 'inherit',
-      maxBuffer: 10 * 1024 * 1024,
-      shell: true,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function selfTest() {
-  let failures = 0;
-  const test = (name, fn) => {
-    try {
-      fn();
-      console.log(`  PASS: ${name}`);
-    } catch (err) {
-      failures++;
-      console.error(`  FAIL: ${name}: ${err.message}`);
-    }
-  };
-
-  console.log('--- Self-tests ---');
-
-  test('getBaseSha returns argument when --base provided', () => {
-    const sha = getBaseSha(['--base', 'abc123']);
-    if (sha !== 'abc123') throw new Error(`Expected abc123, got ${sha}`);
-  });
-
-  test('getBaseSha falls back to env var', () => {
-    process.env.LINT_BASE_SHA = 'envsha';
-    const sha = getBaseSha([]);
-    delete process.env.LINT_BASE_SHA;
-    if (sha !== 'envsha') throw new Error(`Expected envsha, got ${sha}`);
-  });
-
-  test('getChangedFiles returns array', () => {
-    const files = getChangedFiles('HEAD');
-    if (!Array.isArray(files)) throw new Error('Expected array');
-  });
-
-  test('getChangedFiles filters to .ts files only', () => {
-    const dir = resolve(repoRoot, 'backend', '__lint_test_tmp__');
-    const fs = require('fs');
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(resolve(dir, 'test.ts'), 'const a = 1;\n', 'utf-8');
-      fs.writeFileSync(resolve(dir, 'test.js'), 'const a = 1;\n', 'utf-8');
-      execSync(`git -C "${repoRoot}" add "${dir}/test.ts" "${dir}/test.js"`, { encoding: 'utf-8' });
-      const files = getChangedFiles('HEAD');
-      const hasTs = files.some((f) => f.includes('__lint_test_tmp__/test.ts'));
-      const hasJs = files.some((f) => f.includes('__lint_test_tmp__/test.js'));
-      if (hasJs) throw new Error('.js file should have been filtered out');
-      execSync(
-        `git -C "${repoRoot}" reset HEAD "${dir}/test.ts" "${dir}/test.js" && rm -rf "${dir}"`,
-        { encoding: 'utf-8', stdio: 'ignore' },
-      );
-    } catch {
-      // cleanup
-      try {
-        execSync(`git -C "${repoRoot}" reset HEAD -- "${dir}" 2>nul`, { stdio: 'ignore' });
-      } catch {}
-      try {
-        require('fs').rmSync(dir, { recursive: true, force: true });
-      } catch {}
-    }
-  });
-
-  if (failures > 0) {
-    console.error(`\n${failures} self-test(s) FAILED`);
-    process.exit(EXIT_ERROR);
-  }
-  console.log(`\nAll self-tests passed.`);
-}
-
-function main() {
-  const argv = process.argv.slice(2);
-
-  if (argv.includes('--self-test')) {
-    selfTest();
-    return;
-  }
-
-  const baseSha = getBaseSha(argv);
-  console.log(`Lint base SHA: ${baseSha}`);
-
-  const changedFiles = getChangedFiles(baseSha);
-
-  if (changedFiles.length === 0) {
-    console.log('No changed backend TypeScript files to lint.');
-    process.exit(EXIT_PASS);
-  }
-
-  console.log(`Changed backend TS files (${changedFiles.length}):`);
-  for (const f of changedFiles) console.log(`  ${f}`);
-
-  if (!existsSync(eslintBin)) {
-    console.error(`ERROR: ESLint binary not found at ${eslintBin}`);
-    process.exit(EXIT_ERROR);
-  }
-
-  const pass = runESLint(changedFiles);
-  if (pass) {
-    console.log('PASS: All changed files pass lint.');
-    process.exit(EXIT_PASS);
-  } else {
-    console.error('FAIL: Lint violations in changed files.');
-    process.exit(EXIT_FAIL);
-  }
-}
-
-if (require.main === module) {
-  main();
-}
-
-module.exports = { getBaseSha, getChangedFiles, runESLint };
+main().catch((error) => {
+  console.error(`FAIL: ${error.message}`);
+  process.exit(1);
+});

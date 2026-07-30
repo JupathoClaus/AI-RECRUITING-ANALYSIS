@@ -5,14 +5,48 @@ import { ApplicationStatus, Prisma } from '@prisma/client';
 const funnelStageOrder = ['Applied', 'Screened', 'Interviewed', 'Offered', 'Hired'] as const;
 
 const funnelStages: ApplicationStatus[][] = [
-  [ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.SCREENING, ApplicationStatus.SHORTLISTED, ApplicationStatus.ASSESSMENT, ApplicationStatus.INTERVIEW, ApplicationStatus.OFFER, ApplicationStatus.HIRED, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN, ApplicationStatus.DISQUALIFIED, ApplicationStatus.ON_HOLD],
-  [ApplicationStatus.UNDER_REVIEW, ApplicationStatus.SCREENING, ApplicationStatus.SHORTLISTED, ApplicationStatus.ASSESSMENT, ApplicationStatus.INTERVIEW, ApplicationStatus.OFFER, ApplicationStatus.HIRED],
+  [
+    ApplicationStatus.SUBMITTED,
+    ApplicationStatus.UNDER_REVIEW,
+    ApplicationStatus.SCREENING,
+    ApplicationStatus.SHORTLISTED,
+    ApplicationStatus.ASSESSMENT,
+    ApplicationStatus.INTERVIEW,
+    ApplicationStatus.OFFER,
+    ApplicationStatus.HIRED,
+    ApplicationStatus.REJECTED,
+    ApplicationStatus.WITHDRAWN,
+    ApplicationStatus.DISQUALIFIED,
+    ApplicationStatus.ON_HOLD,
+  ],
+  [
+    ApplicationStatus.UNDER_REVIEW,
+    ApplicationStatus.SCREENING,
+    ApplicationStatus.SHORTLISTED,
+    ApplicationStatus.ASSESSMENT,
+    ApplicationStatus.INTERVIEW,
+    ApplicationStatus.OFFER,
+    ApplicationStatus.HIRED,
+  ],
   [ApplicationStatus.INTERVIEW, ApplicationStatus.OFFER, ApplicationStatus.HIRED],
   [ApplicationStatus.OFFER, ApplicationStatus.HIRED],
   [ApplicationStatus.HIRED],
 ];
 
-const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 function previousSixMonthLabels(): string[] {
   const now = new Date();
@@ -32,7 +66,11 @@ function getGroupCount(row: { _count: { id: number } | true }): number {
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private baseWhere(companyId: string, dateFrom?: string, dateTo?: string): Prisma.ApplicationWhereInput {
+  private baseWhere(
+    companyId: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Prisma.ApplicationWhereInput {
     const where: Prisma.ApplicationWhereInput = { companyId, deletedAt: null };
     if (dateFrom || dateTo) {
       const createdAt: Prisma.DateTimeFilter = {};
@@ -71,7 +109,8 @@ export class AnalyticsService {
     });
 
     const totalDecided = hiredCount + offeredCount + rejectedCount;
-    const selectionRate = totalDecided > 0 ? Math.round(((hiredCount + offeredCount) / totalDecided) * 100) : null;
+    const selectionRate =
+      totalDecided > 0 ? Math.round(((hiredCount + offeredCount) / totalDecided) * 100) : null;
 
     return {
       totalApplications,
@@ -127,7 +166,10 @@ export class AnalyticsService {
     for (const job of jobs) {
       if (job.departmentId) {
         jobDeptMap.set(job.id, job.departmentId);
-        deptOpenings.set(job.departmentId, (deptOpenings.get(job.departmentId) || 0) + job.numberOfOpenings);
+        deptOpenings.set(
+          job.departmentId,
+          (deptOpenings.get(job.departmentId) || 0) + job.numberOfOpenings,
+        );
       }
     }
 
@@ -219,7 +261,9 @@ export class AnalyticsService {
     });
   }
 
-  private async fetchHiredAppsWithValidCount(where: Prisma.ApplicationWhereInput): Promise<{ hiredApps: { createdAt: Date; hiredAt: Date | null }[]; validHiredCount: number }> {
+  private async fetchHiredAppsWithValidCount(
+    where: Prisma.ApplicationWhereInput,
+  ): Promise<{ hiredApps: { createdAt: Date; hiredAt: Date | null }[]; validHiredCount: number }> {
     const hiredApps = await this.prisma.application.findMany({
       where: { ...where, status: ApplicationStatus.HIRED },
       select: { createdAt: true, hiredAt: true },

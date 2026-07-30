@@ -49,15 +49,16 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // CORS
-  const allowedOrigins = env === 'development'
-    ? [
-        'http://localhost:3001',
-        'http://127.0.0.1:3001',
-        /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}:3001$/,
-        /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:3001$/,
-        /^https?:\/\/172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}:3001$/,
-      ]
-    : [corsOrigin];
+  const allowedOrigins =
+    env === 'development'
+      ? [
+          'http://localhost:3001',
+          'http://127.0.0.1:3001',
+          /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}:3001$/,
+          /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:3001$/,
+          /^https?:\/\/172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}:3001$/,
+        ]
+      : [corsOrigin];
 
   app.enableCors({
     origin: allowedOrigins,

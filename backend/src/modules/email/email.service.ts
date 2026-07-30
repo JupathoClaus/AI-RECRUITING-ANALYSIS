@@ -31,11 +31,7 @@ export class EmailService {
     this.logger.log(`Email service initialized: ${host}:${port}`);
   }
 
-  async sendVerificationEmail(
-    to: string,
-    token: string,
-    firstName: string,
-  ): Promise<void> {
+  async sendVerificationEmail(to: string, token: string, firstName: string): Promise<void> {
     const verifyUrl = `${this.frontendUrl}/auth/verify-email?token=${token}`;
     const subject = 'Verify your AI Recruiter account';
 
@@ -195,7 +191,7 @@ export class EmailService {
         Your interview for <strong>${jobTitle}</strong> has been scheduled.
       </p>
       <table style="margin:0 auto 24px auto;font-size:14px;color:#4a5568;">
-        ${details.map(d => `<tr><td style="padding:4px 16px 4px 0;font-weight:600;">${d.split(':')[0]}:</td><td>${d.split(':').slice(1).join(':')}</td></tr>`).join('')}
+        ${details.map((d) => `<tr><td style="padding:4px 16px 4px 0;font-weight:600;">${d.split(':')[0]}:</td><td>${d.split(':').slice(1).join(':')}</td></tr>`).join('')}
       </table>
       ${instructions ? `<p style="font-size:14px;color:#4a5568;">${instructions}</p>` : ''}
     `);
@@ -314,7 +310,9 @@ export class EmailService {
     const expiryText = expiresAt
       ? `\n\nThis invitation expires on ${expiresAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}.`
       : '';
-    const noteHtml = recruiterNote ? `<p style="margin:16px 0 0 0;font-size:14px;color:#4a5568;font-style:italic;">Note from the recruiter: ${recruiterNote}</p>` : '';
+    const noteHtml = recruiterNote
+      ? `<p style="margin:16px 0 0 0;font-size:14px;color:#4a5568;font-style:italic;">Note from the recruiter: ${recruiterNote}</p>`
+      : '';
     const noteText = recruiterNote ? `\n\nNote from the recruiter: ${recruiterNote}` : '';
 
     const html = this.baseHtml(`
@@ -404,7 +402,12 @@ export class EmailService {
 </td></tr></table></body></html>`;
   }
 
-  private async send(opts: { to: string; subject: string; html: string; text: string }): Promise<void> {
+  private async send(opts: {
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+  }): Promise<void> {
     try {
       await this.transporter.sendMail({ from: this.from, ...opts });
       this.logger.log(`Email sent to ${opts.to}: ${opts.subject}`);

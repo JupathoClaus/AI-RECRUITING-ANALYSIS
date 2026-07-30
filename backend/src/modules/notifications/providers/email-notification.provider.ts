@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EmailService } from '@modules/email/email.service';
-import {
-  NotificationProvider,
-  EmailMessage,
-} from '../interfaces/notification-provider.interface';
+import { NotificationProvider, EmailMessage } from '../interfaces/notification-provider.interface';
 
 @Injectable()
 export class EmailNotificationProvider implements NotificationProvider {

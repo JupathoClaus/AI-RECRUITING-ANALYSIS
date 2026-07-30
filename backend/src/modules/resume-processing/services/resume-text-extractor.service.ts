@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
-import { PDFParse } from 'pdf-parse';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const mammoth = require('mammoth');
 
@@ -36,30 +35,55 @@ export class ResumeTextExtractorService {
     if (input.mimeType === 'application/pdf') {
       return this.extractPdf(input);
     }
-    if (input.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+    if (
+      input.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ) {
       return this.extractDocx(input);
     }
     throw new Error(`UNSUPPORTED_MIME_TYPE: ${input.mimeType}`);
   }
 
   private async extractPdf(input: ResumeExtractionInput): Promise<ResumeExtractionOutput> {
-    const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
-
     let data: { text: string };
+    let parser: { getText: () => Promise<{ text: string }>; destroy: () => void } | undefined;
+    let timeout: NodeJS.Timeout | undefined;
     try {
-      const uint8 = new Uint8Array(input.buffer.buffer, input.buffer.byteOffset, input.buffer.byteLength);
-      const parser = new PDFParse(uint8);
-      data = await parser.getText();
-      try { parser.destroy(); } catch { /* cleanup */ }
+      const { PDFParse } = await import('pdf-parse');
+      const uint8 = new Uint8Array(
+        input.buffer.buffer,
+        input.buffer.byteOffset,
+        input.buffer.byteLength,
+      );
+      parser = new PDFParse(uint8);
+      data = await Promise.race([
+        parser.getText(),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('PDF_EXTRACTION_TIMEOUT')), this.timeoutMs);
+          timeout.unref();
+        }),
+      ]);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.toLowerCase().includes('password') || msg.toLowerCase().includes('encrypted')) {
         throw new Error('ENCRYPTED_PDF');
       }
-      if (msg.toLowerCase().includes('invalid') || msg.toLowerCase().includes('corrupt') || msg.toLowerCase().includes('file')) {
+      if (
+        msg.toLowerCase().includes('invalid') ||
+        msg.toLowerCase().includes('corrupt') ||
+        msg.toLowerCase().includes('file')
+      ) {
         throw new Error('INVALID_PDF');
       }
       throw err;
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+      try {
+        parser?.destroy();
+      } catch {
+        // Best-effort cleanup; preserve the extraction result/error.
+      }
     }
 
     let text = this.normalizeText(data.text);
@@ -114,7 +138,7 @@ export class ResumeTextExtractorService {
   }
 
   private normalizeText(raw: string): string {
-    let text = raw
+    const text = raw
       .replace(/\0/g, '')
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')

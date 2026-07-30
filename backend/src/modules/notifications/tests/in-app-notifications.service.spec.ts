@@ -28,10 +28,7 @@ describe('InAppNotificationsService', () => {
 
   beforeAll(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        InAppNotificationsService,
-        { provide: PrismaService, useValue: mockPrisma },
-      ],
+      providers: [InAppNotificationsService, { provide: PrismaService, useValue: mockPrisma }],
     }).compile();
 
     service = module.get<InAppNotificationsService>(InAppNotificationsService);
@@ -92,7 +89,9 @@ describe('InAppNotificationsService', () => {
       prisma.userNotification.findMany.mockResolvedValue([]);
       await service.findAll(USER_ID, undefined, buildQuery({ category: 'system' }));
       const where = prisma.userNotification.findMany.mock.calls[0][0].where;
-      expect(where.type).toEqual({ in: [NotificationType.AI_SCREENING_COMPLETED, NotificationType.SYSTEM] });
+      expect(where.type).toEqual({
+        in: [NotificationType.AI_SCREENING_COMPLETED, NotificationType.SYSTEM],
+      });
     });
 
     it('uses createdAt descending ordering', async () => {
@@ -157,7 +156,11 @@ describe('InAppNotificationsService', () => {
 
   describe('markRead', () => {
     it('succeeds for correct user and company', async () => {
-      prisma.userNotification.findFirst.mockResolvedValue({ id: NOTIF_ID, userId: USER_ID, companyId: COMPANY_A });
+      prisma.userNotification.findFirst.mockResolvedValue({
+        id: NOTIF_ID,
+        userId: USER_ID,
+        companyId: COMPANY_A,
+      });
       await service.markRead(NOTIF_ID, USER_ID, COMPANY_A);
       expect(prisma.userNotification.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -169,22 +172,34 @@ describe('InAppNotificationsService', () => {
 
     it('rejects wrong user', async () => {
       prisma.userNotification.findFirst.mockResolvedValue(null);
-      await expect(service.markRead(NOTIF_ID, 'other-user', COMPANY_A)).rejects.toThrow(NotFoundException);
+      await expect(service.markRead(NOTIF_ID, 'other-user', COMPANY_A)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('rejects wrong company', async () => {
       prisma.userNotification.findFirst.mockResolvedValue(null);
-      await expect(service.markRead(NOTIF_ID, USER_ID, COMPANY_B)).rejects.toThrow(NotFoundException);
+      await expect(service.markRead(NOTIF_ID, USER_ID, COMPANY_B)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('allows global notification from any company', async () => {
-      prisma.userNotification.findFirst.mockResolvedValue({ id: NOTIF_ID, userId: USER_ID, companyId: null });
+      prisma.userNotification.findFirst.mockResolvedValue({
+        id: NOTIF_ID,
+        userId: USER_ID,
+        companyId: null,
+      });
       await service.markRead(NOTIF_ID, USER_ID, COMPANY_A);
       expect(prisma.userNotification.update).toHaveBeenCalled();
     });
 
     it('writes readAt', async () => {
-      prisma.userNotification.findFirst.mockResolvedValue({ id: NOTIF_ID, userId: USER_ID, companyId: COMPANY_A });
+      prisma.userNotification.findFirst.mockResolvedValue({
+        id: NOTIF_ID,
+        userId: USER_ID,
+        companyId: COMPANY_A,
+      });
       await service.markRead(NOTIF_ID, USER_ID, COMPANY_A);
       expect(prisma.userNotification.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -223,14 +238,20 @@ describe('InAppNotificationsService', () => {
 
   describe('delete', () => {
     it('succeeds for correct owner and tenant', async () => {
-      prisma.userNotification.findFirst.mockResolvedValue({ id: NOTIF_ID, userId: USER_ID, companyId: COMPANY_A });
+      prisma.userNotification.findFirst.mockResolvedValue({
+        id: NOTIF_ID,
+        userId: USER_ID,
+        companyId: COMPANY_A,
+      });
       await service.delete(NOTIF_ID, USER_ID, COMPANY_A);
       expect(prisma.userNotification.delete).toHaveBeenCalledWith({ where: { id: NOTIF_ID } });
     });
 
     it('rejects wrong user', async () => {
       prisma.userNotification.findFirst.mockResolvedValue(null);
-      await expect(service.delete(NOTIF_ID, 'other-user', COMPANY_A)).rejects.toThrow(NotFoundException);
+      await expect(service.delete(NOTIF_ID, 'other-user', COMPANY_A)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('rejects wrong company', async () => {
@@ -239,7 +260,11 @@ describe('InAppNotificationsService', () => {
     });
 
     it('allows global record deletion from any company', async () => {
-      prisma.userNotification.findFirst.mockResolvedValue({ id: NOTIF_ID, userId: USER_ID, companyId: null });
+      prisma.userNotification.findFirst.mockResolvedValue({
+        id: NOTIF_ID,
+        userId: USER_ID,
+        companyId: null,
+      });
       await service.delete(NOTIF_ID, USER_ID, COMPANY_A);
       expect(prisma.userNotification.delete).toHaveBeenCalled();
     });

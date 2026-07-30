@@ -13,7 +13,10 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { ScreeningInputBuilderService } from './services/screening-input-builder.service';
-import { ResumeTextLoaderService, CompletedExtraction } from './services/resume-text-loader.service';
+import {
+  ResumeTextLoaderService,
+  CompletedExtraction,
+} from './services/resume-text-loader.service';
 import { ResumeExtractionService } from '../resume-processing/services/resume-extraction.service';
 import { computeScreeningFingerprint } from './utils/screening-input-fingerprint';
 import { AI_SCREENING_QUEUE, AI_SCREENING_JOB } from './queue/ai-screening-queue.constants';
@@ -90,25 +93,42 @@ export class AiScreeningService {
       throw new ConflictException('No resume file found for this application.');
     }
 
-    let completedExtraction: CompletedExtraction | null;
-    completedExtraction = await this.resumeLoader.loadCompletedExtraction(resumeFile.id, companyId);
+    const completedExtraction: CompletedExtraction | null =
+      await this.resumeLoader.loadCompletedExtraction(resumeFile.id, companyId);
 
     if (!completedExtraction) {
-      const extractionResult = await this.extractionService.requestExtraction(resumeFile.id, companyId, userId);
+      const extractionResult = await this.extractionService.requestExtraction(
+        resumeFile.id,
+        companyId,
+        userId,
+      );
       if (extractionResult.action === 'CREATED') {
-        throw new HttpException({
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.CONFLICT,
+            code: 'RESUME_EXTRACTION_PENDING',
+            message:
+              'Resume processing is in progress. Try screening again after extraction completes.',
+            extraction: {
+              id: extractionResult.extraction.id,
+              status: extractionResult.extraction.status,
+            },
+          },
+          HttpStatus.CONFLICT,
+        );
+      }
+      throw new HttpException(
+        {
           statusCode: HttpStatus.CONFLICT,
           code: 'RESUME_EXTRACTION_PENDING',
-          message: 'Resume processing is in progress. Try screening again after extraction completes.',
-          extraction: { id: extractionResult.extraction.id, status: extractionResult.extraction.status },
-        }, HttpStatus.CONFLICT);
-      }
-      throw new HttpException({
-        statusCode: HttpStatus.CONFLICT,
-        code: 'RESUME_EXTRACTION_PENDING',
-        message: 'Resume text extraction is not yet complete.',
-        extraction: { id: extractionResult.extraction.id, status: extractionResult.extraction.status },
-      }, HttpStatus.CONFLICT);
+          message: 'Resume text extraction is not yet complete.',
+          extraction: {
+            id: extractionResult.extraction.id,
+            status: extractionResult.extraction.status,
+          },
+        },
+        HttpStatus.CONFLICT,
+      );
     }
 
     const screeningInput = this.inputBuilder.build(
@@ -203,24 +223,34 @@ export class AiScreeningService {
           this.logger.error(`Failed to enqueue screening job: ${(err as Error).message}`);
           await this.prisma.aiScreeningResult.update({
             where: { id: screening.record.id },
-            data: { status: 'FAILED', failureCode: 'QUEUE_FAILURE', failureMessageSafe: 'Failed to queue screening job.', completedAt: new Date() },
+            data: {
+              status: 'FAILED',
+              failureCode: 'QUEUE_FAILURE',
+              failureMessageSafe: 'Failed to queue screening job.',
+              completedAt: new Date(),
+            },
           });
-          throw new ServiceUnavailableException('Screening job could not be queued. Please try again.');
+          throw new ServiceUnavailableException(
+            'Screening job could not be queued. Please try again.',
+          );
         }
 
         return { action: 'CREATED', data: this.mapToDto(screening.record) };
-
       } catch (err: unknown) {
         const prismaErr = err as { code?: string };
         if (prismaErr.code === 'P2034' && attempt < maxRetries - 1) {
-          this.logger.warn(`Serialization conflict on screening creation (attempt ${attempt + 1}), retrying`);
+          this.logger.warn(
+            `Serialization conflict on screening creation (attempt ${attempt + 1}), retrying`,
+          );
           continue;
         }
         throw err;
       }
     }
 
-    throw new ServiceUnavailableException('Could not create screening attempt due to concurrent access.');
+    throw new ServiceUnavailableException(
+      'Could not create screening attempt due to concurrent access.',
+    );
   }
 
   async retryExtraction(
@@ -258,7 +288,10 @@ export class AiScreeningService {
     return this.mapToDto(screening);
   }
 
-  async getLatestScreening(applicationId: string, companyId: string): Promise<AiScreeningResponseDto> {
+  async getLatestScreening(
+    applicationId: string,
+    companyId: string,
+  ): Promise<AiScreeningResponseDto> {
     const application = await this.prisma.application.findFirst({
       where: { id: applicationId, companyId, deletedAt: null },
       select: { id: true },
@@ -332,7 +365,13 @@ export class AiScreeningService {
     companyId: string,
     page: number,
     limit: number,
-  ): Promise<{ data: AiScreeningResponseDto[]; total: number; page: number; limit: number; totalPages: number }> {
+  ): Promise<{
+    data: AiScreeningResponseDto[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     const application = await this.prisma.application.findFirst({
       where: { id: applicationId, companyId, deletedAt: null },
       select: { id: true },
@@ -341,7 +380,12 @@ export class AiScreeningService {
 
     const where = { applicationId, companyId };
     const [data, total] = await Promise.all([
-      this.prisma.aiScreeningResult.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * limit, take: limit }),
+      this.prisma.aiScreeningResult.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
       this.prisma.aiScreeningResult.count({ where }),
     ]);
 
@@ -356,23 +400,41 @@ export class AiScreeningService {
 
   private mapToDto(screening: Record<string, unknown>): AiScreeningResponseDto {
     const s = screening as {
-      id: string; applicationId: string; status: string;
-      recommendation: string | null; overallScore: number | null; confidence: string | null;
-      matchedQualifications: unknown; missingQualifications: unknown; evidence: unknown;
-      criteriaScores: unknown; uncertainties: unknown; riskFlags: unknown;
-      explanation: string | null; prohibitedReasoningDetected: boolean | null;
-      provider: string | null; model: string | null; promptVersion: string | null;
-      failureCode: string | null; failureMessageSafe: string | null;
-      createdAt: Date; startedAt: Date | null; completedAt: Date | null;
+      id: string;
+      applicationId: string;
+      status: string;
+      recommendation: string | null;
+      overallScore: number | null;
+      confidence: string | null;
+      matchedQualifications: unknown;
+      missingQualifications: unknown;
+      evidence: unknown;
+      criteriaScores: unknown;
+      uncertainties: unknown;
+      riskFlags: unknown;
+      explanation: string | null;
+      prohibitedReasoningDetected: boolean | null;
+      provider: string | null;
+      model: string | null;
+      promptVersion: string | null;
+      failureCode: string | null;
+      failureMessageSafe: string | null;
+      createdAt: Date;
+      startedAt: Date | null;
+      completedAt: Date | null;
     };
 
     const dto = new AiScreeningResponseDto();
-    dto.id = s.id; dto.applicationId = s.applicationId; dto.status = s.status;
+    dto.id = s.id;
+    dto.applicationId = s.applicationId;
+    dto.status = s.status;
     dto.recommendation = s.recommendation ?? undefined;
     dto.overallScore = s.overallScore ?? undefined;
     dto.confidence = s.confidence ?? undefined;
-    if (Array.isArray(s.matchedQualifications)) dto.matchedQualifications = s.matchedQualifications as string[];
-    if (Array.isArray(s.missingQualifications)) dto.missingQualifications = s.missingQualifications as string[];
+    if (Array.isArray(s.matchedQualifications))
+      dto.matchedQualifications = s.matchedQualifications as string[];
+    if (Array.isArray(s.missingQualifications))
+      dto.missingQualifications = s.missingQualifications as string[];
     if (Array.isArray(s.evidence)) dto.evidence = s.evidence as never[];
     if (Array.isArray(s.criteriaScores)) dto.criteriaScores = s.criteriaScores as never[];
     if (Array.isArray(s.uncertainties)) dto.uncertainties = s.uncertainties as string[];

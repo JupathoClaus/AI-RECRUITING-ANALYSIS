@@ -65,17 +65,13 @@ export class TavusClientService {
 
     try {
       const { data } = await firstValueFrom(
-        this.httpService.post<TavusConversationResponse>(
-          `${this.baseUrl}/conversations`,
-          request,
-          {
-            headers: {
-              'x-api-key': this.apiKey,
-              'Content-Type': 'application/json',
-            },
-            timeout: 30000,
+        this.httpService.post<TavusConversationResponse>(`${this.baseUrl}/conversations`, request, {
+          headers: {
+            'x-api-key': this.apiKey,
+            'Content-Type': 'application/json',
           },
-        ),
+          timeout: 30000,
+        }),
       );
       return data;
     } catch (error) {

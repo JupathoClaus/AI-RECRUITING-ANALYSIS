@@ -175,7 +175,7 @@ foreach ($ep in $endpoints) {
 # ----- 11. Run E2E tests (includes auth endpoints when infrastructure is available) -----
 try {
   $env:NODE_ENV = 'test'
-  $testResult = npx jest --config ./test/jest-e2e.json --forceExit 2>&1
+  $testResult = npx jest --config ./test/jest-e2e.json --runInBand --detectOpenHandles 2>&1
   if ($LASTEXITCODE -eq 0) {
     Write-Pass "E2E tests passed"
   } else {

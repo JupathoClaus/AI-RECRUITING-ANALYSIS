@@ -7,17 +7,18 @@ import { ScreeningInput } from '../../ai-screening/domain/screening-input.type';
 import { ScreeningRecommendation } from '../../ai-screening/domain/screening-recommendation.enum';
 import { ScreeningConfidence } from '../../ai-screening/domain/screening-confidence.enum';
 
-const mockConfig = (): ConfigService => ({
-  get: (key: string) => {
-    const cfg: Record<string, unknown> = {
-      'resumeExtraction.maxTextChars': 50000,
-      'resumeExtraction.minTextChars': 20,
-      'resumeExtraction.timeoutMs': 30000,
-    };
-    return cfg[key];
-  },
-  getJSON: jest.fn(),
-} as any);
+const mockConfig = (): ConfigService =>
+  ({
+    get: (key: string) => {
+      const cfg: Record<string, unknown> = {
+        'resumeExtraction.maxTextChars': 50000,
+        'resumeExtraction.minTextChars': 20,
+        'resumeExtraction.timeoutMs': 30000,
+      };
+      return cfg[key];
+    },
+    getJSON: jest.fn(),
+  }) as any;
 
 const FIXTURES = resolve(__dirname, '../../../../test/fixtures/resumes');
 
@@ -28,7 +29,10 @@ describe('Extraction to Screening (real binary)', () => {
     extractor = new ResumeTextExtractorService(mockConfig());
   });
 
-  async function extractAndBuildInput(mimeType: string, filePath: string): Promise<{
+  async function extractAndBuildInput(
+    mimeType: string,
+    filePath: string,
+  ): Promise<{
     input: ScreeningInput;
     rawExtracted: string;
     redactedText: string;
@@ -65,7 +69,10 @@ describe('Extraction to Screening (real binary)', () => {
     let result: { input: ScreeningInput; rawExtracted: string; redactedText: string };
 
     beforeAll(async () => {
-      result = await extractAndBuildInput('application/pdf', resolve(FIXTURES, 'sample-resume.pdf'));
+      result = await extractAndBuildInput(
+        'application/pdf',
+        resolve(FIXTURES, 'sample-resume.pdf'),
+      );
     });
 
     it('extracted text contains job-relevant evidence', () => {
@@ -132,11 +139,15 @@ describe('Extraction to Screening (real binary)', () => {
 
   describe('mock AI provider receives extracted content', () => {
     it('mock provider can screen using real extracted PDF content', async () => {
-      const { MockScreeningProvider } = await import('../../ai-screening/providers/mock-screening.provider');
+      const { MockScreeningProvider } =
+        await import('../../ai-screening/providers/mock-screening.provider');
       const provider = new MockScreeningProvider();
 
       const buf = readFileSync(resolve(FIXTURES, 'sample-resume.pdf'));
-      const extResult = await extractor.extract({ buffer: buf as never, mimeType: 'application/pdf' });
+      const extResult = await extractor.extract({
+        buffer: buf as never,
+        mimeType: 'application/pdf',
+      });
       const redacted = redactResumeText(extResult.text);
 
       const input: ScreeningInput = Object.freeze({

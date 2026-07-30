@@ -256,10 +256,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Update current user profile' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Profile updated' })
   @HttpCode(HttpStatus.OK)
-  async updateProfile(
-    @Body() dto: UpdateProfileDto,
-    @CurrentUser() user: AuthenticatedPrincipal,
-  ) {
+  async updateProfile(@Body() dto: UpdateProfileDto, @CurrentUser() user: AuthenticatedPrincipal) {
     const updated = await this.usersService.update(user.userId, dto);
     return {
       id: updated.id,
@@ -336,14 +333,16 @@ export class AuthController {
     const token = req.query.token as string;
 
     if (!token) {
-      const frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
+      const frontendUrl =
+        this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
       return res.redirect(`${frontendUrl}/auth/verify-email?error=invalid`);
     }
 
     const ip = req.ip || req.socket?.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
     const requestId = (req as unknown as RequestWithId)?.requestId || '';
-    const frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
+    const frontendUrl =
+      this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
 
     try {
       await this.authService.verifyEmail(token, ip, userAgent, requestId);

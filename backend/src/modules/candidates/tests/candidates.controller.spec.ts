@@ -198,7 +198,11 @@ describe('CandidatesController', () => {
 
       const result = await controller.findOne('candidate-1', mockUser);
 
-      expect(candidatesService.findById).toHaveBeenCalledWith('candidate-1', true);
+      expect(candidatesService.findById).toHaveBeenCalledWith(
+        'candidate-1',
+        true,
+        mockUser.activeCompanyId,
+      );
       expect(result).toEqual({ id: 'candidate-1' });
     });
 
@@ -207,7 +211,11 @@ describe('CandidatesController', () => {
 
       await controller.findOne('candidate-1', userWithoutSensitive);
 
-      expect(candidatesService.findById).toHaveBeenCalledWith('candidate-1', false);
+      expect(candidatesService.findById).toHaveBeenCalledWith(
+        'candidate-1',
+        false,
+        userWithoutSensitive.activeCompanyId,
+      );
     });
   });
 

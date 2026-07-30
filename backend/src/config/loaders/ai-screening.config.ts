@@ -19,7 +19,10 @@ export default registerAs('aiScreening', (): AiScreeningConfig => {
   const timeoutMs = Math.max(5000, Math.min(120000, isNaN(timeoutRaw) ? 30000 : timeoutRaw));
 
   const maxResumeCharsRaw = parseInt(process.env.AI_SCREENING_MAX_RESUME_CHARS || '15000', 10);
-  const maxResumeChars = Math.max(1000, Math.min(100000, isNaN(maxResumeCharsRaw) ? 15000 : maxResumeCharsRaw));
+  const maxResumeChars = Math.max(
+    1000,
+    Math.min(100000, isNaN(maxResumeCharsRaw) ? 15000 : maxResumeCharsRaw),
+  );
 
   const promptVersion = process.env.AI_SCREENING_PROMPT_VERSION || 'v1';
   const schemaVersion = process.env.AI_SCREENING_SCHEMA_VERSION || 'v1';

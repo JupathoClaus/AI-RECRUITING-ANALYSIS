@@ -127,18 +127,26 @@ function DetailScreeningSection({ applicationId }: { applicationId: string }) {
 
   React.useEffect(() => {
     if (!applicationId) return
-    setResumeLoading(true)
-    getApplicationResume(applicationId).then((r) => {
-      setResumeInfo(r)
-      setResumeLoading(false)
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      setResumeLoading(true)
+      void getApplicationResume(applicationId).then((r) => {
+        if (!active) return
+        setResumeInfo(r)
+        setResumeLoading(false)
+      })
     })
+    return () => { active = false }
   }, [applicationId])
 
   React.useEffect(() => {
     if (!applicationId) return
-    screening.selectApplication(applicationId)
-    screening.loadLatestScreening(applicationId)
-  }, [applicationId])
+    queueMicrotask(() => {
+      screening.selectApplication(applicationId)
+      void screening.loadLatestScreening(applicationId)
+    })
+  }, [applicationId, screening])
 
   const handleStartScreening = async () => {
     await screening.requestScreening()

@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 
-var mockSendMail: jest.Mock;
+let mockSendMail: jest.Mock;
 
 jest.mock('nodemailer', () => {
   mockSendMail = jest.fn().mockResolvedValue({ messageId: 'test-id' });
@@ -57,7 +57,10 @@ describe('EmailService', () => {
   it('sends invitation email', async () => {
     await service.sendInvitationEmail('test@test.com', 'invitetoken', 'Alice', 'Acme Inc');
     expect(mockSendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'test@test.com', subject: "You've been invited to join Acme Inc" }),
+      expect.objectContaining({
+        to: 'test@test.com',
+        subject: "You've been invited to join Acme Inc",
+      }),
     );
   });
 
@@ -69,21 +72,48 @@ describe('EmailService', () => {
   });
 
   it('sends stage changed email', async () => {
-    await service.sendApplicationStageChangedEmail('c@t.com', 'Jane', 'Engineer', 'Interview', 'Acme');
+    await service.sendApplicationStageChangedEmail(
+      'c@t.com',
+      'Jane',
+      'Engineer',
+      'Interview',
+      'Acme',
+    );
     expect(mockSendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'c@t.com', subject: 'Application update: Engineer - Interview' }),
+      expect.objectContaining({
+        to: 'c@t.com',
+        subject: 'Application update: Engineer - Interview',
+      }),
     );
   });
 
   it('sends interview scheduled email', async () => {
-    await service.sendInterviewScheduledEmail('c@t.com', 'Jane', 'Engineer', 'Technical', '2026-08-01', 'UTC', 60, 'Rm 1', ['Alice'], 'Bring laptop');
+    await service.sendInterviewScheduledEmail(
+      'c@t.com',
+      'Jane',
+      'Engineer',
+      'Technical',
+      '2026-08-01',
+      'UTC',
+      60,
+      'Rm 1',
+      ['Alice'],
+      'Bring laptop',
+    );
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'c@t.com', subject: 'Interview scheduled: Engineer' }),
     );
   });
 
   it('sends interview rescheduled email', async () => {
-    await service.sendInterviewRescheduledEmail('c@t.com', 'Jane', 'Engineer', '2026-08-02', 'UTC', 'Conflict');
+    await service.sendInterviewRescheduledEmail(
+      'c@t.com',
+      'Jane',
+      'Engineer',
+      '2026-08-02',
+      'UTC',
+      'Conflict',
+    );
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'c@t.com', subject: 'Interview rescheduled: Engineer' }),
     );
@@ -104,7 +134,15 @@ describe('EmailService', () => {
   });
 
   it('sends interview reminder email', async () => {
-    await service.sendInterviewReminderEmail('c@t.com', 'Jane', 'Engineer', '2026-08-01', 'UTC', 30, 'Rm 1');
+    await service.sendInterviewReminderEmail(
+      'c@t.com',
+      'Jane',
+      'Engineer',
+      '2026-08-01',
+      'UTC',
+      30,
+      'Rm 1',
+    );
     expect(mockSendMail).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'c@t.com', subject: 'Reminder: Interview in 30 minutes' }),
     );

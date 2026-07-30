@@ -9,7 +9,8 @@ export class ExtractionDispatchReconcilerScheduler
   private readonly logger = new Logger(ExtractionDispatchReconcilerScheduler.name);
   private readonly intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private running = false;
+  private activeTick: Promise<void> | null = null;
+  private stopping = false;
 
   constructor(
     private readonly reconciler: ExtractionDispatchReconcilerService,
@@ -20,24 +21,34 @@ export class ExtractionDispatchReconcilerScheduler
 
   async onApplicationBootstrap(): Promise<void> {
     this.logger.log(`Starting reconciler scheduler every ${this.intervalMs}ms`);
-    await this.tick();
-    this.timer = setInterval(() => this.tick(), this.intervalMs);
+    await this.startTick();
+    this.timer = setInterval(() => void this.startTick(), this.intervalMs);
   }
 
   onModuleDestroy(): void {
+    this.stopping = true;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      this.logger.log('Reconciler scheduler stopped');
+    }
+    this.logger.log('Reconciler scheduler stopped');
+  }
+
+  private async startTick(): Promise<void> {
+    if (this.stopping) return;
+    if (this.activeTick) {
+      this.logger.warn('Previous reconcile cycle still running, skipping');
+      return;
+    }
+    this.activeTick = this.tick();
+    try {
+      await this.activeTick;
+    } finally {
+      this.activeTick = null;
     }
   }
 
   private async tick(): Promise<void> {
-    if (this.running) {
-      this.logger.warn('Previous reconcile cycle still running, skipping');
-      return;
-    }
-    this.running = true;
     try {
       const result = await this.reconciler.reconcile();
       if (result.reclaimed > 0 || result.dispatched > 0 || result.failed > 0) {
@@ -47,8 +58,6 @@ export class ExtractionDispatchReconcilerScheduler
       }
     } catch (err) {
       this.logger.error(`Reconcile cycle failed: ${(err as Error).message}`);
-    } finally {
-      this.running = false;
     }
   }
 }

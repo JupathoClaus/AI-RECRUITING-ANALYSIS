@@ -26,7 +26,10 @@ export function validateDateRange(dateFrom: string | undefined, dateTo: string |
  * A user selecting 2026-07-24 → 2026-07-24 gets records from
  * 2026-07-24T00:00:00Z inclusive to 2026-07-25T00:00:00Z exclusive.
  */
-export function toDateRange(dateFrom: string | undefined, dateTo: string | undefined): DateRange | undefined {
+export function toDateRange(
+  dateFrom: string | undefined,
+  dateTo: string | undefined,
+): DateRange | undefined {
   if (!dateFrom && !dateTo) return undefined;
   const range: DateRange = {};
   if (dateFrom) range.gte = new Date(dateFrom);

@@ -30,5 +30,5 @@ export class NotificationQueryDto {
   @IsOptional()
   @IsString()
   @IsIn(CATEGORIES)
-  category?: typeof CATEGORIES[number];
+  category?: (typeof CATEGORIES)[number];
 }

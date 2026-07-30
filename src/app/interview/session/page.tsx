@@ -26,7 +26,7 @@ export default function InterviewSessionPage() {
     ? sessionStorage.getItem("ai-interview-job-title") || ""
     : ""
 
-  const [loading, setLoading] = React.useState(true)
+  const [loading] = React.useState(false)
 
   const sessionError = !conversationUrl ? "Interview session not initialized. Please go back and try again." : ""
 
@@ -35,7 +35,6 @@ export default function InterviewSessionPage() {
       router.replace("/interview/access")
       return
     }
-    setLoading(false)
   }, [accessToken, router])
 
   const handleLeave = async () => {

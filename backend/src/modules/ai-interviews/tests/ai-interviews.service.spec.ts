@@ -101,7 +101,14 @@ describe('AiInterviewsService', () => {
   const mockApplication = {
     id: 'app-1',
     companyId: 'company-1',
-    candidate: { id: 'cand-1', firstName: 'Daniel', lastName: 'Kato', email: 'daniel@test.com', totalExperienceYears: 6, skills: null },
+    candidate: {
+      id: 'cand-1',
+      firstName: 'Daniel',
+      lastName: 'Kato',
+      email: 'daniel@test.com',
+      totalExperienceYears: 6,
+      skills: null,
+    },
     job: { id: 'job-1', title: 'Senior Software Developer', description: 'A great job' },
     company: { name: 'Test Corp' },
     deletedAt: null,
@@ -179,11 +186,7 @@ describe('AiInterviewsService', () => {
       codeService.displayHint.mockReturnValue('ABCD-EFGH');
       prisma.aiInterview.create.mockResolvedValue(mockInterview);
 
-      const result = await service.create(
-        { applicationId: 'app-1' },
-        'company-1',
-        'membership-1',
-      );
+      const result = await service.create({ applicationId: 'app-1' }, 'company-1', 'membership-1');
 
       expect(result.provider).toBe(AiInterviewProvider.MOCK);
     });
@@ -196,11 +199,7 @@ describe('AiInterviewsService', () => {
       codeService.displayHint.mockReturnValue('ABCD-EFGH');
       prisma.aiInterview.create.mockResolvedValue(mockInterview);
 
-      const result = await service.create(
-        { applicationId: 'app-1' },
-        'company-1',
-        'membership-1',
-      );
+      const result = await service.create({ applicationId: 'app-1' }, 'company-1', 'membership-1');
 
       expect(result.application.candidate.firstName).toBe('Daniel');
       expect(result.application.job.title).toBe('Senior Software Developer');
@@ -232,9 +231,9 @@ describe('AiInterviewsService', () => {
 
     it('should reject cross-company access', async () => {
       prisma.aiInterview.findFirst.mockResolvedValue(null);
-      await expect(
-        service.findById('interview-1', 'other-company'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.findById('interview-1', 'other-company')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should not include meeting token in response', async () => {
@@ -303,11 +302,7 @@ describe('AiInterviewsService', () => {
       prisma.aiInterview.findFirst.mockResolvedValue(sentInterview);
       prisma.aiInterview.update.mockResolvedValue(sentInterview);
 
-      await service.sendInvitation(
-        'interview-1',
-        { rawCode: 'ABCD-EFGH' },
-        'company-1',
-      );
+      await service.sendInvitation('interview-1', { rawCode: 'ABCD-EFGH' }, 'company-1');
 
       const updateCall = prisma.aiInterview.update.mock.calls[0][0];
       expect(updateCall.data).not.toHaveProperty('codeHash');
@@ -388,16 +383,16 @@ describe('AiInterviewsService', () => {
         ...mockInterview,
         status: AiInterviewStatus.COMPLETED,
       });
-      await expect(
-        service.regenerateCode('interview-1', 'company-1'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.regenerateCode('interview-1', 'company-1')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should reject cross-company regeneration', async () => {
       prisma.aiInterview.findFirst.mockResolvedValue(null);
-      await expect(
-        service.regenerateCode('interview-1', 'other-company'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.regenerateCode('interview-1', 'other-company')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -426,9 +421,7 @@ describe('AiInterviewsService', () => {
       codeService.hash.mockReturnValue('wrong-hash');
       prisma.aiInterview.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.verifyCode({ code: 'INVALID' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.verifyCode({ code: 'INVALID' })).rejects.toThrow(BadRequestException);
     });
 
     it('should reject expired interview', async () => {
@@ -439,9 +432,7 @@ describe('AiInterviewsService', () => {
         status: AiInterviewStatus.EXPIRED,
       });
 
-      await expect(
-        service.verifyCode({ code: 'ABCD-EFGH' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.verifyCode({ code: 'ABCD-EFGH' })).rejects.toThrow(BadRequestException);
     });
 
     it('should reject cancelled interview', async () => {
@@ -452,9 +443,7 @@ describe('AiInterviewsService', () => {
         status: AiInterviewStatus.CANCELLED,
       });
 
-      await expect(
-        service.verifyCode({ code: 'ABCD-EFGH' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.verifyCode({ code: 'ABCD-EFGH' })).rejects.toThrow(BadRequestException);
     });
 
     it('should reject completed interview', async () => {
@@ -465,9 +454,7 @@ describe('AiInterviewsService', () => {
         status: AiInterviewStatus.COMPLETED,
       });
 
-      await expect(
-        service.verifyCode({ code: 'ABCD-EFGH' }),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.verifyCode({ code: 'ABCD-EFGH' })).rejects.toThrow(BadRequestException);
     });
 
     it('should return candidate display name and org name, not internal IDs', async () => {
@@ -530,14 +517,26 @@ describe('AiInterviewsService', () => {
 
   describe('startInterview', () => {
     it('should require acknowledgements', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       await expect(
         service.startInterview('token', { acknowledgementsAccepted: false }),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('should atomically transition status for mock start', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
       prisma.aiInterview.updateMany.mockResolvedValue({ count: 1 });
       prisma.aiInterview.findUnique.mockResolvedValue(mockInterview);
@@ -563,7 +562,13 @@ describe('AiInterviewsService', () => {
     });
 
     it('should only create one provider session on duplicate start', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
       // First start succeeds
       prisma.aiInterview.updateMany.mockResolvedValueOnce({ count: 1 });
@@ -593,7 +598,13 @@ describe('AiInterviewsService', () => {
     });
 
     it('should reject Tavus when disabled', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
       prisma.aiInterview.updateMany.mockResolvedValue({ count: 1 });
       prisma.aiInterview.findUnique.mockResolvedValue({
@@ -607,7 +618,13 @@ describe('AiInterviewsService', () => {
     });
 
     it('should not return meeting token in response', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
       prisma.aiInterview.updateMany.mockResolvedValue({ count: 1 });
       prisma.aiInterview.findUnique.mockResolvedValue(mockInterview);
@@ -626,7 +643,13 @@ describe('AiInterviewsService', () => {
 
   describe('completeInterview', () => {
     it('should complete mock interview', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       prisma.aiInterview.findUnique.mockResolvedValue({
         ...mockInterview,
         status: AiInterviewStatus.IN_PROGRESS,
@@ -650,7 +673,13 @@ describe('AiInterviewsService', () => {
     });
 
     it('should not complete Tavus interview via frontend', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       prisma.aiInterview.findUnique.mockResolvedValue({
         ...mockInterview,
         status: AiInterviewStatus.IN_PROGRESS,
@@ -663,19 +692,29 @@ describe('AiInterviewsService', () => {
     });
 
     it('should reject completion of cancelled interview', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       prisma.aiInterview.findUnique.mockResolvedValue({
         ...mockInterview,
         status: AiInterviewStatus.CANCELLED,
       });
 
-      await expect(
-        service.completeInterview('token'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.completeInterview('token')).rejects.toThrow(BadRequestException);
     });
 
     it('should handle duplicate completion safely', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       prisma.aiInterview.findUnique.mockResolvedValue({
         ...mockInterview,
         status: AiInterviewStatus.COMPLETED,
@@ -702,9 +741,9 @@ describe('AiInterviewsService', () => {
         return undefined;
       });
 
-      await expect(
-        service.handleTavusCallback(callbackPayload),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.handleTavusCallback(callbackPayload)).rejects.toThrow(
+        BadRequestException,
+      );
 
       mockConfigService.get.mockImplementation((key: string) => {
         const config: Record<string, any> = {
@@ -723,9 +762,9 @@ describe('AiInterviewsService', () => {
         return undefined;
       });
 
-      await expect(
-        service.handleTavusCallback(callbackPayload, 'wrong-secret'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.handleTavusCallback(callbackPayload, 'wrong-secret')).rejects.toThrow(
+        BadRequestException,
+      );
 
       mockConfigService.get.mockImplementation((key: string) => {
         const config: Record<string, any> = {
@@ -847,16 +886,14 @@ describe('AiInterviewsService', () => {
         status: AiInterviewStatus.COMPLETED,
       });
 
-      await expect(
-        service.cancel('interview-1', 'company-1'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.cancel('interview-1', 'company-1')).rejects.toThrow(BadRequestException);
     });
 
     it('should reject cross-company cancel', async () => {
       prisma.aiInterview.findFirst.mockResolvedValue(null);
-      await expect(
-        service.cancel('interview-1', 'other-company'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.cancel('interview-1', 'other-company')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -880,9 +917,9 @@ describe('AiInterviewsService', () => {
 
     it('should reject cross-company preview', async () => {
       prisma.aiInterview.findFirst.mockResolvedValue(null);
-      await expect(
-        service.previewInvitation('interview-1', 'other-company'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.previewInvitation('interview-1', 'other-company')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -909,7 +946,13 @@ describe('AiInterviewsService', () => {
     });
 
     it('should session response exclude internal IDs', async () => {
-      tokenService.verify.mockReturnValue({ sub: 'interview-1', cv: 'abcdef1234567890', purpose: 'talentai-ai-interview-access', iat: 1000000, exp: 2000000 });
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
       prisma.aiInterview.findUnique.mockResolvedValue(mockInterview);
 
       const result = await service.getInterviewSession('valid-token');

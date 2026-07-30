@@ -32,13 +32,7 @@ export const SCREENING_OUTPUT_JSON_SCHEMA = {
           criterion: { type: 'string' },
           sourceCategory: {
             type: 'string',
-            enum: [
-              'RESUME',
-              'APPLICATION',
-              'JOB_REQUIREMENT',
-              'SCREENING_ANSWER',
-              'UNKNOWN',
-            ],
+            enum: ['RESUME', 'APPLICATION', 'JOB_REQUIREMENT', 'SCREENING_ANSWER', 'UNKNOWN'],
           },
           sourceText: { type: 'string', maxLength: 5000 },
           assessment: { type: 'string' },

@@ -11,8 +11,19 @@ describe('ReportsController (unit)', () => {
   let csvExportService: any;
   let res: any;
 
-  const mockUser: AuthenticatedPrincipal = { userId: 'user-1', activeCompanyId: 'company-1', sessionId: 'sess-1', role: 'COMPANY_ADMIN', permissions: [] };
-  const mockUserNoCompany: AuthenticatedPrincipal = { userId: 'user-1', sessionId: 'sess-1', role: 'VIEWER', permissions: [] };
+  const mockUser: AuthenticatedPrincipal = {
+    userId: 'user-1',
+    activeCompanyId: 'company-1',
+    sessionId: 'sess-1',
+    role: 'COMPANY_ADMIN',
+    permissions: [],
+  };
+  const mockUserNoCompany: AuthenticatedPrincipal = {
+    userId: 'user-1',
+    sessionId: 'sess-1',
+    role: 'VIEWER',
+    permissions: [],
+  };
 
   beforeAll(() => {
     reportsService = {
@@ -37,7 +48,9 @@ describe('ReportsController (unit)', () => {
     };
   });
 
-  beforeEach(() => { jest.clearAllMocks(); });
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   // ── Active company enforcement ──
 
@@ -48,7 +61,9 @@ describe('ReportsController (unit)', () => {
     });
 
     it('throws 403 when missing', () => {
-      expect(() => (controller as any).getActiveCompany(mockUserNoCompany)).toThrow(ForbiddenException);
+      expect(() => (controller as any).getActiveCompany(mockUserNoCompany)).toThrow(
+        ForbiddenException,
+      );
     });
   });
 
@@ -79,24 +94,42 @@ describe('ReportsController (unit)', () => {
 
   describe('candidateEvaluation', () => {
     it('calls service with company ID and filter', async () => {
-      reportsService.getCandidateEvaluation.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 50, totalPages: 0 } });
+      reportsService.getCandidateEvaluation.mockResolvedValue({
+        data: [],
+        meta: { total: 0, page: 1, limit: 50, totalPages: 0 },
+      });
       const result = await controller.candidateEvaluation(new ReportFilterDto(), mockUser);
-      expect(reportsService.getCandidateEvaluation).toHaveBeenCalledWith('company-1', expect.anything());
+      expect(reportsService.getCandidateEvaluation).toHaveBeenCalledWith(
+        'company-1',
+        expect.anything(),
+      );
       expect(result).toBeDefined();
     });
   });
 
   describe('interviewSummary', () => {
     it('calls service with company ID and filter', async () => {
-      reportsService.getInterviewSummary.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 50, totalPages: 0 } });
+      reportsService.getInterviewSummary.mockResolvedValue({
+        data: [],
+        meta: { total: 0, page: 1, limit: 50, totalPages: 0 },
+      });
       await controller.interviewSummary(new ReportFilterDto(), mockUser);
-      expect(reportsService.getInterviewSummary).toHaveBeenCalledWith('company-1', expect.anything());
+      expect(reportsService.getInterviewSummary).toHaveBeenCalledWith(
+        'company-1',
+        expect.anything(),
+      );
     });
   });
 
   describe('pipeline', () => {
     it('calls service with company ID', async () => {
-      reportsService.getPipeline.mockResolvedValue({ stages: [], totalApplications: 0, hiredCount: 0, rejectedCount: 0, activeCount: 0 });
+      reportsService.getPipeline.mockResolvedValue({
+        stages: [],
+        totalApplications: 0,
+        hiredCount: 0,
+        rejectedCount: 0,
+        activeCount: 0,
+      });
       await controller.pipeline(new ReportFilterDto(), mockUser);
       expect(reportsService.getPipeline).toHaveBeenCalledWith('company-1', expect.anything());
     });
@@ -104,7 +137,10 @@ describe('ReportsController (unit)', () => {
 
   describe('timeToHire', () => {
     it('calls service with company ID', async () => {
-      reportsService.getTimeToHire.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 50, totalPages: 0 } });
+      reportsService.getTimeToHire.mockResolvedValue({
+        data: [],
+        meta: { total: 0, page: 1, limit: 50, totalPages: 0 },
+      });
       await controller.timeToHire(new ReportFilterDto(), mockUser);
       expect(reportsService.getTimeToHire).toHaveBeenCalledWith('company-1', expect.anything());
     });
@@ -114,13 +150,19 @@ describe('ReportsController (unit)', () => {
     it('calls service with company ID', async () => {
       reportsService.getSourceEffectiveness.mockResolvedValue([]);
       await controller.sourceEffectiveness(new ReportFilterDto(), mockUser);
-      expect(reportsService.getSourceEffectiveness).toHaveBeenCalledWith('company-1', expect.anything());
+      expect(reportsService.getSourceEffectiveness).toHaveBeenCalledWith(
+        'company-1',
+        expect.anything(),
+      );
     });
   });
 
   describe('jobSummary', () => {
     it('calls service with company ID', async () => {
-      reportsService.getJobSummary.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 50, totalPages: 0 } });
+      reportsService.getJobSummary.mockResolvedValue({
+        data: [],
+        meta: { total: 0, page: 1, limit: 50, totalPages: 0 },
+      });
       await controller.jobSummary(new ReportFilterDto(), mockUser);
       expect(reportsService.getJobSummary).toHaveBeenCalledWith('company-1', expect.anything());
     });
@@ -128,7 +170,10 @@ describe('ReportsController (unit)', () => {
 
   describe('activity', () => {
     it('calls service with company ID', async () => {
-      reportsService.getActivity.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 50, totalPages: 0 } });
+      reportsService.getActivity.mockResolvedValue({
+        data: [],
+        meta: { total: 0, page: 1, limit: 50, totalPages: 0 },
+      });
       await controller.activity(new ReportFilterDto(), mockUser);
       expect(reportsService.getActivity).toHaveBeenCalledWith('company-1', expect.anything());
     });
@@ -139,23 +184,49 @@ describe('ReportsController (unit)', () => {
   describe('exports', () => {
     it('candidateEvaluationExport sends CSV with correct content type', async () => {
       reportsService.getCandidateEvaluation.mockResolvedValue({
-        data: [{ applicationId: 'a1', candidateName: 'Alice', email: 'a@b.com', jobTitle: 'Dev', jobDepartment: null, applicationStatus: 'HIRED', source: 'LINKEDIN', submittedAt: null, interviewStatus: null, interviewResult: null, rejectionReason: null }],
+        data: [
+          {
+            applicationId: 'a1',
+            candidateName: 'Alice',
+            email: 'a@b.com',
+            jobTitle: 'Dev',
+            jobDepartment: null,
+            applicationStatus: 'HIRED',
+            source: 'LINKEDIN',
+            submittedAt: null,
+            interviewStatus: null,
+            interviewResult: null,
+            rejectionReason: null,
+          },
+        ],
         meta: { total: 1, page: 1, limit: 5000, totalPages: 1 },
       });
       await controller.candidateEvaluationExport(new ReportFilterDto(), mockUser, res);
       expect(csvExportService.toCsv).toHaveBeenCalled();
-      expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', expect.stringContaining('.csv'));
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Disposition',
+        expect.stringContaining('.csv'),
+      );
       expect(res.send).toHaveBeenCalled();
     });
 
     it('export sets truncation headers when total exceeds 5000', async () => {
       const bigData = Array.from({ length: 5000 }, (_, i) => ({
-        applicationId: `a${i}`, candidateName: 'A', email: 'a@b.com', jobTitle: 'Dev',
-        jobDepartment: null, applicationStatus: 'HIRED', source: 'LINKEDIN',
-        submittedAt: null, interviewStatus: null, interviewResult: null, rejectionReason: null,
+        applicationId: `a${i}`,
+        candidateName: 'A',
+        email: 'a@b.com',
+        jobTitle: 'Dev',
+        jobDepartment: null,
+        applicationStatus: 'HIRED',
+        source: 'LINKEDIN',
+        submittedAt: null,
+        interviewStatus: null,
+        interviewResult: null,
+        rejectionReason: null,
       }));
       reportsService.getCandidateEvaluation.mockResolvedValue({
-        data: bigData, meta: { total: 5234, page: 1, limit: 5000, totalPages: 2 },
+        data: bigData,
+        meta: { total: 5234, page: 1, limit: 5000, totalPages: 2 },
       });
       await controller.candidateEvaluationExport(new ReportFilterDto(), mockUser, res);
       expect(res.setHeader).toHaveBeenCalledWith('X-Export-Truncated', 'true');
@@ -165,18 +236,40 @@ describe('ReportsController (unit)', () => {
 
     it('non-truncated export omits truncation headers', async () => {
       reportsService.getCandidateEvaluation.mockResolvedValue({
-        data: [{ applicationId: 'a1', candidateName: 'Alice', email: 'a@b.com', jobTitle: 'Dev', jobDepartment: null, applicationStatus: 'HIRED', source: 'LINKEDIN', submittedAt: null, interviewStatus: null, interviewResult: null, rejectionReason: null }],
+        data: [
+          {
+            applicationId: 'a1',
+            candidateName: 'Alice',
+            email: 'a@b.com',
+            jobTitle: 'Dev',
+            jobDepartment: null,
+            applicationStatus: 'HIRED',
+            source: 'LINKEDIN',
+            submittedAt: null,
+            interviewStatus: null,
+            interviewResult: null,
+            rejectionReason: null,
+          },
+        ],
         meta: { total: 1, page: 1, limit: 5000, totalPages: 1 },
       });
       await controller.candidateEvaluationExport(new ReportFilterDto(), mockUser, res);
-      const truncatedCall = res.setHeader.mock.calls.find((c: any[]) => c[0] === 'X-Export-Truncated');
+      const truncatedCall = res.setHeader.mock.calls.find(
+        (c: any[]) => c[0] === 'X-Export-Truncated',
+      );
       expect(truncatedCall).toBeUndefined();
     });
 
     it('pipelineExport includes summary and stages', async () => {
       reportsService.getPipeline.mockResolvedValue({
-        stages: [{ stage: 'SUBMITTED', count: 10 }, { stage: 'HIRED', count: 3 }],
-        totalApplications: 13, hiredCount: 3, rejectedCount: 2, activeCount: 8,
+        stages: [
+          { stage: 'SUBMITTED', count: 10 },
+          { stage: 'HIRED', count: 3 },
+        ],
+        totalApplications: 13,
+        hiredCount: 3,
+        rejectedCount: 2,
+        activeCount: 8,
       });
       await controller.pipelineExport(new ReportFilterDto(), mockUser, res);
       expect(csvExportService.toCsv).toHaveBeenCalled();

@@ -1,7 +1,9 @@
 import { calculateTimeToHire } from '../services/time-to-hire';
 
 describe('calculateTimeToHire', () => {
-  function t(dateStr: string): Date { return new Date(dateStr); }
+  function t(dateStr: string): Date {
+    return new Date(dateStr);
+  }
 
   it('0 hours → 0 / 0', () => {
     const d = t('2026-07-24T10:00:00Z');

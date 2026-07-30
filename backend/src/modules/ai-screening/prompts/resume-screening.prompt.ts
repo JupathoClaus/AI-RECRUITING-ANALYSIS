@@ -96,8 +96,7 @@ export function buildResumeScreeningPrompt(
     input.screeningQuestions.length > 0
       ? input.screeningQuestions
           .map(
-            (q, i) =>
-              `  Q${i + 1}: ${q.question}\n  A: ${q.answer}\n  Required: ${q.isRequired}`,
+            (q, i) => `  Q${i + 1}: ${q.question}\n  A: ${q.answer}\n  Required: ${q.isRequired}`,
           )
           .join('\n')
       : '  (none)',

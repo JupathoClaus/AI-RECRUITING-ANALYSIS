@@ -5,6 +5,7 @@ jest.mock('openai', () => ({
   })),
 }));
 
+import OpenAI from 'openai';
 import { OpenAiScreeningProvider } from '../providers/openai-screening.provider';
 import { AiScreeningProviderOptions } from '../providers/ai-screening-provider.interface';
 import {
@@ -81,7 +82,6 @@ function completedResponse(outputText: string, overrides?: Record<string, unknow
 }
 
 function createMockClient(responsesCreate: jest.Mock): import('openai').default {
-  const OpenAI = require('openai').default;
   const client = new OpenAI({ apiKey: 'sk-test' });
   (client.responses.create as jest.Mock) = responsesCreate;
   return client;
@@ -140,9 +140,7 @@ describe('OpenAiScreeningProvider', () => {
   });
 
   it('parses valid output and returns validated result', async () => {
-    const mockCreate = jest
-      .fn()
-      .mockResolvedValue(completedResponse(VALID_RESPONSE));
+    const mockCreate = jest.fn().mockResolvedValue(completedResponse(VALID_RESPONSE));
     const client = createMockClient(mockCreate);
     provider = new OpenAiScreeningProvider(client, BASE_CONFIG);
 
@@ -152,9 +150,7 @@ describe('OpenAiScreeningProvider', () => {
   });
 
   it('adapter adds provider metadata', async () => {
-    const mockCreate = jest
-      .fn()
-      .mockResolvedValue(completedResponse(VALID_RESPONSE));
+    const mockCreate = jest.fn().mockResolvedValue(completedResponse(VALID_RESPONSE));
     const client = createMockClient(mockCreate);
     provider = new OpenAiScreeningProvider(client, BASE_CONFIG);
 
@@ -210,9 +206,7 @@ describe('OpenAiScreeningProvider', () => {
   });
 
   it('rejects empty output', async () => {
-    const mockCreate = jest.fn().mockResolvedValue(
-      completedResponse(''),
-    );
+    const mockCreate = jest.fn().mockResolvedValue(completedResponse(''));
     const client = createMockClient(mockCreate);
     provider = new OpenAiScreeningProvider(client, BASE_CONFIG);
 
@@ -236,9 +230,11 @@ describe('OpenAiScreeningProvider', () => {
   });
 
   it('throws AiScreeningTimeoutError on timeout', async () => {
-    const mockCreate = jest
-      .fn()
-      .mockRejectedValue({ code: 'timeout', name: 'AbortError', message: 'timeout of 30000ms exceeded' });
+    const mockCreate = jest.fn().mockRejectedValue({
+      code: 'timeout',
+      name: 'AbortError',
+      message: 'timeout of 30000ms exceeded',
+    });
     const client = createMockClient(mockCreate);
     provider = new OpenAiScreeningProvider(client, { ...BASE_CONFIG, timeoutMs: 1 });
 

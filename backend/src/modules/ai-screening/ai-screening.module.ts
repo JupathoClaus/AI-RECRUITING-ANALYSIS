@@ -7,8 +7,14 @@ import { ResumeProcessingModule } from '../resume-processing/resume-processing.m
 import { AI_SCREENING_PROVIDER } from './providers/ai-screening-provider.token';
 import { OPENAI_CLIENT } from './providers/openai-client.token';
 import { AiScreeningProvider } from './providers/ai-screening-provider.interface';
-import { OpenAiScreeningProvider, OpenAiScreeningConfig } from './providers/openai-screening.provider';
-import { MockScreeningProvider, MockScreeningProviderOptions } from './providers/mock-screening.provider';
+import {
+  OpenAiScreeningProvider,
+  OpenAiScreeningConfig,
+} from './providers/openai-screening.provider';
+import {
+  MockScreeningProvider,
+  MockScreeningProviderOptions,
+} from './providers/mock-screening.provider';
 import { AiScreeningController } from './ai-screening.controller';
 import { AiScreeningService } from './ai-screening.service';
 import { AiScreeningProcessor } from './queue/ai-screening.processor';
@@ -42,9 +48,7 @@ function createAiScreeningProvider(
     return new OpenAiScreeningProvider(openAiClient, config);
   }
 
-  throw new Error(
-    `Unsupported AI_SCREENING_PROVIDER: ${providerName}. Use 'mock' or 'openai'.`,
-  );
+  throw new Error(`Unsupported AI_SCREENING_PROVIDER: ${providerName}. Use 'mock' or 'openai'.`);
 }
 
 @Module({

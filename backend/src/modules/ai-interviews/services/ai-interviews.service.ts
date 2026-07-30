@@ -44,15 +44,12 @@ export class AiInterviewsService {
   ) {
     this.frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
     this.tavusEnabled = this.configService.get<boolean>('tavus.enabled') || false;
-    this.allowTestEmailOverride = this.configService.get<boolean>('aiInterview.allowTestEmailOverride') || false;
+    this.allowTestEmailOverride =
+      this.configService.get<boolean>('aiInterview.allowTestEmailOverride') || false;
     this.env = this.configService.get<string>('app.env') || 'development';
   }
 
-  async create(
-    dto: CreateAiInterviewDto,
-    companyId: string,
-    membershipId: string,
-  ) {
+  async create(dto: CreateAiInterviewDto, companyId: string, membershipId: string) {
     const application = await this.prisma.application.findFirst({
       where: { id: dto.applicationId, companyId, deletedAt: null },
       include: {
@@ -61,13 +58,23 @@ export class AiInterviewsService {
       },
     });
     if (!application) {
-      throw new NotFoundException({ code: 'APPLICATION_NOT_FOUND', message: 'Application not found' });
+      throw new NotFoundException({
+        code: 'APPLICATION_NOT_FOUND',
+        message: 'Application not found',
+      });
     }
 
     const existing = await this.prisma.aiInterview.findFirst({
       where: {
         applicationId: dto.applicationId,
-        status: { notIn: [AiInterviewStatus.CANCELLED, AiInterviewStatus.EXPIRED, AiInterviewStatus.FAILED, AiInterviewStatus.COMPLETED] },
+        status: {
+          notIn: [
+            AiInterviewStatus.CANCELLED,
+            AiInterviewStatus.EXPIRED,
+            AiInterviewStatus.FAILED,
+            AiInterviewStatus.COMPLETED,
+          ],
+        },
       },
     });
     if (existing) {
@@ -123,7 +130,10 @@ export class AiInterviewsService {
       },
     });
     if (!interview) {
-      throw new NotFoundException({ code: 'AI_INTERVIEW_NOT_FOUND', message: 'AI interview not found' });
+      throw new NotFoundException({
+        code: 'AI_INTERVIEW_NOT_FOUND',
+        message: 'AI interview not found',
+      });
     }
     return this.stripMeetingToken(interview);
   }
@@ -141,7 +151,7 @@ export class AiInterviewsService {
       },
       orderBy: { createdAt: 'desc' },
     });
-    return interviews.map(i => this.stripMeetingToken(i));
+    return interviews.map((i) => this.stripMeetingToken(i));
   }
 
   async previewInvitation(id: string, companyId: string) {
@@ -158,7 +168,10 @@ export class AiInterviewsService {
       },
     });
     if (!interview) {
-      throw new NotFoundException({ code: 'AI_INTERVIEW_NOT_FOUND', message: 'AI interview not found' });
+      throw new NotFoundException({
+        code: 'AI_INTERVIEW_NOT_FOUND',
+        message: 'AI interview not found',
+      });
     }
 
     const candidate = interview.application.candidate;
@@ -182,10 +195,19 @@ export class AiInterviewsService {
       where: { id, companyId },
     });
     if (!interview) {
-      throw new NotFoundException({ code: 'AI_INTERVIEW_NOT_FOUND', message: 'AI interview not found' });
+      throw new NotFoundException({
+        code: 'AI_INTERVIEW_NOT_FOUND',
+        message: 'AI interview not found',
+      });
     }
-    if (interview.status === AiInterviewStatus.COMPLETED || interview.status === AiInterviewStatus.CANCELLED) {
-      throw new BadRequestException({ code: 'AI_INTERVIEW_TERMINAL', message: 'Cannot regenerate code for a completed or cancelled interview' });
+    if (
+      interview.status === AiInterviewStatus.COMPLETED ||
+      interview.status === AiInterviewStatus.CANCELLED
+    ) {
+      throw new BadRequestException({
+        code: 'AI_INTERVIEW_TERMINAL',
+        message: 'Cannot regenerate code for a completed or cancelled interview',
+      });
     }
 
     const rawCode = this.codeService.generate();
@@ -202,11 +224,7 @@ export class AiInterviewsService {
     return { rawCode, displayHint: this.codeService.displayHint(rawCode) };
   }
 
-  async sendInvitation(
-    id: string,
-    dto: SendInvitationDto,
-    companyId: string,
-  ) {
+  async sendInvitation(id: string, dto: SendInvitationDto, companyId: string) {
     const interview = await this.prisma.aiInterview.findFirst({
       where: { id, companyId },
       include: {
@@ -220,7 +238,10 @@ export class AiInterviewsService {
       },
     });
     if (!interview) {
-      throw new NotFoundException({ code: 'AI_INTERVIEW_NOT_FOUND', message: 'AI interview not found' });
+      throw new NotFoundException({
+        code: 'AI_INTERVIEW_NOT_FOUND',
+        message: 'AI interview not found',
+      });
     }
 
     const candidate = interview.application.candidate;
@@ -270,7 +291,8 @@ export class AiInterviewsService {
       this.logger.error(`Failed to send AI interview invitation email: ${error}`);
       throw new BadRequestException({
         code: 'EMAIL_SEND_FAILED',
-        message: 'Failed to send invitation email. The interview record has been preserved. Please try again.',
+        message:
+          'Failed to send invitation email. The interview record has been preserved. Please try again.',
       });
     }
 
@@ -296,10 +318,19 @@ export class AiInterviewsService {
       where: { id, companyId },
     });
     if (!interview) {
-      throw new NotFoundException({ code: 'AI_INTERVIEW_NOT_FOUND', message: 'AI interview not found' });
+      throw new NotFoundException({
+        code: 'AI_INTERVIEW_NOT_FOUND',
+        message: 'AI interview not found',
+      });
     }
-    if (interview.status === AiInterviewStatus.COMPLETED || interview.status === AiInterviewStatus.CANCELLED) {
-      throw new BadRequestException({ code: 'AI_INTERVIEW_TERMINAL', message: 'Interview is already in a terminal state' });
+    if (
+      interview.status === AiInterviewStatus.COMPLETED ||
+      interview.status === AiInterviewStatus.CANCELLED
+    ) {
+      throw new BadRequestException({
+        code: 'AI_INTERVIEW_TERMINAL',
+        message: 'Interview is already in a terminal state',
+      });
     }
 
     await this.prisma.aiInterview.update({
@@ -330,17 +361,32 @@ export class AiInterviewsService {
     });
 
     if (!interview) {
-      throw new BadRequestException({ code: 'INVALID_CODE', message: 'We could not verify this interview code.' });
+      throw new BadRequestException({
+        code: 'INVALID_CODE',
+        message: 'We could not verify this interview code.',
+      });
     }
 
     if (interview.status === AiInterviewStatus.EXPIRED) {
-      throw new BadRequestException({ code: 'INTERVIEW_EXPIRED', message: 'This interview is no longer available.' });
+      throw new BadRequestException({
+        code: 'INTERVIEW_EXPIRED',
+        message: 'This interview is no longer available.',
+      });
     }
-    if (interview.status === AiInterviewStatus.CANCELLED || interview.status === AiInterviewStatus.FAILED) {
-      throw new BadRequestException({ code: 'INTERVIEW_UNAVAILABLE', message: 'This interview is no longer available.' });
+    if (
+      interview.status === AiInterviewStatus.CANCELLED ||
+      interview.status === AiInterviewStatus.FAILED
+    ) {
+      throw new BadRequestException({
+        code: 'INTERVIEW_UNAVAILABLE',
+        message: 'This interview is no longer available.',
+      });
     }
     if (interview.status === AiInterviewStatus.COMPLETED) {
-      throw new BadRequestException({ code: 'INTERVIEW_COMPLETED', message: 'This interview has already been completed.' });
+      throw new BadRequestException({
+        code: 'INTERVIEW_COMPLETED',
+        message: 'This interview has already been completed.',
+      });
     }
 
     if (interview.expiresAt && interview.expiresAt < new Date()) {
@@ -348,11 +394,17 @@ export class AiInterviewsService {
         where: { id: interview.id },
         data: { status: AiInterviewStatus.EXPIRED },
       });
-      throw new BadRequestException({ code: 'INTERVIEW_EXPIRED', message: 'This interview is no longer available.' });
+      throw new BadRequestException({
+        code: 'INTERVIEW_EXPIRED',
+        message: 'This interview is no longer available.',
+      });
     }
 
     // Update status to ACCESSED if not already
-    if (interview.status === AiInterviewStatus.SENT || interview.status === AiInterviewStatus.CREATED) {
+    if (
+      interview.status === AiInterviewStatus.SENT ||
+      interview.status === AiInterviewStatus.CREATED
+    ) {
       await this.prisma.aiInterview.update({
         where: { id: interview.id },
         data: { status: AiInterviewStatus.ACCESSED, accessedAt: new Date() },
@@ -398,7 +450,10 @@ export class AiInterviewsService {
     }
 
     if (payload.cv !== interview.codeHash.slice(0, 16)) {
-      throw new BadRequestException({ code: 'CODE_VERSION_MISMATCH', message: 'Session expired due to code change.' });
+      throw new BadRequestException({
+        code: 'CODE_VERSION_MISMATCH',
+        message: 'Session expired due to code change.',
+      });
     }
 
     const companyName = interview.application.company?.name || 'AI Recruiter Co';
@@ -416,12 +471,18 @@ export class AiInterviewsService {
     };
   }
 
-  async startInterview(accessToken: string, dto: StartAiInterviewDto): Promise<StartInterviewResponseDto> {
+  async startInterview(
+    accessToken: string,
+    dto: StartAiInterviewDto,
+  ): Promise<StartInterviewResponseDto> {
     const payload = this.tokenService.verify(accessToken);
     const interviewId = payload.sub;
 
     if (!dto.acknowledgementsAccepted) {
-      throw new BadRequestException({ code: 'ACKNOWLEDGEMENT_REQUIRED', message: 'You must accept the required acknowledgements before starting.' });
+      throw new BadRequestException({
+        code: 'ACKNOWLEDGEMENT_REQUIRED',
+        message: 'You must accept the required acknowledgements before starting.',
+      });
     }
 
     const interviewForCvCheck = await this.prisma.aiInterview.findUnique({
@@ -429,10 +490,16 @@ export class AiInterviewsService {
       select: { codeHash: true },
     });
     if (!interviewForCvCheck) {
-      throw new BadRequestException({ code: 'INTERVIEW_NOT_FOUND', message: 'Interview not found.' });
+      throw new BadRequestException({
+        code: 'INTERVIEW_NOT_FOUND',
+        message: 'Interview not found.',
+      });
     }
     if (payload.cv !== interviewForCvCheck.codeHash.slice(0, 16)) {
-      throw new BadRequestException({ code: 'CODE_VERSION_MISMATCH', message: 'Session expired due to code change.' });
+      throw new BadRequestException({
+        code: 'CODE_VERSION_MISMATCH',
+        message: 'Session expired due to code change.',
+      });
     }
 
     // Atomic idempotency: only update if in a pre-start status
@@ -463,15 +530,28 @@ export class AiInterviewsService {
       });
 
       if (!existing) {
-        throw new BadRequestException({ code: 'INTERVIEW_NOT_FOUND', message: 'Interview not found.' });
+        throw new BadRequestException({
+          code: 'INTERVIEW_NOT_FOUND',
+          message: 'Interview not found.',
+        });
       }
 
       if (existing.status === AiInterviewStatus.COMPLETED) {
-        throw new BadRequestException({ code: 'INTERVIEW_COMPLETED', message: 'This interview has already been completed.' });
+        throw new BadRequestException({
+          code: 'INTERVIEW_COMPLETED',
+          message: 'This interview has already been completed.',
+        });
       }
 
-      if (existing.status === AiInterviewStatus.CANCELLED || existing.status === AiInterviewStatus.EXPIRED || existing.status === AiInterviewStatus.FAILED) {
-        throw new BadRequestException({ code: 'INTERVIEW_UNAVAILABLE', message: 'This interview is no longer available.' });
+      if (
+        existing.status === AiInterviewStatus.CANCELLED ||
+        existing.status === AiInterviewStatus.EXPIRED ||
+        existing.status === AiInterviewStatus.FAILED
+      ) {
+        throw new BadRequestException({
+          code: 'INTERVIEW_UNAVAILABLE',
+          message: 'This interview is no longer available.',
+        });
       }
 
       // Already IN_PROGRESS - return existing session
@@ -482,12 +562,16 @@ export class AiInterviewsService {
             conversationId: existing.tavusConversationId,
             provider: existing.provider,
             status: AiInterviewStatus.IN_PROGRESS,
-            meetingToken: existing.provider === AiInterviewProvider.MOCK ? null : existing.tavusMeetingToken,
+            meetingToken:
+              existing.provider === AiInterviewProvider.MOCK ? null : existing.tavusMeetingToken,
           };
         }
       }
 
-      throw new BadRequestException({ code: 'INTERVIEW_UNEXPECTED_STATE', message: 'Interview is in an unexpected state.' });
+      throw new BadRequestException({
+        code: 'INTERVIEW_UNEXPECTED_STATE',
+        message: 'Interview is in an unexpected state.',
+      });
     }
 
     // We successfully claimed the interview. Now create the session.
@@ -505,7 +589,10 @@ export class AiInterviewsService {
     });
 
     if (!interview) {
-      throw new BadRequestException({ code: 'INTERVIEW_NOT_FOUND', message: 'Interview not found.' });
+      throw new BadRequestException({
+        code: 'INTERVIEW_NOT_FOUND',
+        message: 'Interview not found.',
+      });
     }
 
     // Create provider session
@@ -513,7 +600,8 @@ export class AiInterviewsService {
       if (!this.tavusEnabled) {
         throw new BadRequestException({
           code: 'TAVUS_DISABLED',
-          message: 'Tavus is not enabled. This interview cannot be started with the TAVUS provider.',
+          message:
+            'Tavus is not enabled. This interview cannot be started with the TAVUS provider.',
         });
       }
 
@@ -530,7 +618,8 @@ export class AiInterviewsService {
       const context = this.buildConversationContext(interview);
       const greeting = `Hello ${interview.application.candidate.firstName}. Welcome to your interview for the ${interview.application.job.title} position. Before we begin, could you please confirm your full name?`;
       const companyName = interview.application.company?.name || 'AI Recruiter Co';
-      const callbackBaseUrl = this.configService.get<string>('tavus.callbackBaseUrl') || this.frontendUrl;
+      const callbackBaseUrl =
+        this.configService.get<string>('tavus.callbackBaseUrl') || this.frontendUrl;
       const callbackSecret = this.configService.get<string>('tavus.callbackSecret') || '';
       const callbackUrl = callbackSecret
         ? `${callbackBaseUrl}/api/v1/ai-interviews/callback/${callbackSecret}`
@@ -546,9 +635,12 @@ export class AiInterviewsService {
           callback_url: callbackUrl,
           require_auth: true,
           max_participants: 2,
-          max_call_duration_seconds: this.configService.get<number>('tavus.maxCallDurationSeconds') || 600,
-          participant_absent_timeout_seconds: this.configService.get<number>('tavus.participantAbsentTimeoutSeconds') || 120,
-          participant_left_timeout_seconds: this.configService.get<number>('tavus.participantLeftTimeoutSeconds') || 60,
+          max_call_duration_seconds:
+            this.configService.get<number>('tavus.maxCallDurationSeconds') || 600,
+          participant_absent_timeout_seconds:
+            this.configService.get<number>('tavus.participantAbsentTimeoutSeconds') || 120,
+          participant_left_timeout_seconds:
+            this.configService.get<number>('tavus.participantLeftTimeoutSeconds') || 60,
         });
 
         await this.prisma.aiInterview.update({
@@ -613,16 +705,25 @@ export class AiInterviewsService {
     });
 
     if (!interview) {
-      throw new BadRequestException({ code: 'INTERVIEW_NOT_FOUND', message: 'Interview not found.' });
+      throw new BadRequestException({
+        code: 'INTERVIEW_NOT_FOUND',
+        message: 'Interview not found.',
+      });
     }
 
     if (payload.cv !== interview.codeHash.slice(0, 16)) {
-      throw new BadRequestException({ code: 'CODE_VERSION_MISMATCH', message: 'Session expired due to code change.' });
+      throw new BadRequestException({
+        code: 'CODE_VERSION_MISMATCH',
+        message: 'Session expired due to code change.',
+      });
     }
 
     // Cannot complete a cancelled interview
     if (interview.status === AiInterviewStatus.CANCELLED) {
-      throw new BadRequestException({ code: 'INTERVIEW_CANCELLED', message: 'This interview has been cancelled.' });
+      throw new BadRequestException({
+        code: 'INTERVIEW_CANCELLED',
+        message: 'This interview has been cancelled.',
+      });
     }
 
     // For MOCK, completing is deliberate
@@ -651,7 +752,12 @@ export class AiInterviewsService {
   // ─── TAVUS CALLBACK ────────────────────────────────────────────────────────
 
   async handleTavusCallback(
-    payload: { event: string; conversation_id: string; status?: string; payload?: Record<string, unknown> },
+    payload: {
+      event: string;
+      conversation_id: string;
+      status?: string;
+      payload?: Record<string, unknown>;
+    },
     callbackSecret?: string,
   ) {
     // Verify callback secret if configured
@@ -659,11 +765,17 @@ export class AiInterviewsService {
     if (expectedSecret) {
       if (!callbackSecret) {
         this.logger.warn('Tavus callback rejected: missing secret');
-        throw new BadRequestException({ code: 'CALLBACK_SECRET_MISSING', message: 'Callback secret required' });
+        throw new BadRequestException({
+          code: 'CALLBACK_SECRET_MISSING',
+          message: 'Callback secret required',
+        });
       }
       if (callbackSecret !== expectedSecret) {
         this.logger.warn('Tavus callback rejected: wrong secret');
-        throw new BadRequestException({ code: 'CALLBACK_SECRET_INVALID', message: 'Invalid callback secret' });
+        throw new BadRequestException({
+          code: 'CALLBACK_SECRET_INVALID',
+          message: 'Invalid callback secret',
+        });
       }
     }
 
@@ -692,7 +804,10 @@ export class AiInterviewsService {
 
       case 'system.shutdown': {
         // Only update to COMPLETED if not already in a terminal state
-        if (interview.status !== AiInterviewStatus.CANCELLED && interview.status !== AiInterviewStatus.FAILED) {
+        if (
+          interview.status !== AiInterviewStatus.CANCELLED &&
+          interview.status !== AiInterviewStatus.FAILED
+        ) {
           await this.prisma.aiInterview.update({
             where: { id: interview.id },
             data: {
@@ -716,7 +831,9 @@ export class AiInterviewsService {
         break;
 
       default:
-        this.logger.log(`Tavus unhandled event: ${payload.event} for conversation ${conversationId}`);
+        this.logger.log(
+          `Tavus unhandled event: ${payload.event} for conversation ${conversationId}`,
+        );
         await this.prisma.aiInterview.update({
           where: { id: interview.id },
           data: { tavusStatus: payload.status || payload.event },
@@ -736,7 +853,8 @@ export class AiInterviewsService {
       if (!this.tavusEnabled) {
         throw new BadRequestException({
           code: 'TAVUS_DISABLED',
-          message: 'Tavus is not enabled. Configure TAVUS_ENABLED=true and provide TAVUS_API_KEY, TAVUS_PERSONA_ID, and TAVUS_REPLICA_ID.',
+          message:
+            'Tavus is not enabled. Configure TAVUS_ENABLED=true and provide TAVUS_API_KEY, TAVUS_PERSONA_ID, and TAVUS_REPLICA_ID.',
         });
       }
       const personaId = this.configService.get<string>('tavus.personaId') || '';
@@ -771,7 +889,8 @@ export class AiInterviewsService {
 
     if (candidate.skills) {
       try {
-        const skills = typeof candidate.skills === 'string' ? JSON.parse(candidate.skills) : candidate.skills;
+        const skills =
+          typeof candidate.skills === 'string' ? JSON.parse(candidate.skills) : candidate.skills;
         if (Array.isArray(skills) && skills.length > 0) {
           parts.push(`Skills: ${skills.join(', ')}`);
         }
@@ -780,10 +899,14 @@ export class AiInterviewsService {
       }
     }
 
-    parts.push('Interview objectives: Assess technical competence, problem-solving ability, communication skills, and cultural fit for the role.');
-    parts.push('Ask natural follow-up questions based on the candidate\'s responses.');
+    parts.push(
+      'Interview objectives: Assess technical competence, problem-solving ability, communication skills, and cultural fit for the role.',
+    );
+    parts.push("Ask natural follow-up questions based on the candidate's responses.");
     parts.push('Remain professional and courteous throughout.');
-    parts.push('Avoid discriminatory or unrelated questions about age, gender, religion, marital status, disability, or appearance.');
+    parts.push(
+      'Avoid discriminatory or unrelated questions about age, gender, religion, marital status, disability, or appearance.',
+    );
     parts.push('When the interview is complete, thank the candidate and end politely.');
 
     return parts.join('\n');

@@ -8,6 +8,7 @@ import { QueueService } from './queue.service';
   imports: [
     BullModule.forRootAsync({
       useFactory: (configService: ConfigService) => ({
+        prefix: configService.get<string>('redis.keyPrefix') || 'talentai:',
         connection: {
           host: configService.get<string>('redis.host'),
           port: configService.get<number>('redis.port'),

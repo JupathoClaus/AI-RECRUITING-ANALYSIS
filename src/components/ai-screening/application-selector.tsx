@@ -47,7 +47,9 @@ export function ApplicationSelector({ onSelect, selectedId }: Props) {
     }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    queueMicrotask(() => void load())
+  }, [load])
 
   const filtered = search
     ? applications.filter(a =>

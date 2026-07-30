@@ -1,6 +1,12 @@
 import {
-  Controller, Get, Patch, Delete, Param, Query,
-  UseGuards, ParseUUIDPipe,
+  Controller,
+  Get,
+  Patch,
+  Delete,
+  Param,
+  Query,
+  UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -14,19 +20,13 @@ export class NotificationsController {
   constructor(private readonly notificationsService: InAppNotificationsService) {}
 
   @Get()
-  async findAll(
-    @Query() query: NotificationQueryDto,
-    @CurrentUser() user: AuthenticatedPrincipal,
-  ) {
+  async findAll(@Query() query: NotificationQueryDto, @CurrentUser() user: AuthenticatedPrincipal) {
     return this.notificationsService.findAll(user.userId, user.activeCompanyId, query);
   }
 
   @Get('unread-count')
   async getUnreadCount(@CurrentUser() user: AuthenticatedPrincipal) {
-    const count = await this.notificationsService.getUnreadCount(
-      user.userId,
-      user.activeCompanyId,
-    );
+    const count = await this.notificationsService.getUnreadCount(user.userId, user.activeCompanyId);
     return { count };
   }
 
@@ -41,10 +41,7 @@ export class NotificationsController {
 
   @Patch('read-all')
   async markAllRead(@CurrentUser() user: AuthenticatedPrincipal) {
-    const count = await this.notificationsService.markAllRead(
-      user.userId,
-      user.activeCompanyId,
-    );
+    const count = await this.notificationsService.markAllRead(user.userId, user.activeCompanyId);
     return { count };
   }
 

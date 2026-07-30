@@ -530,25 +530,55 @@ describe('InterviewsService', () => {
     it('executes the full lifecycle with version tracking', async () => {
       // Step 1: confirm (SCHEDULED → CONFIRMED)
       mockPrisma.interview.findFirst.mockResolvedValue(chainInterview);
-      const confirmResult = await service.confirm(INTERVIEW_ID, 1, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+      const confirmResult = await service.confirm(
+        INTERVIEW_ID,
+        1,
+        COMPANY_ID,
+        USER_ID,
+        MEMBERSHIP_ID,
+      );
       expect(confirmResult).toEqual({ confirmed: true });
       // Simulate backend version increment after confirm
       currentVersion++;
-      chainInterview = { ...chainInterview, status: InterviewStatus.CONFIRMED, version: currentVersion };
+      chainInterview = {
+        ...chainInterview,
+        status: InterviewStatus.CONFIRMED,
+        version: currentVersion,
+      };
 
       // Step 2: start (CONFIRMED → IN_PROGRESS)
       mockPrisma.interview.findFirst.mockResolvedValue(chainInterview);
-      const startResult = await service.start(INTERVIEW_ID, { expectedVersion: currentVersion }, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+      const startResult = await service.start(
+        INTERVIEW_ID,
+        { expectedVersion: currentVersion },
+        COMPANY_ID,
+        USER_ID,
+        MEMBERSHIP_ID,
+      );
       expect(startResult).toEqual({ started: true });
       currentVersion++;
-      chainInterview = { ...chainInterview, status: InterviewStatus.IN_PROGRESS, version: currentVersion };
+      chainInterview = {
+        ...chainInterview,
+        status: InterviewStatus.IN_PROGRESS,
+        version: currentVersion,
+      };
 
       // Step 3: complete (IN_PROGRESS → COMPLETED)
       mockPrisma.interview.findFirst.mockResolvedValue(chainInterview);
-      const completeResult = await service.complete(INTERVIEW_ID, { expectedVersion: currentVersion }, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+      const completeResult = await service.complete(
+        INTERVIEW_ID,
+        { expectedVersion: currentVersion },
+        COMPANY_ID,
+        USER_ID,
+        MEMBERSHIP_ID,
+      );
       expect(completeResult).toEqual({ completed: true, applicationId: APP_ID });
       currentVersion++;
-      chainInterview = { ...chainInterview, status: InterviewStatus.COMPLETED, version: currentVersion };
+      chainInterview = {
+        ...chainInterview,
+        status: InterviewStatus.COMPLETED,
+        version: currentVersion,
+      };
 
       // Step 4: record result (COMPLETED only)
       mockPrisma.interview.findFirst.mockResolvedValue(chainInterview);
@@ -558,7 +588,15 @@ describe('InterviewsService', () => {
         version: currentVersion + 1,
       });
       mockPrisma.interviewHistory.create.mockResolvedValue({});
-      const resultResult = await service.recordResult(INTERVIEW_ID, InterviewResult.PASS, 'Excellent', currentVersion, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+      const resultResult = await service.recordResult(
+        INTERVIEW_ID,
+        InterviewResult.PASS,
+        'Excellent',
+        currentVersion,
+        COMPANY_ID,
+        USER_ID,
+        MEMBERSHIP_ID,
+      );
       expect(resultResult.result).toBe(InterviewResult.PASS);
       expect(resultResult.suggestedApplicationAction).toBe('ADVANCE');
 

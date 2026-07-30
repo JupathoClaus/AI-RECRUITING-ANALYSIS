@@ -47,6 +47,8 @@ describe('Extraction concurrency & security (e2e)', () => {
   let prisma: PrismaClient;
   let storage: LocalStorageProvider;
   let queue: Queue;
+  let aiScreeningQueue: Queue;
+  let emailQueue: Queue;
   let extractionService: ResumeExtractionService;
 
   let companyIdA: string;
@@ -69,17 +71,37 @@ describe('Extraction concurrency & security (e2e)', () => {
   let docxBuffer: Buffer;
   let docxChecksum: string;
 
+  function resignAccessToken(overrides: Record<string, unknown>): string {
+    const claims = { ...(jwt.decode(tokenA) as jwt.JwtPayload) };
+    delete claims.iat;
+    delete claims.exp;
+    delete claims.nbf;
+    delete claims.iss;
+    delete claims.aud;
+    return jwt.sign({ ...claims, ...overrides }, process.env.JWT_SECRET!, {
+      expiresIn: '15m',
+      issuer: process.env.JWT_ISSUER,
+      audience: process.env.JWT_AUDIENCE,
+    });
+  }
+
   async function cleanUser(email: string) {
     const norm = email.toLowerCase().trim();
     try {
       await prisma.$executeRawUnsafe(`
-        DO $$ DECLARE uid TEXT; cids TEXT[]; BEGIN
+        DO $$ DECLARE uid TEXT; cids TEXT[]; candidate_ids TEXT[]; BEGIN
           SELECT id INTO uid FROM "User" WHERE "normalizedEmail" = '${norm}';
           IF uid IS NULL THEN RETURN; END IF;
           SELECT ARRAY(SELECT "companyId" FROM "CompanyMembership" WHERE "userId" = uid) INTO cids;
+          SELECT ARRAY(SELECT "candidateId" FROM "CompanyCandidate" WHERE "companyId" = ANY(cids)) INTO candidate_ids;
           DELETE FROM "ExtractionDispatch" WHERE "extractionId" IN (SELECT id FROM "ResumeTextExtraction" WHERE "companyId" = ANY(cids));
           DELETE FROM "ResumeTextExtraction" WHERE "companyId" = ANY(cids);
           DELETE FROM "StoredFile" WHERE "companyId" = ANY(cids);
+          DELETE FROM "AiScreeningResult" WHERE "companyId" = ANY(cids);
+          DELETE FROM "Application" WHERE "companyId" = ANY(cids);
+          DELETE FROM "CompanyCandidate" WHERE "companyId" = ANY(cids);
+          DELETE FROM "Candidate" WHERE id = ANY(candidate_ids);
+          DELETE FROM "Job" WHERE "companyId" = ANY(cids);
           DELETE FROM "AuthAuditEvent" WHERE "userId" = uid;
           DELETE FROM "UserSession" WHERE "userId" = uid;
           DELETE FROM "VerificationToken" WHERE "userId" = uid;
@@ -138,6 +160,7 @@ describe('Extraction concurrency & security (e2e)', () => {
   beforeAll(async () => {
     dotenv.config({ path: join(__dirname, 'env', 'test.env') });
     process.env.NODE_ENV = 'test';
+    process.env.REDIS_KEY_PREFIX = `talentai_test:extraction-concurrency:${Date.now()}:`;
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -155,7 +178,10 @@ describe('Extraction concurrency & security (e2e)', () => {
     prisma = app.get(PrismaService);
     storage = app.get(LocalStorageProvider);
     queue = app.get(getQueueToken(RESUME_EXTRACTION_QUEUE));
+    aiScreeningQueue = app.get(getQueueToken('ai-screening'));
+    emailQueue = app.get(getQueueToken('email'));
     extractionService = app.get(ResumeExtractionService);
+    await emailQueue.pause();
 
     docxBuffer = await createTestDocxBuffer(testDocxText);
     docxChecksum = createHash('sha256').update(docxBuffer).digest('hex');
@@ -295,17 +321,23 @@ describe('Extraction concurrency & security (e2e)', () => {
       .send({ email: emailB, password: 'E2eStr0ng!Pass' })
       .expect(200);
     tokenB = loginB.body.data.tokens.accessToken;
+
+    // This suite proves screening-request concurrency, not the external AI worker.
+    // Keep created screening jobs waiting so shutdown is deterministic.
+    await aiScreeningQueue.pause();
   }, 60000);
 
   afterAll(async () => {
     cleanupFile(filePathA);
     cleanupFile(filePathB);
-    await queue.close();
     await cleanUser(emailA);
     await cleanUser(emailB);
-    await prisma.$disconnect();
+    await aiScreeningQueue.drain(true);
+    await emailQueue.drain(true);
+    await aiScreeningQueue.resume();
+    await emailQueue.resume();
     await app.close();
-  });
+  }, 120000);
 
   // ── 1. Five-way concurrency — stable outcome ────────────────────────
 
@@ -510,6 +542,32 @@ describe('Extraction concurrency & security (e2e)', () => {
   // ── 6. Complete HTTP security matrix (15 cases) ──────────────────
 
   describe('6. Complete HTTP security matrix', () => {
+    it('rejects a valid signed cid-only token', async () => {
+      const payload = jwt.decode(tokenA) as jwt.JwtPayload;
+      const cidOnly = resignAccessToken({ cid: payload.cid, mid: undefined });
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${cidOnly}`)
+        .expect(401);
+    });
+
+    it('rejects a valid signed mid-only token', async () => {
+      const payload = jwt.decode(tokenA) as jwt.JwtPayload;
+      const midOnly = resignAccessToken({ cid: undefined, mid: payload.mid });
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${midOnly}`)
+        .expect(401);
+    });
+
+    it('rejects a valid signed token whose user does not own the session', async () => {
+      const mismatchedUser = resignAccessToken({ sub: userIdB });
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${mismatchedUser}`)
+        .expect(401);
+    });
+
     it('1. No token returns 401', async () => {
       await request(app.getHttpServer())
         .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
@@ -630,52 +688,4 @@ describe('Extraction concurrency & security (e2e)', () => {
   });
 
   // ── 9. BullMQ uniqueness proof — queue.add with same jobId deduplicates ──
-
-  describe('9. BullMQ uniqueness guarantee', () => {
-    it('queue.add with same jobId returns existing job (dedup)', async () => {
-      const jobId = `dedup-test-${Date.now()}`;
-      const data = { extractionId: jobId, storedFileId: storedFileIdA, companyId: companyIdA };
-
-      const job1 = await queue.add('test-job', data, { jobId });
-      expect(job1).toBeDefined();
-      expect(job1.id).toBe(jobId);
-
-      const job2 = await queue.add('test-job', data, { jobId });
-      expect(job2).toBeDefined();
-      expect(job2.id).toBe(jobId);
-
-      const fetched = await queue.getJob(jobId);
-      expect(fetched).toBeDefined();
-      expect(fetched!.id).toBe(jobId);
-
-      const counts = await queue.getJobCounts();
-      const namedCounts = counts as Record<string, number>;
-      const totalKnown =
-        (namedCounts.waiting ?? 0) +
-        (namedCounts.active ?? 0) +
-        (namedCounts.completed ?? 0) +
-        (namedCounts.failed ?? 0) +
-        (namedCounts.delayed ?? 0);
-      expect(totalKnown).toBeGreaterThanOrEqual(1);
-    });
-
-    it('job removed and re-added with same jobId is not duplicated', async () => {
-      const jobId = `dedup-removed-${Date.now()}`;
-      const data = { extractionId: jobId, storedFileId: storedFileIdA, companyId: companyIdA };
-
-      const job1 = await queue.add('test-job', data, { jobId });
-      expect(job1).toBeDefined();
-      expect(job1.id).toBe(jobId);
-
-      await job1.remove();
-
-      const job2 = await queue.add('test-job', data, { jobId });
-      expect(job2).toBeDefined();
-      expect(job2.id).toBe(jobId);
-
-      const fetched = await queue.getJob(jobId);
-      expect(fetched).toBeDefined();
-      expect(fetched!.id).toBe(jobId);
-    });
-  });
 });

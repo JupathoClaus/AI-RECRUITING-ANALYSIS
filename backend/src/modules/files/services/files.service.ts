@@ -1,7 +1,18 @@
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@database/prisma/prisma.service';
-import { FileCategory, FileStatus, ApplicationAuditEventType, ApplicationActorType } from '@prisma/client';
+import {
+  FileCategory,
+  FileStatus,
+  ApplicationAuditEventType,
+  ApplicationActorType,
+} from '@prisma/client';
 import { LocalStorageProvider } from '../providers/local-storage.provider';
 import { ApplicationAuditService } from '../../applications/services/application-audit.service';
 
@@ -198,11 +209,7 @@ export class FilesService {
     return file;
   }
 
-  private validateAndGetExtension(
-    originalName: string,
-    mimeType: string,
-    buffer: Buffer,
-  ): string {
+  private validateAndGetExtension(originalName: string, mimeType: string, buffer: Buffer): string {
     const dotIdx = originalName.lastIndexOf('.');
     if (dotIdx === -1 || dotIdx === originalName.length - 1) {
       throw new BadRequestException('FILE_EXTENSION_MISSING');
