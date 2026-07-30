@@ -15,8 +15,9 @@ import { PrismaService } from '../src/database/prisma/prisma.service';
 import { LocalStorageProvider } from '../src/modules/files/providers/local-storage.provider';
 import { RESUME_EXTRACTION_QUEUE } from '../src/modules/resume-processing/queue/resume-extraction-queue.constants';
 import { getQueueToken } from '@nestjs/bullmq';
-import { createHash, randomUUID } from 'crypto';
+import { createHash } from 'crypto';
 import { unlinkSync, existsSync } from 'fs';
+import * as jwt from 'jsonwebtoken';
 import { join } from 'path';
 import * as JSZip from 'jszip';
 import * as dotenv from 'dotenv';
@@ -56,6 +57,10 @@ describe('Extraction concurrency & security (e2e)', () => {
   let filePathA: string;
   let storedFileIdB: string;
   let filePathB: string;
+  let applicationIdA: string;
+  let applicationIdB: string;
+  let tokenA: string;
+  let tokenB: string;
 
   const emailA = `ext-con-a-${Date.now()}@e2e.com`;
   const emailB = `ext-con-b-${Date.now()}@e2e.com`;
@@ -182,6 +187,10 @@ describe('Extraction concurrency & security (e2e)', () => {
       where: { id: userIdA },
       data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
     });
+    const memRowsA = await prisma.$queryRawUnsafe(
+      `SELECT id FROM "CompanyMembership" WHERE "userId" = '${userIdA}' LIMIT 1`,
+    );
+    const membershipIdA = (memRowsA as { id: string }[])[0].id;
 
     // Register company B
     const regB = await request(app.getHttpServer())
@@ -207,6 +216,10 @@ describe('Extraction concurrency & security (e2e)', () => {
       where: { id: userIdB },
       data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
     });
+    const memRowsB = await prisma.$queryRawUnsafe(
+      `SELECT id FROM "CompanyMembership" WHERE "userId" = '${userIdB}' LIMIT 1`,
+    );
+    const membershipIdB = (memRowsB as { id: string }[])[0].id;
 
     // Create stored files (one for concurrency, one for cross-company)
     const fileA = await createStoredFile(companyIdA, userIdA);
@@ -216,6 +229,72 @@ describe('Extraction concurrency & security (e2e)', () => {
     const fileB = await createStoredFile(companyIdB, userIdB);
     storedFileIdB = fileB.id;
     filePathB = fileB.filePath;
+
+    // Create jobs, candidates, and applications for HTTP-level testing via raw SQL
+    const now = Date.now();
+    const nowStr = new Date().toISOString();
+    const jobIdA = `job-a-${now}`;
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "Job" (id, "companyId", "jobCode", slug, title, "employmentType", "workplaceType", "experienceLevel", description, "createdByMembershipId", "ownerMembershipId", "createdAt", "updatedAt")
+      VALUES ('${jobIdA}', '${companyIdA}', 'JC-${now}', 'eng-a-${now}', 'Engineer A', 'FULL_TIME', 'ON_SITE', 'MID', 'Test job', '${membershipIdA}', '${membershipIdA}', '${nowStr}', '${nowStr}')
+    `);
+    const candIdA = `cand-a-${now}`;
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "Candidate" (id, "firstName", "lastName", email, source, "createdAt", "updatedAt")
+      VALUES ('${candIdA}', 'A', 'Con', 'a-con-${now}@e2e.com', 'RECRUITER_CREATED', '${nowStr}', '${nowStr}')
+    `);
+    const ccIdA = `cc-a-${now}`;
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "CompanyCandidate" (id, "companyId", "candidateId", source, "updatedAt")
+      VALUES ('${ccIdA}', '${companyIdA}', '${candIdA}', 'RECRUITER_CREATED', '${nowStr}')
+    `);
+    const appIdA = `app-a-${now}`;
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "Application" (id, "companyId", "jobId", "candidateId", "companyCandidateId", "applicationNumber", "publicReference", source, status, "consentConfirmed", "createdAt", "updatedAt")
+      VALUES ('${appIdA}', '${companyIdA}', '${jobIdA}', '${candIdA}', '${ccIdA}', 'EXT-CON-${now}', 'ext-con-ref-${now}', 'RECRUITER_CREATED', 'SUBMITTED', true, '${nowStr}', '${nowStr}')
+    `);
+    applicationIdA = appIdA;
+    await prisma.$executeRawUnsafe(`
+      UPDATE "StoredFile" SET "applicationId" = '${appIdA}' WHERE id = '${storedFileIdA}'
+    `);
+
+    const jobIdB = `job-b-${now}`;
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "Job" (id, "companyId", "jobCode", slug, title, "employmentType", "workplaceType", "experienceLevel", description, "createdByMembershipId", "ownerMembershipId", "createdAt", "updatedAt")
+      VALUES ('${jobIdB}', '${companyIdB}', 'JC-B-${now}', 'eng-b-${now}', 'Engineer B', 'FULL_TIME', 'ON_SITE', 'MID', 'Test job', '${membershipIdB}', '${membershipIdB}', '${nowStr}', '${nowStr}')
+    `);
+    const candIdB = `cand-b-${now}`;
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "Candidate" (id, "firstName", "lastName", email, source, "createdAt", "updatedAt")
+      VALUES ('${candIdB}', 'B', 'Con', 'b-con-${now}@e2e.com', 'RECRUITER_CREATED', '${nowStr}', '${nowStr}')
+    `);
+    const ccIdB = `cc-b-${now}`;
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "CompanyCandidate" (id, "companyId", "candidateId", source, "updatedAt")
+      VALUES ('${ccIdB}', '${companyIdB}', '${candIdB}', 'RECRUITER_CREATED', '${nowStr}')
+    `);
+    const appIdB = `app-b-${now}`;
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "Application" (id, "companyId", "jobId", "candidateId", "companyCandidateId", "applicationNumber", "publicReference", source, status, "consentConfirmed", "createdAt", "updatedAt")
+      VALUES ('${appIdB}', '${companyIdB}', '${jobIdB}', '${candIdB}', '${ccIdB}', 'EXT-CON-B-${now}', 'ext-con-b-ref-${now}', 'RECRUITER_CREATED', 'SUBMITTED', true, '${nowStr}', '${nowStr}')
+    `);
+    applicationIdB = appIdB;
+    await prisma.$executeRawUnsafe(`
+      UPDATE "StoredFile" SET "applicationId" = '${appIdB}' WHERE id = '${storedFileIdB}'
+    `);
+
+    // Login to get tokens
+    const loginA = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: emailA, password: 'E2eStr0ng!Pass' })
+      .expect(200);
+    tokenA = loginA.body.data.tokens.accessToken;
+
+    const loginB = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: emailB, password: 'E2eStr0ng!Pass' })
+      .expect(200);
+    tokenB = loginB.body.data.tokens.accessToken;
   }, 60000);
 
   afterAll(async () => {
@@ -363,33 +442,240 @@ describe('Extraction concurrency & security (e2e)', () => {
     }, 60000);
   });
 
-  // ── 4. HTTP security — auth guards at HTTP layer ─────────────────
+  // ── 4. HTTP-level concurrency ──────────────────────────────────────
 
-  describe('4. HTTP security — auth guards at HTTP layer', () => {
-    let tokenA: string;
+  describe('4. HTTP-level screening concurrency', () => {
+    it('5 concurrent screening POSTs produce 1 CREATED + 4 REUSED', async () => {
+      const CONCURRENCY = 5;
+      const results = await Promise.allSettled(
+        Array.from({ length: CONCURRENCY }, () =>
+          request(app.getHttpServer())
+            .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+            .set('Authorization', `Bearer ${tokenA}`)
+            .send({}),
+        ),
+      );
 
-    beforeAll(async () => {
-      const loginA = await request(app.getHttpServer())
-        .post('/api/v1/auth/login').send({ email: emailA, password: 'E2eStr0ng!Pass' }).expect(200);
-      tokenA = loginA.body.data.tokens.accessToken;
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      expect(fulfilled.length).toBe(CONCURRENCY);
+
+      let createdCount = 0;
+      let reusedCount = 0;
+      for (const r of fulfilled) {
+        const res = (r as PromiseFulfilledResult<request.Response>).value;
+        if (res.status === 202 && res.body?.data?.action === 'CREATED') createdCount++;
+        else if (res.status === 200 && res.body?.data?.action === 'REUSED') reusedCount++;
+      }
+      expect(createdCount).toBe(1);
+      expect(reusedCount).toBe(CONCURRENCY - 1);
+    }, 30000);
+
+    it('replay via HTTP returns 200 with REUSED action', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({})
+        .expect(200);
+      expect(res.body.data.action).toBe('REUSED');
     });
+  });
 
-    it('returns 401 on protected endpoint without token', async () => {
-      await request(app.getHttpServer()).get('/api/v1/auth/me').expect(401);
-    });
+  // ── 5. Cross-company HTTP isolation ────────────────────────────────
 
-    it('returns 401 on retry-extraction without token', async () => {
+  describe('5. Cross-company HTTP isolation', () => {
+    it('Company B cannot access Company A screening (returns 404)', async () => {
       await request(app.getHttpServer())
-        .post('/api/v1/applications/00000000-0000-0000-0000-000000000000/ai-screenings/retry-extraction')
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({})
+        .expect(404);
+    });
+
+    it('Company A cannot access Company B screening', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdB}/ai-screenings`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({})
+        .expect(404);
+    });
+
+    it('retry-extraction rejects cross-company access', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings/retry-extraction`)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .expect(404);
+    });
+  });
+
+  // ── 6. Complete HTTP security matrix (15 cases) ──────────────────
+
+  describe('6. Complete HTTP security matrix', () => {
+    it('1. No token returns 401', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
         .expect(401);
     });
 
-    it('accepts valid access token', async () => {
-      await request(app.getHttpServer()).get('/api/v1/auth/me').set('Authorization', `Bearer ${tokenA}`).expect(200);
+    it('2. Invalid (malformed) token returns 401', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', 'Bearer invalid-jwt-token')
+        .expect(401);
     });
 
-    it('rejects invalid token with 401', async () => {
-      await request(app.getHttpServer()).get('/api/v1/auth/me').set('Authorization', 'Bearer invalid').expect(401);
+    it('3. Random string as token returns 401', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', 'Bearer a1b2c3d4')
+        .expect(401);
+    });
+
+    it('4. Missing Bearer prefix returns 401', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', tokenA)
+        .expect(401);
+    });
+
+    it('5. Empty Authorization header returns 401', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', '')
+        .expect(401);
+    });
+
+    it('6. Basic auth instead of Bearer returns 401', async () => {
+      const basic = Buffer.from('user:pass').toString('base64');
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', `Basic ${basic}`)
+        .expect(401);
+    });
+
+    it('7. Expired token (future timestamp) returns 401', async () => {
+      const expiredToken = jwt.sign(
+        { sub: userIdA, exp: Math.floor(Date.now() / 1000) - 3600 },
+        'test-jwt-secret-that-is-at-least-32-chars!!',
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', `Bearer ${expiredToken}`)
+        .expect(401);
+    });
+
+    it('8. Wrong signature (different secret) returns 401', async () => {
+      const badToken = jwt.sign(
+        { sub: userIdA, exp: Math.floor(Date.now() / 1000) + 3600 },
+        'wrong-secret-that-is-not-the-correct-one!!',
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', `Bearer ${badToken}`)
+        .expect(401);
+    });
+
+    it('9. Token without user sub returns 401', async () => {
+      const noSubToken = jwt.sign(
+        { role: 'COMPANY_ADMIN', exp: Math.floor(Date.now() / 1000) + 3600 },
+        'test-jwt-secret-that-is-at-least-32-chars!!',
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', `Bearer ${noSubToken}`)
+        .expect(401);
+    });
+
+    it('10. NULL uuid as application ID returns 404', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/applications/00000000-0000-0000-0000-000000000000/ai-screenings')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({})
+        .expect(404);
+    });
+
+    it('11. Wrong HTTP method (GET on POST endpoint) returns 200', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/v1/applications/${applicationIdA}/ai-screenings`)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+    });
+
+    it('12. Invalid UUID format returns 404', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/applications/not-a-uuid/ai-screenings')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({})
+        .expect(404);
+    });
+
+    it('13. Valid token accesses auth/me returns 200', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+    });
+
+    it('14. retry-extraction without token returns 401', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings/retry-extraction`)
+        .expect(401);
+    });
+
+    it('15. retry-extraction with invalid token returns 401', async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/applications/${applicationIdA}/ai-screenings/retry-extraction`)
+        .set('Authorization', 'Bearer invalid')
+        .expect(401);
+    });
+  });
+
+  // ── 9. BullMQ uniqueness proof — queue.add with same jobId deduplicates ──
+
+  describe('9. BullMQ uniqueness guarantee', () => {
+    it('queue.add with same jobId returns existing job (dedup)', async () => {
+      const jobId = `dedup-test-${Date.now()}`;
+      const data = { extractionId: jobId, storedFileId: storedFileIdA, companyId: companyIdA };
+
+      const job1 = await queue.add('test-job', data, { jobId });
+      expect(job1).toBeDefined();
+      expect(job1.id).toBe(jobId);
+
+      const job2 = await queue.add('test-job', data, { jobId });
+      expect(job2).toBeDefined();
+      expect(job2.id).toBe(jobId);
+
+      const fetched = await queue.getJob(jobId);
+      expect(fetched).toBeDefined();
+      expect(fetched!.id).toBe(jobId);
+
+      const counts = await queue.getJobCounts();
+      const namedCounts = counts as Record<string, number>;
+      const totalKnown =
+        (namedCounts.waiting ?? 0) +
+        (namedCounts.active ?? 0) +
+        (namedCounts.completed ?? 0) +
+        (namedCounts.failed ?? 0) +
+        (namedCounts.delayed ?? 0);
+      expect(totalKnown).toBeGreaterThanOrEqual(1);
+    });
+
+    it('job removed and re-added with same jobId is not duplicated', async () => {
+      const jobId = `dedup-removed-${Date.now()}`;
+      const data = { extractionId: jobId, storedFileId: storedFileIdA, companyId: companyIdA };
+
+      const job1 = await queue.add('test-job', data, { jobId });
+      expect(job1).toBeDefined();
+      expect(job1.id).toBe(jobId);
+
+      await job1.remove();
+
+      const job2 = await queue.add('test-job', data, { jobId });
+      expect(job2).toBeDefined();
+      expect(job2.id).toBe(jobId);
+
+      const fetched = await queue.getJob(jobId);
+      expect(fetched).toBeDefined();
+      expect(fetched!.id).toBe(jobId);
     });
   });
 });

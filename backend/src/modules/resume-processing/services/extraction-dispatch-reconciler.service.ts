@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, JobState } from 'bullmq';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { ResumeFileReaderService } from './resume-file-reader.service';
 import {
@@ -15,14 +14,6 @@ const DISPATCH_LEASE_TTL_MS = 30_000;
 const MAX_DISPATCH_RETRIES = 5;
 const BASE_BACKOFF_MS = 5_000;
 
-interface StaleDispatchRow {
-  id: string;
-  extractionId: string;
-  dispatchStatus: string;
-  leaseStartedAt: Date | null;
-  jobId: string | null;
-}
-
 @Injectable()
 export class ExtractionDispatchReconcilerService {
   private readonly logger = new Logger(ExtractionDispatchReconcilerService.name);
@@ -31,7 +22,6 @@ export class ExtractionDispatchReconcilerService {
     private readonly prisma: PrismaService,
     private readonly fileReader: ResumeFileReaderService,
     @InjectQueue(RESUME_EXTRACTION_QUEUE) private readonly extractionQueue: Queue,
-    configService: ConfigService,
   ) {}
 
   async reconcile(): Promise<{ reclaimed: number; dispatched: number; failed: number }> {
@@ -155,6 +145,41 @@ export class ExtractionDispatchReconcilerService {
     const jobId = extractionId;
 
     try {
+      const existingJob = await this.extractionQueue.getJob(jobId);
+      if (existingJob) {
+        const existingState = await existingJob.getState();
+        if (existingState === 'completed') {
+          await this.prisma.extractionDispatch.updateMany({
+            where: { extractionId, dispatchToken: leaseToken },
+            data: {
+              dispatchStatus: 'DISPATCHED',
+              dispatchToken: null,
+              dispatchedAt: new Date(),
+              jobId,
+            },
+          });
+          return;
+        }
+        if (existingState === 'failed') {
+          await existingJob.remove();
+        } else if (
+          existingState === 'waiting' ||
+          existingState === 'delayed' ||
+          existingState === 'active'
+        ) {
+          await this.prisma.extractionDispatch.updateMany({
+            where: { extractionId, dispatchToken: leaseToken },
+            data: {
+              dispatchStatus: 'DISPATCHED',
+              dispatchToken: null,
+              dispatchedAt: new Date(),
+              jobId,
+            },
+          });
+          return;
+        }
+      }
+
       await this.extractionQueue.add(
         RESUME_EXTRACTION_JOB,
         {
@@ -203,12 +228,12 @@ export class ExtractionDispatchReconcilerService {
       try {
         const jobState = await this.getJobStateInBullMQ(dispatch.extractionId);
 
-        if (jobState !== null) {
-          const extraction = await this.prisma.resumeTextExtraction.findUnique({
-            where: { id: dispatch.extractionId },
-            select: { status: true },
-          });
-
+        if (
+          jobState === 'waiting' ||
+          jobState === 'delayed' ||
+          jobState === 'active' ||
+          jobState === 'completed'
+        ) {
           await this.prisma.extractionDispatch.updateMany({
             where: {
               id: dispatch.id,
@@ -221,15 +246,34 @@ export class ExtractionDispatchReconcilerService {
               dispatchedAt: new Date(),
             },
           });
-          if (extraction && extraction.status !== 'COMPLETED' && extraction.status !== 'FAILED') {
-            this.logger.warn(
-              `Stale DISPATCHING → DISPATCHED for extraction ${dispatch.extractionId}: job ${jobState}, extraction ${extraction.status}`,
-            );
-          } else {
-            this.logger.warn(
-              `Stale DISPATCHING → DISPATCHED for extraction ${dispatch.extractionId}: job ${jobState}`,
-            );
+          this.logger.warn(
+            `Stale DISPATCHING → DISPATCHED for extraction ${dispatch.extractionId}: job ${jobState}`,
+          );
+        } else if (jobState === 'failed') {
+          try {
+            const job = await this.extractionQueue.getJob(dispatch.extractionId);
+            if (job) await job.remove();
+          } catch {
+            /* empty */
           }
+          const nextAttemptAt = new Date(Date.now() + DISPATCH_LEASE_TTL_MS);
+          await this.prisma.extractionDispatch.updateMany({
+            where: {
+              id: dispatch.id,
+              dispatchStatus: 'DISPATCHING',
+              leaseStartedAt: dispatch.leaseStartedAt,
+            },
+            data: {
+              dispatchStatus: 'PENDING_DISPATCH',
+              dispatchToken: null,
+              leaseStartedAt: null,
+              dispatchAttempts: { increment: 1 },
+              nextAttemptAt,
+            },
+          });
+          this.logger.warn(
+            `Stale DISPATCHING → PENDING_DISPATCH for extraction ${dispatch.extractionId}: removed failed BullMQ job`,
+          );
         } else {
           const nextAttemptAt = new Date(Date.now() + DISPATCH_LEASE_TTL_MS);
           await this.prisma.extractionDispatch.updateMany({
@@ -261,21 +305,11 @@ export class ExtractionDispatchReconcilerService {
     return reclaimed;
   }
 
-  private async getJobStateInBullMQ(
-    extractionId: string,
-  ): Promise<JobState | 'retention-removed' | null> {
+  private async getJobStateInBullMQ(extractionId: string): Promise<JobState | null> {
     try {
       const job = await this.extractionQueue.getJob(extractionId);
-      if (!job) {
-        const completedCount = await this.extractionQueue.getCompletedCount();
-        const failedCount = await this.extractionQueue.getFailedCount();
-        if (completedCount > 0 || failedCount > 0) {
-          return 'retention-removed';
-        }
-        return null;
-      }
-      const state = await job.getState();
-      return state as JobState | 'retention-removed';
+      if (!job) return null;
+      return (await job.getState()) as JobState;
     } catch {
       return null;
     }

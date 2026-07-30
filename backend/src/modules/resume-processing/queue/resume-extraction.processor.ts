@@ -1,5 +1,5 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { Job, UnrecoverableError } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@database/prisma/prisma.service';
@@ -12,16 +12,24 @@ import {
 import { ResumeExtractionJobData } from './resume-extraction-job-data.interface';
 
 @Processor(RESUME_EXTRACTION_QUEUE, { concurrency: 2 })
-export class ResumeExtractionProcessor extends WorkerHost {
+export class ResumeExtractionProcessor extends WorkerHost implements OnModuleDestroy {
   private readonly logger = new Logger(ResumeExtractionProcessor.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly fileReader: ResumeFileReaderService,
     private readonly extractor: ResumeTextExtractorService,
-    configService: ConfigService,
+    _configService: ConfigService,
   ) {
     super();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    try {
+      await this.worker.close();
+    } catch {
+      /* non-fatal during shutdown */
+    }
   }
 
   async process(job: Job<ResumeExtractionJobData>): Promise<void> {
