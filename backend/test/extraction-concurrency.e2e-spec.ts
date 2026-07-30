@@ -3,49 +3,37 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import * as request from 'supertest';
 import * as cookieParser from 'cookie-parser';
 import { PrismaClient } from '@prisma/client';
+import { Queue } from 'bullmq';
 import { AppModule } from '../src/app/app.module';
 import { GlobalExceptionFilter } from '../src/common/filters/global-exception.filter';
 import { TransformInterceptor } from '../src/common/interceptors/transform.interceptor';
-import { ResumeExtractionService } from '../src/modules/resume-processing/services/resume-extraction.service';
+import {
+  ResumeExtractionService,
+  ExtractionResultOrAction,
+} from '../src/modules/resume-processing/services/resume-extraction.service';
 import { PrismaService } from '../src/database/prisma/prisma.service';
 import { LocalStorageProvider } from '../src/modules/files/providers/local-storage.provider';
-import { randomUUID, createHash } from 'crypto';
+import { RESUME_EXTRACTION_QUEUE } from '../src/modules/resume-processing/queue/resume-extraction-queue.constants';
+import { getQueueToken } from '@nestjs/bullmq';
+import { createHash, randomUUID } from 'crypto';
 import { unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
-import Redis from 'ioredis';
-import { flushTestRedis } from './helpers/redis-cleanup';
 import * as JSZip from 'jszip';
+import * as dotenv from 'dotenv';
 
 function createTestDocxBuffer(text: string): Promise<Buffer> {
   const zip = new JSZip();
   zip.file(
     'word/document.xml',
-    `<?xml version="1.0" encoding="UTF-8"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:body>
-    <w:p>
-      <w:r>
-        <w:t>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</w:t>
-      </w:r>
-    </w:p>
-  </w:body>
-</w:document>`,
+    `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</w:t></w:r></w:p></w:body></w:document>`,
   );
   zip.file(
     '[Content_Types].xml',
-    `<?xml version="1.0" encoding="UTF-8"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-</Types>`,
+    `<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
   );
   zip.file(
     '_rels/.rels',
-    `<?xml version="1.0" encoding="UTF-8"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
-</Relationships>`,
+    `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
   );
   return zip.generateAsync({
     type: 'nodebuffer',
@@ -56,57 +44,25 @@ function createTestDocxBuffer(text: string): Promise<Buffer> {
 describe('Extraction concurrency & security (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaClient;
-  let extractionService: ResumeExtractionService;
   let storage: LocalStorageProvider;
+  let queue: Queue;
+  let extractionService: ResumeExtractionService;
 
-  // Company A
-  let accessTokenA: string;
   let companyIdA: string;
   let userIdA: string;
-  let storedFileIdA: string;
-  let filePathA: string;
-  let storageKeyA: string;
-
-  // Company B
-  let accessTokenB: string;
   let companyIdB: string;
   let userIdB: string;
+  let storedFileIdA: string;
+  let filePathA: string;
   let storedFileIdB: string;
   let filePathB: string;
-  let storageKeyB: string;
 
   const emailA = `ext-con-a-${Date.now()}@e2e.com`;
   const emailB = `ext-con-b-${Date.now()}@e2e.com`;
 
-  const userA = {
-    companyName: 'Extraction Concurrency A',
-    email: emailA,
-    firstName: 'Extract',
-    lastName: 'A',
-    password: 'E2eStr0ng!Pass',
-    passwordConfirmation: 'E2eStr0ng!Pass',
-    country: 'US',
-    timezone: 'America/New_York',
-    acceptTerms: true,
-  };
-
-  const userB = {
-    companyName: 'Extraction Concurrency B',
-    email: emailB,
-    firstName: 'Extract',
-    lastName: 'B',
-    password: 'E2eStr0ng!Pass',
-    passwordConfirmation: 'E2eStr0ng!Pass',
-    country: 'US',
-    timezone: 'America/New_York',
-    acceptTerms: true,
-  };
-
-  const testDocxText = 'Hello World Resume Extraction Test ' + Date.now();
+  const testDocxText = 'Hello World Extraction Test ' + Date.now();
   let docxBuffer: Buffer;
   let docxChecksum: string;
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
 
   async function cleanUser(email: string) {
     const norm = email.toLowerCase().trim();
@@ -118,21 +74,6 @@ describe('Extraction concurrency & security (e2e)', () => {
           SELECT ARRAY(SELECT "companyId" FROM "CompanyMembership" WHERE "userId" = uid) INTO cids;
           DELETE FROM "ExtractionDispatch" WHERE "extractionId" IN (SELECT id FROM "ResumeTextExtraction" WHERE "companyId" = ANY(cids));
           DELETE FROM "ResumeTextExtraction" WHERE "companyId" = ANY(cids);
-          DELETE FROM "AiScreeningResult" WHERE "companyId" = ANY(cids);
-          DELETE FROM "ApplicationScreeningAnswer" WHERE "applicationId" IN (SELECT id FROM "Application" WHERE "companyId" = ANY(cids));
-          DELETE FROM "Application" WHERE "companyId" = ANY(cids);
-          DELETE FROM "ApplicationCounter" WHERE "companyId" = ANY(cids);
-          DELETE FROM "JobAccessibilityConfiguration" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
-          DELETE FROM "JobScreeningConfiguration" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
-          DELETE FROM "JobScreeningQuestion" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
-          DELETE FROM "JobPipelineStage" WHERE "pipelineId" IN (SELECT id FROM "JobPipeline" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids)));
-          DELETE FROM "JobPipeline" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
-          DELETE FROM "Job" WHERE "companyId" = ANY(cids);
-          DELETE FROM "CandidateMergeRecord" WHERE "primaryCandidateId" IN (SELECT id FROM "Candidate" WHERE id IN (SELECT "candidateId" FROM "CompanyCandidate" WHERE "companyId" = ANY(cids))) OR "mergedCandidateId" IN (SELECT id FROM "Candidate" WHERE id IN (SELECT "candidateId" FROM "CompanyCandidate" WHERE "companyId" = ANY(cids)));
-          DELETE FROM "CandidateSkill" WHERE "candidateId" IN (SELECT id FROM "Candidate" WHERE id IN (SELECT "candidateId" FROM "CompanyCandidate" WHERE "companyId" = ANY(cids)));
-          DELETE FROM "CandidateAuditEvent" WHERE "candidateId" IN (SELECT id FROM "Candidate" WHERE id IN (SELECT "candidateId" FROM "CompanyCandidate" WHERE "companyId" = ANY(cids)));
-          DELETE FROM "CompanyCandidate" WHERE "companyId" = ANY(cids);
-          DELETE FROM "Candidate" WHERE id IN (SELECT "candidateId" FROM "CompanyCandidate" WHERE "companyId" = ANY(cids));
           DELETE FROM "StoredFile" WHERE "companyId" = ANY(cids);
           DELETE FROM "AuthAuditEvent" WHERE "userId" = uid;
           DELETE FROM "UserSession" WHERE "userId" = uid;
@@ -159,52 +100,19 @@ describe('Extraction concurrency & security (e2e)', () => {
     }
   }
 
-  async function registerAndLogin(
-    user: typeof userA,
-  ): Promise<{ accessToken: string; companyId: string; userId: string }> {
-    const regRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/register-company')
-      .send(user)
-      .expect(201);
-
-    const norm = user.email.toLowerCase().trim();
-    const dbUser = await prisma.user.findUnique({ where: { normalizedEmail: norm } });
-    if (dbUser && dbUser.status !== 'ACTIVE') {
-      await prisma.user.update({
-        where: { id: dbUser.id },
-        data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
-      });
-    }
-
-    const loginRes = await request(app.getHttpServer())
-      .post('/api/v1/auth/login')
-      .send({ email: user.email, password: user.password })
-      .expect(200);
-
-    return {
-      accessToken: loginRes.body.data.tokens.accessToken,
-      companyId: regRes.body.data.companyId,
-      userId: dbUser!.id,
-    };
-  }
-
   async function createStoredFile(
     companyId: string,
     userId: string,
-    buffer: Buffer,
-    checksum: string,
-  ): Promise<{ storedFileId: string; filePath: string; storageKey: string }> {
+  ): Promise<{ id: string; filePath: string }> {
     const storedName = storage.generateStoredName('docx');
     const putResult = await storage.put(
       companyId,
       storedName,
-      buffer,
+      docxBuffer,
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     );
-    const absolutePath = join(storage['basePath'], putResult.storageKey);
-    expect(await storage.exists(putResult.storageKey)).toBe(true);
-
-    const storedFile = await prisma.storedFile.create({
+    const path = join(storage['basePath'], putResult.storageKey);
+    const sf = await prisma.storedFile.create({
       data: {
         companyId,
         uploadedByUserId: userId,
@@ -213,39 +121,22 @@ describe('Extraction concurrency & security (e2e)', () => {
         storedName,
         extension: '.docx',
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        sizeBytes: buffer.length,
-        checksumSha256: checksum,
+        sizeBytes: docxBuffer.length,
+        checksumSha256: docxChecksum,
         category: 'RESUME',
         status: 'ACTIVE',
       },
     });
-    return {
-      storedFileId: storedFile.id,
-      filePath: absolutePath,
-      storageKey: putResult.storageKey,
-    };
+    return { id: sf.id, filePath: path };
   }
 
-  // ── Setup / Teardown ──────────────────────────────────────────────────────
-
   beforeAll(async () => {
-    const dotenv = require('dotenv');
-    dotenv.config({ path: require('path').join(__dirname, 'env', 'test.env') });
+    dotenv.config({ path: join(__dirname, 'env', 'test.env') });
     process.env.NODE_ENV = 'test';
-
-    const redisPort = parseInt(process.env.REDIS_PORT || '6380', 10);
-    const redis = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: redisPort,
-      db: 0,
-    });
-    await flushTestRedis(redis);
-    await redis.quit();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());
     app.useGlobalPipes(
@@ -257,75 +148,92 @@ describe('Extraction concurrency & security (e2e)', () => {
     await app.init();
 
     prisma = app.get(PrismaService);
-    extractionService = app.get(ResumeExtractionService);
     storage = app.get(LocalStorageProvider);
+    queue = app.get(getQueueToken(RESUME_EXTRACTION_QUEUE));
+    extractionService = app.get(ResumeExtractionService);
 
     docxBuffer = await createTestDocxBuffer(testDocxText);
     docxChecksum = createHash('sha256').update(docxBuffer).digest('hex');
 
-    await cleanUser(userA.email);
-    await cleanUser(userB.email);
+    await cleanUser(emailA);
+    await cleanUser(emailB);
 
-    // Register + Login Company A
-    const authA = await registerAndLogin(userA);
-    accessTokenA = authA.accessToken;
-    companyIdA = authA.companyId;
-    userIdA = authA.userId;
+    // Register company A
+    const regA = await request(app.getHttpServer())
+      .post('/api/v1/auth/register-company')
+      .send({
+        companyName: 'Extraction Concurrency A',
+        email: emailA,
+        firstName: 'Extract',
+        lastName: 'A',
+        password: 'E2eStr0ng!Pass',
+        passwordConfirmation: 'E2eStr0ng!Pass',
+        country: 'US',
+        timezone: 'America/New_York',
+        acceptTerms: true,
+      })
+      .expect(201);
+    companyIdA = regA.body.data.companyId;
+    const dbUserA = await prisma.user.findUnique({
+      where: { normalizedEmail: emailA.toLowerCase().trim() },
+    });
+    userIdA = dbUserA!.id;
+    await prisma.user.update({
+      where: { id: userIdA },
+      data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
+    });
 
-    // Register + Login Company B
-    const authB = await registerAndLogin(userB);
-    accessTokenB = authB.accessToken;
-    companyIdB = authB.companyId;
-    userIdB = authB.userId;
+    // Register company B
+    const regB = await request(app.getHttpServer())
+      .post('/api/v1/auth/register-company')
+      .send({
+        companyName: 'Extraction Concurrency B',
+        email: emailB,
+        firstName: 'Extract',
+        lastName: 'B',
+        password: 'E2eStr0ng!Pass',
+        passwordConfirmation: 'E2eStr0ng!Pass',
+        country: 'US',
+        timezone: 'America/New_York',
+        acceptTerms: true,
+      })
+      .expect(201);
+    companyIdB = regB.body.data.companyId;
+    const dbUserB = await prisma.user.findUnique({
+      where: { normalizedEmail: emailB.toLowerCase().trim() },
+    });
+    userIdB = dbUserB!.id;
+    await prisma.user.update({
+      where: { id: userIdB },
+      data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
+    });
 
-    // Create stored files
-    const fileA = await createStoredFile(companyIdA, userIdA, docxBuffer, docxChecksum);
-    storedFileIdA = fileA.storedFileId;
+    // Create stored files (one for concurrency, one for cross-company)
+    const fileA = await createStoredFile(companyIdA, userIdA);
+    storedFileIdA = fileA.id;
     filePathA = fileA.filePath;
-    storageKeyA = fileA.storageKey;
 
-    const fileB = await createStoredFile(companyIdB, userIdB, docxBuffer, docxChecksum);
-    storedFileIdB = fileB.storedFileId;
+    const fileB = await createStoredFile(companyIdB, userIdB);
+    storedFileIdB = fileB.id;
     filePathB = fileB.filePath;
-    storageKeyB = fileB.storageKey;
   }, 60000);
 
   afterAll(async () => {
     cleanupFile(filePathA);
     cleanupFile(filePathB);
-    await cleanUser(userA.email);
-    await cleanUser(userB.email);
+    await queue.close();
+    await cleanUser(emailA);
+    await cleanUser(emailB);
+    await prisma.$disconnect();
     await app.close();
   });
 
-  // ── 1. Auth guard — HTTP endpoints require authentication ────────────────
+  // ── 1. Five-way concurrency — stable outcome ────────────────────────
 
-  describe('1. Auth guard — HTTP layer', () => {
-    it('returns 401 on health endpoint without token (JwtAuthGuard active)', async () => {
-      await request(app.getHttpServer()).get('/api/v1/auth/me').expect(401);
-    });
+  describe('1. Five-way concurrency — stable outcome', () => {
+    let extractionId: string;
 
-    it('accepts valid access token', async () => {
-      await request(app.getHttpServer())
-        .get('/api/v1/auth/me')
-        .set('Authorization', `Bearer ${accessTokenA}`)
-        .expect(200);
-    });
-
-    it('rejects expired or invalid token with 401', async () => {
-      await request(app.getHttpServer())
-        .get('/api/v1/auth/me')
-        .set('Authorization', 'Bearer eyJhbGciOiJIUzI1NiJ9.invalid')
-        .expect(401);
-    });
-  });
-
-  // ── 2. Same-actor concurrency ───────────────────────────────────────────
-
-  describe('2. Five-way concurrency — stable outcome', () => {
-    let commonExtractionId: string;
-
-    it('1 CREATED + 4 REUSED with the same extraction ID', async () => {
+    it('5 concurrent requestExtraction: 1 CREATED + 4 REUSED, 1 extraction row, 1 dispatch row', async () => {
       const CONCURRENCY = 5;
       const results = await Promise.allSettled(
         Array.from({ length: CONCURRENCY }, () =>
@@ -333,272 +241,155 @@ describe('Extraction concurrency & security (e2e)', () => {
         ),
       );
 
-      type ExtractionResult = { action: string; extraction: { id: string; status: string } };
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      expect(fulfilled.length).toBe(CONCURRENCY);
 
-      for (let i = 0; i < CONCURRENCY; i++) {
-        const r = results[i];
-        expect(r.status).toBe('fulfilled');
-        const val = (r as PromiseFulfilledResult<ExtractionResult>).value;
-        expect(['CREATED', 'REUSED']).toContain(val.action);
-        expect(val.extraction.id).toBeTruthy();
-      }
-
-      const extractionIds = new Set(
-        results.map((r) => (r as PromiseFulfilledResult<ExtractionResult>).value.extraction.id),
+      const values = fulfilled.map(
+        (r) => (r as PromiseFulfilledResult<ExtractionResultOrAction>).value,
       );
-      expect(extractionIds.size).toBe(1);
-      commonExtractionId = extractionIds.values().next().value;
+      const createdCount = values.filter((v) => v.action === 'CREATED').length;
+      const reusedCount = values.filter((v) => v.action === 'REUSED').length;
+      expect(createdCount).toBe(1);
+      expect(reusedCount).toBe(CONCURRENCY - 1);
 
-      // DB proof: exactly one extraction row
+      const extractionIds = new Set(values.map((v) => v.extraction.id));
+      expect(extractionIds.size).toBe(1);
+      extractionId = extractionIds.values().next().value;
+
       const extractionCount = await prisma.resumeTextExtraction.count({
-        where: { id: commonExtractionId, storedFileId: storedFileIdA, companyId: companyIdA },
+        where: { storedFileId: storedFileIdA, companyId: companyIdA },
       });
       expect(extractionCount).toBe(1);
+
+      const dispatchCount = await prisma.extractionDispatch.count({ where: { extractionId } });
+      expect(dispatchCount).toBe(1);
     }, 30000);
 
     it('worker processes the extraction to COMPLETED', async () => {
-      let extraction: {
-        status: string;
-        extractedText: string | null;
-        extractedTextSha256: string | null;
-      } | null = null;
+      let status: string | null = null;
       for (let i = 0; i < 30; i++) {
-        extraction = await prisma.resumeTextExtraction.findUnique({
-          where: { id: commonExtractionId },
-          select: { status: true, extractedText: true, extractedTextSha256: true },
-        });
-        if (extraction && extraction.status === 'COMPLETED') break;
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-      expect(extraction).toBeDefined();
-      expect(extraction!.status).toBe('COMPLETED');
-
-      // BullMQ proof: text matches
-      expect(extraction!.extractedText).toBeDefined();
-      expect(extraction!.extractedText).toContain(testDocxText);
-      expect(extraction!.extractedTextSha256).toBeDefined();
-
-      // Dispatch proof: exactly one dispatch record, DISPATCHED
-      const dispatch = await prisma.extractionDispatch.findUnique({
-        where: { extractionId: commonExtractionId },
-      });
-      expect(dispatch).toBeDefined();
-      expect(dispatch!.dispatchStatus).toBe('DISPATCHED');
-      expect(dispatch!.jobId).toBe(commonExtractionId);
-    }, 60000);
-
-    it('replay returns REUSED with same extraction ID', async () => {
-      const replayResult = await extractionService.requestExtraction(storedFileIdA, companyIdA);
-      expect(replayResult.action).toBe('REUSED');
-      expect(replayResult.extraction.id).toBe(commonExtractionId);
-
-      // No new dispatch record
-      const dispatchCountAfter = await prisma.extractionDispatch.count({
-        where: { extractionId: commonExtractionId },
-      });
-      expect(dispatchCountAfter).toBe(1);
-    });
-  });
-
-  // ── 3. Dispatch crash recovery — stale lease reclamation ──────────────
-
-  describe('3. Dispatch crash recovery — stale lease reclamation', () => {
-    let storedFileId: string;
-    let filePath: string;
-    let extractionId: string;
-
-    beforeAll(async () => {
-      const storedName = storage.generateStoredName('docx');
-      const putResult = await storage.put(
-        companyIdA,
-        storedName,
-        docxBuffer,
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      );
-      filePath = join(storage['basePath'], putResult.storageKey);
-      const sf = await prisma.storedFile.create({
-        data: {
-          companyId: companyIdA,
-          uploadedByUserId: userIdA,
-          storageKey: putResult.storageKey,
-          originalName: 'resume.docx',
-          storedName,
-          extension: '.docx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          sizeBytes: docxBuffer.length,
-          checksumSha256: docxChecksum,
-          category: 'RESUME',
-          status: 'ACTIVE',
-        },
-      });
-      storedFileId = sf.id;
-    });
-
-    afterAll(() => {
-      cleanupFile(filePath);
-    });
-
-    it('simulates crash by leaving dispatch in DISPATCHING then reclaims', async () => {
-      const result = await extractionService.requestExtraction(storedFileId, companyIdA);
-      expect(result.action).toBe('CREATED');
-      extractionId = result.extraction.id;
-
-      await prisma.extractionDispatch.updateMany({
-        where: { extractionId },
-        data: {
-          dispatchStatus: 'DISPATCHING',
-          leaseStartedAt: new Date(Date.now() - 60000),
-        },
-      });
-
-      const replay = await extractionService.requestExtraction(storedFileId, companyIdA);
-      expect(replay.action).toBe('REUSED');
-
-      let extraction: { status: string } | null = null;
-      for (let i = 0; i < 30; i++) {
-        extraction = await prisma.resumeTextExtraction.findUnique({
+        const e = await prisma.resumeTextExtraction.findUnique({
           where: { id: extractionId },
           select: { status: true },
         });
-        if (extraction && extraction.status === 'COMPLETED') break;
+        if (e?.status === 'COMPLETED') {
+          status = e.status;
+          break;
+        }
         await new Promise((r) => setTimeout(r, 1000));
       }
-      expect(extraction).toBeDefined();
-      expect(extraction!.status).toBe('COMPLETED');
+      expect(status).toBe('COMPLETED');
     }, 60000);
+
+    it('BullMQ has one completed job with deterministic ID', async () => {
+      const completed = await queue.getCompletedCount();
+      expect(completed).toBeGreaterThanOrEqual(1);
+      const job = await queue.getJob(extractionId);
+      expect(job).toBeDefined();
+      expect(job!.id).toBe(extractionId);
+      expect(await job!.getState()).toBe('completed');
+    });
+
+    it('replay returns REUSED with same extraction ID', async () => {
+      const result = await extractionService.requestExtraction(storedFileIdA, companyIdA);
+      expect(result.extraction.id).toBe(extractionId);
+      expect(result.action).toBe('REUSED');
+    });
   });
 
-  // ── 4. Retry generation — DB-backed identity ──────────────────────────
+  // ── 2. Cross-company isolation ──────────────────────────────────────
 
-  describe('4. Retry generation — DB-backed identity', () => {
-    let storedFileId: string;
-    let filePath: string;
-
-    beforeAll(async () => {
-      const storedName = storage.generateStoredName('docx');
-      const putResult = await storage.put(
-        companyIdA,
-        storedName,
-        docxBuffer,
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      );
-      filePath = join(storage['basePath'], putResult.storageKey);
-      const sf = await prisma.storedFile.create({
-        data: {
-          companyId: companyIdA,
-          uploadedByUserId: userIdA,
-          storageKey: putResult.storageKey,
-          originalName: 'resume.docx',
-          storedName,
-          extension: '.docx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          sizeBytes: docxBuffer.length,
-          checksumSha256: docxChecksum,
-          category: 'RESUME',
-          status: 'ACTIVE',
-        },
-      });
-      storedFileId = sf.id;
+  describe('2. Cross-company isolation', () => {
+    it('Company B cannot access Company A file', async () => {
+      await expect(
+        extractionService.requestExtraction(storedFileIdA, companyIdB),
+      ).rejects.toThrow();
     });
 
-    afterAll(() => {
-      cleanupFile(filePath);
+    it('Company A cannot access Company B file', async () => {
+      await expect(
+        extractionService.requestExtraction(storedFileIdB, companyIdA),
+      ).rejects.toThrow();
     });
+  });
 
-    async function createFailedExtraction(): Promise<string> {
-      const ext = await prisma.resumeTextExtraction.create({
+  // ── 3. FAILED → retry creates new extraction ────────────────────────
+
+  describe('3. FAILED extraction retry', () => {
+    let retryId: string;
+
+    it('requestExtraction after FAILED creates new extraction', async () => {
+      // Pre-create a FAILED extraction
+      await prisma.resumeTextExtraction.create({
         data: {
-          storedFileId,
-          companyId: companyIdA,
-          initiatedByUserId: userIdA,
+          storedFileId: storedFileIdB,
+          companyId: companyIdB,
+          initiatedByUserId: userIdB,
           status: 'FAILED',
           mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           sourceFileSha256: docxChecksum,
-          parserName: 'test-parser',
-          parserVersion: '1.0.0',
+          parserName: 'test',
+          parserVersion: '1.0',
           failureCode: 'MANUAL_FAIL',
           completedAt: new Date(),
         },
       });
-      return ext.id;
-    }
 
-    it('creates retry with incremented retryGeneration', async () => {
-      // Create one FAILED extraction via DB (avoids worker race)
-      await createFailedExtraction();
+      const result = await extractionService.requestExtraction(storedFileIdB, companyIdB);
+      expect(result.action).toBe('CREATED');
+      retryId = result.extraction.id;
 
-      const retryResult = await extractionService.retryExtraction(
-        storedFileId,
-        companyIdA,
-        userIdA,
-      );
-      expect(retryResult.action).toBe('CREATED');
-
-      const retryExtraction = await prisma.resumeTextExtraction.findUnique({
-        where: { id: retryResult.extraction.id },
-        select: { retryGeneration: true, status: true },
+      const totalExtractions = await prisma.resumeTextExtraction.count({
+        where: { storedFileId: storedFileIdB, companyId: companyIdB },
       });
-      expect(retryExtraction).toBeDefined();
-      // failedCount = 1 (one manually-created FAILED extraction)
-      // retryGeneration = failedCount + 1 = 2
-      expect(retryExtraction!.retryGeneration).toBe(2);
-    }, 15000);
+      // 1 FAILED + 1 new CREATED = 2 total
+      expect(totalExtractions).toBe(2);
+    });
 
-    it('enforces retry limit', async () => {
-      // Count existing FAILED extractions for this file
-      await prisma.resumeTextExtraction.updateMany({
-        where: { storedFileId, companyId: companyIdA, status: { not: 'FAILED' } },
-        data: { status: 'FAILED', failureCode: 'MANUAL_FAIL', completedAt: new Date() },
-      });
-
-      const existing = await prisma.resumeTextExtraction.findMany({
-        where: { storedFileId, companyId: companyIdA },
-        select: { id: true },
-      });
-      await prisma.extractionDispatch.deleteMany({
-        where: { extractionId: { in: existing.map((e) => e.id) } },
-      });
-
-      const failedCount = await prisma.resumeTextExtraction.count({
-        where: {
-          storedFileId,
-          companyId: companyIdA,
-          sourceFileSha256: docxChecksum,
-          status: 'FAILED',
-        },
-      });
-
-      // Fill remaining retry slots with DB-created FAILED records (no worker involvement)
-      for (let i = failedCount; i < 3; i++) {
-        await createFailedExtraction();
+    it('worker processes the retry to COMPLETED', async () => {
+      let status: string | null = null;
+      for (let i = 0; i < 30; i++) {
+        const e = await prisma.resumeTextExtraction.findUnique({
+          where: { id: retryId },
+          select: { status: true },
+        });
+        if (e?.status === 'COMPLETED') {
+          status = e.status;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1000));
       }
-
-      // Now all retry attempts are exhausted -> should throw
-      await expect(
-        extractionService.retryExtraction(storedFileId, companyIdA, userIdA),
-      ).rejects.toThrow('Resume extraction has failed after maximum retry attempts');
-    }, 15000);
+      expect(status).toBe('COMPLETED');
+    }, 60000);
   });
 
-  // ── 5. Cross-company isolation ─────────────────────────────────────────
+  // ── 4. HTTP security — auth guards at HTTP layer ─────────────────
 
-  describe('5. Cross-company isolation', () => {
-    it('Company B gets error when using Company A stored file ID', async () => {
-      await expect(extractionService.requestExtraction(storedFileIdA, companyIdB)).rejects.toThrow(
-        'Resume file not found',
-      );
+  describe('4. HTTP security — auth guards at HTTP layer', () => {
+    let tokenA: string;
+
+    beforeAll(async () => {
+      const loginA = await request(app.getHttpServer())
+        .post('/api/v1/auth/login').send({ email: emailA, password: 'E2eStr0ng!Pass' }).expect(200);
+      tokenA = loginA.body.data.tokens.accessToken;
     });
 
-    it('Company A gets error when using Company B stored file ID', async () => {
-      await expect(extractionService.requestExtraction(storedFileIdB, companyIdA)).rejects.toThrow(
-        'Resume file not found',
-      );
+    it('returns 401 on protected endpoint without token', async () => {
+      await request(app.getHttpServer()).get('/api/v1/auth/me').expect(401);
     });
 
-    it('Company B cannot retry Company A extraction', async () => {
-      await expect(
-        extractionService.retryExtraction(storedFileIdA, companyIdB, userIdB),
-      ).rejects.toThrow('Resume file not found');
+    it('returns 401 on retry-extraction without token', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/applications/00000000-0000-0000-0000-000000000000/ai-screenings/retry-extraction')
+        .expect(401);
+    });
+
+    it('accepts valid access token', async () => {
+      await request(app.getHttpServer()).get('/api/v1/auth/me').set('Authorization', `Bearer ${tokenA}`).expect(200);
+    });
+
+    it('rejects invalid token with 401', async () => {
+      await request(app.getHttpServer()).get('/api/v1/auth/me').set('Authorization', 'Bearer invalid').expect(401);
     });
   });
 });

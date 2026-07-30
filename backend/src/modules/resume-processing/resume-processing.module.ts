@@ -7,6 +7,7 @@ import { ResumeFileReaderService } from './services/resume-file-reader.service';
 import { ResumeTextExtractorService } from './services/resume-text-extractor.service';
 import { ResumeExtractionService } from './services/resume-extraction.service';
 import { ExtractionDispatchReconcilerService } from './services/extraction-dispatch-reconciler.service';
+import { ExtractionDispatchReconcilerScheduler } from './services/extraction-dispatch-reconciler-scheduler.service';
 import { ResumeExtractionProcessor } from './queue/resume-extraction.processor';
 import { RESUME_EXTRACTION_QUEUE } from './queue/resume-extraction-queue.constants';
 
@@ -22,6 +23,7 @@ import { RESUME_EXTRACTION_QUEUE } from './queue/resume-extraction-queue.constan
     ResumeTextExtractorService,
     ResumeExtractionService,
     ExtractionDispatchReconcilerService,
+    ExtractionDispatchReconcilerScheduler,
     ResumeExtractionProcessor,
   ],
   exports: [ResumeTextExtractorService, ResumeFileReaderService, ResumeExtractionService],

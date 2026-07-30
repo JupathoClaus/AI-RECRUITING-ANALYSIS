@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Queue, JobState } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { ResumeFileReaderService } from './resume-file-reader.service';
@@ -44,6 +44,7 @@ export class ExtractionDispatchReconcilerService {
     const pending = await this.prisma.extractionDispatch.findMany({
       where: {
         dispatchStatus: { in: ['PENDING_DISPATCH', 'DISPATCH_FAILED'] },
+        dispatchAttempts: { lt: MAX_DISPATCH_RETRIES },
         AND: [{ OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }] }],
       },
       select: {
@@ -200,9 +201,14 @@ export class ExtractionDispatchReconcilerService {
 
     for (const dispatch of staleDispatches) {
       try {
-        const jobStillExists = await this.jobExistsInBullMQ(dispatch.extractionId);
+        const jobState = await this.getJobStateInBullMQ(dispatch.extractionId);
 
-        if (jobStillExists) {
+        if (jobState !== null) {
+          const extraction = await this.prisma.resumeTextExtraction.findUnique({
+            where: { id: dispatch.extractionId },
+            select: { status: true },
+          });
+
           await this.prisma.extractionDispatch.updateMany({
             where: {
               id: dispatch.id,
@@ -215,9 +221,15 @@ export class ExtractionDispatchReconcilerService {
               dispatchedAt: new Date(),
             },
           });
-          this.logger.warn(
-            `Reconciled stale DISPATCHING → DISPATCHED for extraction ${dispatch.extractionId} (job existed)`,
-          );
+          if (extraction && extraction.status !== 'COMPLETED' && extraction.status !== 'FAILED') {
+            this.logger.warn(
+              `Stale DISPATCHING → DISPATCHED for extraction ${dispatch.extractionId}: job ${jobState}, extraction ${extraction.status}`,
+            );
+          } else {
+            this.logger.warn(
+              `Stale DISPATCHING → DISPATCHED for extraction ${dispatch.extractionId}: job ${jobState}`,
+            );
+          }
         } else {
           const nextAttemptAt = new Date(Date.now() + DISPATCH_LEASE_TTL_MS);
           await this.prisma.extractionDispatch.updateMany({
@@ -249,12 +261,23 @@ export class ExtractionDispatchReconcilerService {
     return reclaimed;
   }
 
-  private async jobExistsInBullMQ(extractionId: string): Promise<boolean> {
+  private async getJobStateInBullMQ(
+    extractionId: string,
+  ): Promise<JobState | 'retention-removed' | null> {
     try {
       const job = await this.extractionQueue.getJob(extractionId);
-      return job !== undefined;
+      if (!job) {
+        const completedCount = await this.extractionQueue.getCompletedCount();
+        const failedCount = await this.extractionQueue.getFailedCount();
+        if (completedCount > 0 || failedCount > 0) {
+          return 'retention-removed';
+        }
+        return null;
+      }
+      const state = await job.getState();
+      return state as JobState | 'retention-removed';
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -268,13 +291,14 @@ export class ExtractionDispatchReconcilerService {
       select: { dispatchAttempts: true },
     });
     const attempts = (dispatch?.dispatchAttempts ?? 0) + 1;
+    const exhausted = attempts >= MAX_DISPATCH_RETRIES;
     const backoffMs = Math.min(BASE_BACKOFF_MS * Math.pow(2, attempts - 1), 300_000);
-    const nextAttemptAt = attempts < MAX_DISPATCH_RETRIES ? new Date(Date.now() + backoffMs) : null;
+    const nextAttemptAt = exhausted ? null : new Date(Date.now() + backoffMs);
 
     await this.prisma.extractionDispatch.updateMany({
       where: { extractionId, dispatchToken: leaseToken },
       data: {
-        dispatchStatus: attempts >= MAX_DISPATCH_RETRIES ? 'DISPATCH_FAILED' : 'DISPATCH_FAILED',
+        dispatchStatus: 'DISPATCH_FAILED',
         dispatchToken: null,
         dispatchFailedAt: new Date(),
         failureCode,
@@ -284,7 +308,7 @@ export class ExtractionDispatchReconcilerService {
       },
     });
 
-    if (attempts >= MAX_DISPATCH_RETRIES) {
+    if (exhausted) {
       this.logger.error(
         `Extraction ${extractionId} dispatch permanently failed after ${attempts} attempts: ${failureCode}`,
       );

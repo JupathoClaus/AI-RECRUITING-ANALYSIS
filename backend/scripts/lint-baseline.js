@@ -3,14 +3,19 @@ const { readFileSync, writeFileSync, existsSync } = require('fs');
 const { resolve } = require('path');
 
 const baselineFile = resolve(__dirname, 'lint-baseline.txt');
-const eslintCmd = `npx eslint "src/**/*.ts" "test/**/*.ts"`;
+const eslint = resolve(__dirname, '..', 'node_modules', '.bin', 'eslint');
+const env = { ...process.env, ESLINT_USE_FLAT_CONFIG: 'false' };
+const globs = ['src/**/*.ts', 'test/**/*.ts'];
 
 function extractViolations(output) {
   const violations = new Set();
   for (const line of output.split('\n')) {
-    const match = line.match(/^(.+?)\((\d+):(\d+)\):\s+(warning|error)\s+(.+?)\s+(@typescript-eslint\/\S+|[a-z-]+\/[a-z-]+|\S+)$/);
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    // ESLint compact format: PATH: line LINE, col COL, Warning|Error - MESSAGE (RULE)
+    const match = trimmed.match(/^(.+?):\s+line\s+(\d+),\s+col\s+(\d+),\s+(Warning|Error)\s+-\s+(.+?)\s+\((@typescript-eslint\/\S+|[a-z-]+\/[a-z-]+|\S+)\)$/);
     if (match) {
-      violations.add(`${match[1]}:${match[4]}:${match[5]}`);
+      violations.add(`${match[1]}:${match[4].toLowerCase()}:${match[5]}`);
     }
   }
   return [...violations].sort();
@@ -18,7 +23,7 @@ function extractViolations(output) {
 
 let stdout;
 try {
-  stdout = execSync(eslintCmd, { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+  stdout = execSync(`"${eslint}" --format compact ${globs.map(g => `"${g}"`).join(' ')}`, { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024, env, shell: true });
 } catch (err) {
   stdout = err.stdout || '';
 }

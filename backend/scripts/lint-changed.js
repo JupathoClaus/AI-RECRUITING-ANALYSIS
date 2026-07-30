@@ -3,6 +3,7 @@ const { resolve } = require('path');
 
 const repoRoot = resolve(__dirname, '../..');
 const diffCmd = `git -C "${repoRoot}" diff --name-only HEAD -- "backend/src/*.ts" "backend/test/*.ts"`;
+const env = { ...process.env, ESLINT_USE_FLAT_CONFIG: 'false' };
 
 let changed;
 try {
@@ -32,7 +33,7 @@ console.log('Changed backend TS files:', files);
 const eslintCmd = `npx eslint ${files}`;
 
 try {
-  execSync(eslintCmd, { encoding: 'utf-8', stdio: 'inherit', maxBuffer: 10 * 1024 * 1024 });
+  execSync(eslintCmd, { encoding: 'utf-8', stdio: 'inherit', maxBuffer: 10 * 1024 * 1024, env });
   console.log('PASS: All changed files pass lint.');
   process.exit(0);
 } catch (err) {
