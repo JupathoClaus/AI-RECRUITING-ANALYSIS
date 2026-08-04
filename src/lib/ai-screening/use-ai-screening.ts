@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import type { ScreeningWorkflowState } from './screening-state'
 import {
   POLLING_INTERVAL_MS, MAX_POLLING_DURATION_MS, EXTRACTION_RETRY_INTERVAL_MS, MAX_EXTRACTION_WAIT_MS,
@@ -80,7 +80,15 @@ export function useAiScreening() {
   }, [])
 
   const setWorkflow = useCallback((updates: Partial<ScreeningState>) => {
-    if (mountedRef.current) setState(prev => ({ ...prev, ...updates }))
+    if (!mountedRef.current) return
+    setState(prev => {
+      let changed = false
+      const keys = Object.keys(updates) as (keyof ScreeningState)[]
+      for (const key of keys) {
+        if (prev[key] !== updates[key]) { changed = true; break }
+      }
+      return changed ? { ...prev, ...updates } : prev
+    })
   }, [])
 
   const selectApplication = useCallback((applicationId: string) => {
@@ -312,13 +320,16 @@ export function useAiScreening() {
     }
   }, [setWorkflow, isStale])
 
-  return {
-    state,
-    selectApplication,
-    handleUploadResume,
-    cancelUpload,
-    requestScreening,
-    retryScreening,
-    loadLatestScreening,
-  }
+  return useMemo(
+    () => ({
+      state,
+      selectApplication,
+      handleUploadResume,
+      cancelUpload,
+      requestScreening,
+      retryScreening,
+      loadLatestScreening,
+    }),
+    [state, selectApplication, handleUploadResume, cancelUpload, requestScreening, retryScreening, loadLatestScreening],
+  )
 }

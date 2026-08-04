@@ -114,6 +114,28 @@ describe('AddCandidateDialog', () => {
     mockUseAiScreening.mockReturnValue(hookState())
   })
 
+  describe('render-loop regression', () => {
+    it('does not reset repeatedly while mounted closed (prevents max-update loop)', () => {
+      renderDialog(false)
+      expect(mockSelectApplication).not.toHaveBeenCalled()
+      renderDialog(false)
+      renderDialog(false)
+    })
+
+    it('resets exactly once on the open-to-closed transition', () => {
+      const { rerender } = renderDialog(true)
+      rerender(<AddCandidateDialog open={false} onOpenChange={vi.fn()} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />)
+      expect(mockSelectApplication).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not reset on close-to-open transition', () => {
+      const { rerender } = renderDialog(false)
+      expect(mockSelectApplication).not.toHaveBeenCalled()
+      rerender(<AddCandidateDialog open={true} onOpenChange={vi.fn()} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />)
+      expect(mockSelectApplication).not.toHaveBeenCalled()
+    })
+  })
+
   describe('form display', () => {
     it('renders dialog with candidate fields', () => {
       renderDialog(true)

@@ -99,8 +99,11 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
     screening.selectApplication('')
   }, [screening])
 
+  const prevOpenRef = useRef<boolean>(open)
   React.useEffect(() => {
-    if (!open) startTransition(() => fullReset())
+    const wasOpen = prevOpenRef.current
+    prevOpenRef.current = open
+    if (wasOpen && !open) startTransition(() => fullReset())
   }, [open, fullReset])
 
   React.useEffect(() => {

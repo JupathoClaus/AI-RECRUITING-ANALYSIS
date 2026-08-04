@@ -119,6 +119,51 @@ describe('useAiScreening', () => {
     })
   })
 
+  describe('render-loop regression', () => {
+    it('returns a stable object identity across renders with unchanged state', () => {
+      const { result, rerender } = renderHook(() => useAiScreening())
+      const first = result.current
+      rerender()
+      const second = result.current
+      expect(second).toBe(first)
+      expect(second.selectApplication).toBe(first.selectApplication)
+      expect(second.loadLatestScreening).toBe(first.loadLatestScreening)
+    })
+
+    it('does not change object identity when selectApplication is idempotent', () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+      const afterFirstCall = result.current
+      expect(afterFirstCall.state.workflowState).toBe('APPLICATION_SELECTED')
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+      const afterSecondCall = result.current
+      expect(afterSecondCall.state).toBe(afterFirstCall.state)
+      expect(afterSecondCall).toBe(afterFirstCall)
+    })
+
+    it('does not enter an update loop on repeated identical setWorkflow invocations', () => {
+      let renders = 0
+      const { result } = renderHook(() => {
+        renders++
+        return useAiScreening()
+      })
+      act(() => {
+        result.current.selectApplication('same-app')
+      })
+      const stable = result.current
+      const baseline = renders
+      for (let i = 0; i < 20; i++) {
+        act(() => {
+          result.current.selectApplication('same-app')
+        })
+        expect(result.current).toBe(stable)
+      }
+      expect(renders).toBeLessThanOrEqual(baseline + 1)
+      expect(result.current.state.workflowState).toBe('APPLICATION_SELECTED')
+      expect(result.current.state.selectedApplicationId).toBe('same-app')
+    })
+  })
+
   describe('selectApplication', () => {
     it('sets application and clears previous state', () => {
       const { result } = renderHook(() => useAiScreening())
@@ -789,3 +834,5 @@ describe('useAiScreening', () => {
     })
   })
 })
+
+

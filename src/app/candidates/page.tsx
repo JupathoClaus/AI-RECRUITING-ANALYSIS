@@ -124,6 +124,7 @@ function DetailScreeningSection({ applicationId }: { applicationId: string }) {
   const [resumeInfo, setResumeInfo] = React.useState<StoredFileResponse | null>(null)
   const [resumeLoading, setResumeLoading] = React.useState(true)
   const screening = useAiScreening()
+  const { selectApplication, loadLatestScreening, requestScreening, retryScreening } = screening
 
   React.useEffect(() => {
     if (!applicationId) return
@@ -143,17 +144,17 @@ function DetailScreeningSection({ applicationId }: { applicationId: string }) {
   React.useEffect(() => {
     if (!applicationId) return
     queueMicrotask(() => {
-      screening.selectApplication(applicationId)
-      void screening.loadLatestScreening(applicationId)
+      selectApplication(applicationId)
+      void loadLatestScreening(applicationId)
     })
-  }, [applicationId, screening])
+  }, [applicationId, selectApplication, loadLatestScreening])
 
   const handleStartScreening = async () => {
-    await screening.requestScreening()
+    await requestScreening()
   }
 
   const handleRetryScreening = () => {
-    screening.retryScreening()
+    retryScreening()
   }
 
   const ws = screening.state.workflowState
