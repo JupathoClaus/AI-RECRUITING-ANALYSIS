@@ -11,4 +11,5 @@ export default registerAs('app', () => ({
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3001',
   logLevel: process.env.LOG_LEVEL || 'debug',
   healthCheckTimeoutMs: parseInt(process.env.HEALTH_CHECK_TIMEOUT_MS || '3000', 10),
+  uploadDir: process.env.UPLOAD_DIR || './uploads',
 }));

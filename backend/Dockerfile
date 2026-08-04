@@ -22,12 +22,14 @@ RUN apk add --no-cache openssl
 WORKDIR /app
 
 RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nestjs -u 1001
+RUN adduser -S nestjs -u 1001 -G nodejs
 
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nestjs:nodejs /app/package.json ./
+
+RUN mkdir -p /app/uploads && chown -R nestjs:nodejs /app/uploads
 
 USER nestjs
 
