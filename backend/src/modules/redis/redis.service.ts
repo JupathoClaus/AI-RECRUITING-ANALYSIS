@@ -17,10 +17,10 @@ export class RedisService implements OnModuleDestroy {
       keyPrefix: this.configService.get<string>('redis.keyPrefix'),
       retryStrategy: (times) => {
         if (this.destroyed) return null;
-        if (times > 10) return null;
         return Math.min(times * 100, 3000);
       },
-      maxRetriesPerRequest: 3,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
       enableReadyCheck: true,
       lazyConnect: false,
     });

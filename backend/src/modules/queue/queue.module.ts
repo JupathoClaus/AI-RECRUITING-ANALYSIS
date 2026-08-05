@@ -14,6 +14,7 @@ import { QueueService } from './queue.service';
           port: configService.get<number>('redis.port'),
           password: configService.get<string>('redis.password'),
           db: configService.get<number>('redis.db'),
+          enableOfflineQueue: false,
         },
         defaultJobOptions: {
           removeOnComplete: 100,
