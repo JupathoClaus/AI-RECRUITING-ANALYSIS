@@ -9,11 +9,19 @@ export class AuthorizationCacheService {
 
   async clearMemberCache(membershipId: string): Promise<void> {
     this.logger.debug(`Clearing authorization cache for membership ${membershipId}`);
-    await this.redisService.del(`auth:member:${membershipId}`);
+    try {
+      await this.redisService.del(`auth:member:${membershipId}`);
+    } catch (error) {
+      this.logger.warn(`Failed to clear authorization cache for membership ${membershipId}`);
+    }
   }
 
   async clearCompanyMemberCache(companyId: string): Promise<void> {
     this.logger.debug(`Clearing all member authorization caches for company ${companyId}`);
-    await this.redisService.del(`auth:company:${companyId}:members`);
+    try {
+      await this.redisService.del(`auth:company:${companyId}:members`);
+    } catch (error) {
+      this.logger.warn(`Failed to clear authorization cache for company ${companyId}`);
+    }
   }
 }

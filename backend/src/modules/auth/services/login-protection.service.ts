@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { RedisService } from '@modules/redis/redis.service';
+import { AUTH_ERROR_CODES } from '../constants/auth.constants';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -83,23 +84,37 @@ export class LoginProtectionService {
   ): Promise<{ allowed: boolean; remaining: number; resetTimeSeconds: number }> {
     const key = `ratelimit:login:${crypto.createHash('sha256').update(`${ipAddress}:${normalizedEmail}`).digest('hex')}`;
 
-    const currentStr = await this.redisService.get(key);
-    const current = currentStr ? parseInt(currentStr, 10) : 0;
+    try {
+      const currentStr = await this.redisService.get(key);
+      const current = currentStr ? parseInt(currentStr, 10) : 0;
 
-    const remaining = Math.max(0, this.rateLimitMax - current);
-    const allowed = current < this.rateLimitMax;
+      const remaining = Math.max(0, this.rateLimitMax - current);
+      const allowed = current < this.rateLimitMax;
 
-    return { allowed, remaining, resetTimeSeconds: this.rateLimitWindowSeconds };
+      return { allowed, remaining, resetTimeSeconds: this.rateLimitWindowSeconds };
+    } catch {
+      throw new ServiceUnavailableException({
+        code: AUTH_ERROR_CODES.SESSION_STORE_UNAVAILABLE,
+        message: 'Authentication session store is temporarily unavailable',
+      });
+    }
   }
 
   async recordLoginAttempt(ipAddress: string, normalizedEmail: string): Promise<void> {
     const key = `ratelimit:login:${crypto.createHash('sha256').update(`${ipAddress}:${normalizedEmail}`).digest('hex')}`;
 
-    const exists = await this.redisService.exists(key);
-    if (!exists) {
-      await this.redisService.setWithExpiry(key, '1', this.rateLimitWindowSeconds);
-    } else {
-      await this.redisService.increment(key);
+    try {
+      const exists = await this.redisService.exists(key);
+      if (!exists) {
+        await this.redisService.setWithExpiry(key, '1', this.rateLimitWindowSeconds);
+      } else {
+        await this.redisService.increment(key);
+      }
+    } catch {
+      throw new ServiceUnavailableException({
+        code: AUTH_ERROR_CODES.SESSION_STORE_UNAVAILABLE,
+        message: 'Authentication session store is temporarily unavailable',
+      });
     }
   }
 }

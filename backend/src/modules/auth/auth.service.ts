@@ -4,6 +4,7 @@ import {
   ConflictException,
   UnauthorizedException,
   NotFoundException,
+  ServiceUnavailableException,
   HttpException,
   HttpStatus,
   Logger,
@@ -1084,17 +1085,24 @@ export class AuthService {
     maxAttempts: number,
     windowSeconds: number,
   ): Promise<boolean> {
-    const current = await this.redisService.get(key);
-    const count = current ? parseInt(current, 10) : 0;
+    try {
+      const current = await this.redisService.get(key);
+      const count = current ? parseInt(current, 10) : 0;
 
-    if (count >= maxAttempts) return true;
+      if (count >= maxAttempts) return true;
 
-    if (count === 0) {
-      await this.redisService.setWithExpiry(key, '1', windowSeconds);
-    } else {
-      await this.redisService.increment(key);
+      if (count === 0) {
+        await this.redisService.setWithExpiry(key, '1', windowSeconds);
+      } else {
+        await this.redisService.increment(key);
+      }
+
+      return false;
+    } catch {
+      throw new ServiceUnavailableException({
+        code: AUTH_ERROR_CODES.SESSION_STORE_UNAVAILABLE,
+        message: 'Authentication session store is temporarily unavailable',
+      });
     }
-
-    return false;
   }
 }

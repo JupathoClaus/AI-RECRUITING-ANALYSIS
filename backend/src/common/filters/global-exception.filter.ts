@@ -60,8 +60,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.logger.error(`[${requestId}] Unhandled: ${exception.message}`, exception.stack);
     }
 
-    const isProduction = process.env.NODE_ENV === 'production';
-
     const errorResponse: Record<string, unknown> = {
       statusCode: status,
       errorCode,
@@ -73,12 +71,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (details) {
       errorResponse.details = details;
-    }
-
-    if (!isProduction && !(exception instanceof HttpException)) {
-      if (exception instanceof Error) {
-        errorResponse.stack = exception.stack;
-      }
     }
 
     this.logger.warn(
