@@ -153,11 +153,7 @@ export class ExtractionDispatchReconcilerService {
           return;
         }
         if (existingState === 'failed') {
-          // The enqueue operation succeeded. Processing failure is terminal
-          // for this extraction generation and is recovered only by the
-          // explicit extraction retry workflow.
-          await this.markDispatched(extractionId, leaseToken, jobId);
-          return;
+          await existingJob.remove();
         } else if (
           existingState === 'waiting' ||
           existingState === 'delayed' ||
@@ -208,12 +204,40 @@ export class ExtractionDispatchReconcilerService {
       try {
         const jobState = await this.getJobStateInBullMQ(dispatch.extractionId);
 
-        if (
+        if (jobState === 'failed') {
+          try {
+            const failedJob = await this.extractionQueue.getJob(dispatch.extractionId);
+            if (failedJob) {
+              await failedJob.remove();
+            }
+          } catch (removeErr) {
+            this.logger.warn(
+              `Failed to remove failed job for extraction ${dispatch.extractionId}: ${(removeErr as Error).message}`,
+            );
+          }
+          const nextAttemptAt = new Date(Date.now() + DISPATCH_LEASE_TTL_MS);
+          await this.prisma.extractionDispatch.updateMany({
+            where: {
+              id: dispatch.id,
+              dispatchStatus: 'DISPATCHING',
+              leaseStartedAt: dispatch.leaseStartedAt,
+            },
+            data: {
+              dispatchStatus: 'PENDING_DISPATCH',
+              dispatchToken: null,
+              leaseStartedAt: null,
+              dispatchAttempts: { increment: 1 },
+              nextAttemptAt,
+            },
+          });
+          this.logger.warn(
+            `Reclaimed stale DISPATCHING → PENDING_DISPATCH for extraction ${dispatch.extractionId}: job failed, re-enqueue`,
+          );
+        } else if (
           jobState === 'waiting' ||
           jobState === 'delayed' ||
           jobState === 'active' ||
-          jobState === 'completed' ||
-          jobState === 'failed'
+          jobState === 'completed'
         ) {
           await this.prisma.extractionDispatch.updateMany({
             where: {
