@@ -213,7 +213,7 @@ describe('IdempotencyService', () => {
       expect(record).toBeNull();
     });
 
-    it('single-owner FAILED recovery prevents concurrent execution', async () => {
+    it('single-owner FAILED recovery: exactly one execution, both callers converge on one result', async () => {
       const concurrentKey = 'test-key-concurrent-fail';
 
       // Create a FAILED record
@@ -269,15 +269,133 @@ describe('IdempotencyService', () => {
         }),
       ]);
 
-      // Only one should have COMPLETED
-      const completed = results.filter(
-        (r) => r.status === 'fulfilled' && r.value.status === 'COMPLETED',
-      );
-      expect(completed.length).toBe(1);
+      // The business executor must have run exactly once, never twice.
+      expect(executionCount).toBe(1);
 
-      // At most one execution
-      expect(executionCount).toBeLessThanOrEqual(1);
-    });
+      // Both callers legitimately return COMPLETED: the owner executes and
+      // the competitor replays the committed result after the serialization
+      // conflict. Every fulfilled result must reference the SAME resource.
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      expect(fulfilled.length).toBe(2);
+      const completedResults = fulfilled.map((r) => r.value);
+      for (const result of completedResults) {
+        // PROCESSING is only acceptable while the owner is still running;
+        // here both calls were awaited to settle, so both must be COMPLETED.
+        expect(result.status).toBe('COMPLETED');
+        expect(result.responseJson).toEqual({ count: 1 });
+      }
+      // Both callers identify the SAME business resource — whichever caller
+      // won the single-owner claim may own it; a second resource never exists.
+      const ownerResourceId = completedResults[0].resourceId;
+      for (const result of completedResults) {
+        expect(result.resourceId).toBe(ownerResourceId);
+      }
+
+      // Exactly one idempotency record exists for the complete scope.
+      const records = await prisma.idempotencyKey.findMany({
+        where: { key: concurrentKey, companyId, userId, operation },
+      });
+      expect(records.length).toBe(1);
+      expect(records[0].status).toBe('COMPLETED');
+      expect(records[0].resourceId).toBe(ownerResourceId);
+
+      // A subsequent replay returns the owner response.
+      const replay = await service.executeTransactional({
+        companyId,
+        userId,
+        operation,
+        key: concurrentKey,
+        requestHash,
+        execute: async () => {
+          executionCount++;
+          return { resourceType: 'concurrent', resourceId: 'should-not-run', responseJson: {} };
+        },
+      });
+      expect(replay.status).toBe('COMPLETED');
+      expect(replay.resourceId).toBe(ownerResourceId);
+      expect(replay.responseJson).toEqual({ count: 1 });
+      expect(executionCount).toBe(1);
+
+      // No second business resource was ever created.
+      const allConcurrentResources = await prisma.idempotencyKey.findMany({
+        where: { companyId, userId, operation, resourceId: { startsWith: 'concurrent-' } },
+        select: { resourceId: true },
+      });
+      expect(allConcurrentResources.map((r) => r.resourceId)).toEqual([ownerResourceId]);
+    }, 30000);
+
+    it('FAILED recovery stays single-owner across repeated concurrent runs', async () => {
+      // Repeat enough times to expose scheduling nondeterminism.
+      for (let round = 0; round < 25; round++) {
+        const concurrentKey = `test-key-concurrent-fail-round-${round}`;
+        await prisma.idempotencyKey.create({
+          data: {
+            key: concurrentKey,
+            companyId,
+            userId,
+            operation,
+            requestHash,
+            status: 'FAILED',
+            resourceType: '',
+            resourceId: '',
+            expiresAt: new Date(Date.now() + 86400000),
+          },
+        });
+
+        let executionCount = 0;
+        const results = await Promise.allSettled([
+          service.executeTransactional({
+            companyId,
+            userId,
+            operation,
+            key: concurrentKey,
+            requestHash,
+            execute: async () => {
+              executionCount++;
+              await new Promise((r) => setTimeout(r, 100));
+              return {
+                resourceType: 'concurrent',
+                resourceId: `round-${round}-1`,
+                responseJson: { count: executionCount },
+              };
+            },
+          }),
+          service.executeTransactional({
+            companyId,
+            userId,
+            operation,
+            key: concurrentKey,
+            requestHash,
+            execute: async () => {
+              executionCount++;
+              await new Promise((r) => setTimeout(r, 100));
+              return {
+                resourceType: 'concurrent',
+                resourceId: `round-${round}-2`,
+                responseJson: { count: executionCount },
+              };
+            },
+          }),
+        ]);
+
+        expect(executionCount).toBe(1);
+
+        const fulfilled = results.filter((r) => r.status === 'fulfilled');
+        expect(fulfilled.length).toBe(2);
+        // Both callers converge on ONE shared business resource — either caller
+        // may own the claim, so only the shared identity is asserted, never
+        // a specific owner.
+        const resourceIds = [...new Set(fulfilled.map((r) => r.value.resourceId))];
+        expect(resourceIds.length).toBe(1);
+
+        const records = await prisma.idempotencyKey.findMany({
+          where: { key: concurrentKey, companyId, userId, operation },
+        });
+        expect(records.length).toBe(1);
+        expect(records[0].status).toBe('COMPLETED');
+        expect(records[0].resourceId).toBe(resourceIds[0]);
+      }
+    }, 120000);
   });
 
   describe('getRecord', () => {
