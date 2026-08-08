@@ -30,24 +30,30 @@ export class QueueService implements OnModuleDestroy {
     private readonly interviewReminderQueue: Queue,
     @InjectQueue(QUEUE_NAMES.INTERVIEW_NOTIFICATION)
     private readonly interviewNotificationQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.AI_SCREENING) private readonly aiScreeningQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.RESUME_PROCESSING) private readonly resumeProcessingQueue: Queue,
     private readonly configService: ConfigService,
   ) {
     this.healthCheckTimeoutMs = this.configService.get<number>('app.healthCheckTimeoutMs') || 3000;
   }
 
-  async onModuleDestroy() {
-    this.logger.log('Closing all queues...');
-    const queues = [
+  private queueEntries(): { name: string; queue: Queue }[] {
+    return [
       { name: QUEUE_NAMES.EMAIL, queue: this.emailQueue },
       { name: QUEUE_NAMES.NOTIFICATIONS, queue: this.notificationsQueue },
       { name: QUEUE_NAMES.ANALYTICS, queue: this.analyticsQueue },
       { name: QUEUE_NAMES.AI_PROCESSING, queue: this.aiProcessingQueue },
       { name: QUEUE_NAMES.INTERVIEW_REMINDER, queue: this.interviewReminderQueue },
       { name: QUEUE_NAMES.INTERVIEW_NOTIFICATION, queue: this.interviewNotificationQueue },
+      { name: QUEUE_NAMES.AI_SCREENING, queue: this.aiScreeningQueue },
+      { name: QUEUE_NAMES.RESUME_PROCESSING, queue: this.resumeProcessingQueue },
     ];
+  }
 
+  async onModuleDestroy() {
+    this.logger.log('Closing all queues...');
     const results = await Promise.allSettled(
-      queues.map(async ({ name, queue }) => {
+      this.queueEntries().map(async ({ name, queue }) => {
         try {
           await queue.close();
         } catch {
@@ -67,37 +73,52 @@ export class QueueService implements OnModuleDestroy {
   }
 
   async isHealthy(): Promise<{ healthy: boolean; details: Record<string, string> }> {
-    const queueNames = [
-      QUEUE_NAMES.EMAIL,
-      QUEUE_NAMES.NOTIFICATIONS,
-      QUEUE_NAMES.ANALYTICS,
-      QUEUE_NAMES.AI_PROCESSING,
-      QUEUE_NAMES.INTERVIEW_REMINDER,
-      QUEUE_NAMES.INTERVIEW_NOTIFICATION,
-    ];
-
     const details: Record<string, string> = {};
     let allUp = true;
 
-    for (const name of queueNames) {
-      try {
-        const queue = this.getQueue(name);
-        const timeoutPromise = queue.waitUntilReady();
-        const timeout = new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`Queue ${name} health check timed out`)),
-            this.healthCheckTimeoutMs,
-          ),
-        );
-        await Promise.race([timeoutPromise, timeout]);
+    const checks = await Promise.allSettled(
+      this.queueEntries().map(async ({ name, queue }) => {
+        await this.pingQueue(name, queue);
+        return name;
+      }),
+    );
+
+    for (const check of checks) {
+      const name = check.status === 'fulfilled' ? check.value : undefined;
+      if (check.status === 'fulfilled' && name) {
         details[name] = 'up';
-      } catch {
+      }
+    }
+
+    for (const { name } of this.queueEntries()) {
+      if (details[name] !== 'up') {
         details[name] = 'down';
         allUp = false;
       }
     }
 
     return { healthy: allUp, details };
+  }
+
+  private async pingQueue(name: string, queue: Queue): Promise<void> {
+    let timeoutHandle: NodeJS.Timeout | undefined;
+    try {
+      const ping = (async () => {
+        const client = await queue.client;
+        await client.info();
+      })();
+      const timeout = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(`Queue ${name} health check timed out`)),
+          this.healthCheckTimeoutMs,
+        );
+      });
+      await Promise.race([ping, timeout]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
   }
 
   async addEmailJob(name: string, data: Record<string, unknown>) {
@@ -152,6 +173,8 @@ export class QueueService implements OnModuleDestroy {
       [QUEUE_NAMES.AI_PROCESSING]: this.aiProcessingQueue,
       [QUEUE_NAMES.INTERVIEW_REMINDER]: this.interviewReminderQueue,
       [QUEUE_NAMES.INTERVIEW_NOTIFICATION]: this.interviewNotificationQueue,
+      [QUEUE_NAMES.AI_SCREENING]: this.aiScreeningQueue,
+      [QUEUE_NAMES.RESUME_PROCESSING]: this.resumeProcessingQueue,
     };
 
     const queue = queues[queueName];
