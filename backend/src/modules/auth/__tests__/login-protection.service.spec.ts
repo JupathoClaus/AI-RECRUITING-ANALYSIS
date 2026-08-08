@@ -179,6 +179,17 @@ describe('LoginProtectionService', () => {
       expect(result.allowed).toBe(true);
       expect(result.remaining).toBe(10);
     });
+
+    it('should throw 503 AUTH_SESSION_STORE_UNAVAILABLE when Redis is down', async () => {
+      redis.get.mockRejectedValue(new Error('Connection is closed'));
+
+      await expect(
+        service.checkLoginRateLimit('127.0.0.1', 'test@example.com'),
+      ).rejects.toMatchObject({
+        status: 503,
+        response: { code: 'AUTH_SESSION_STORE_UNAVAILABLE' },
+      });
+    });
   });
 
   describe('recordLoginAttempt', () => {
@@ -198,6 +209,17 @@ describe('LoginProtectionService', () => {
 
       expect(redis.increment).toHaveBeenCalledWith(expect.any(String));
       expect(redis.setWithExpiry).not.toHaveBeenCalled();
+    });
+
+    it('should throw 503 AUTH_SESSION_STORE_UNAVAILABLE when Redis is down', async () => {
+      redis.exists.mockRejectedValue(new Error('Connection is closed'));
+
+      await expect(
+        service.recordLoginAttempt('127.0.0.1', 'test@example.com'),
+      ).rejects.toMatchObject({
+        status: 503,
+        response: { code: 'AUTH_SESSION_STORE_UNAVAILABLE' },
+      });
     });
   });
 });
