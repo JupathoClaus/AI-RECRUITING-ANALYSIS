@@ -65,7 +65,14 @@ export class ResumeExtractionProcessor extends WorkerHost {
         );
       }
       if (job.attemptsMade === 0) {
-        throw new UnrecoverableError(`Extraction ${extractionId} is already PROCESSING`);
+        // A reconciled re-enqueue of the same generation: the previous owner
+        // failed (its job was removed before re-adding). Reopen the attempt so
+        // the freshly enqueued job can claim it. jobId uniqueness guarantees
+        // only this job can hold the generation now.
+        await this.prisma.resumeTextExtraction.updateMany({
+          where: { id: extractionId, status: 'PROCESSING' },
+          data: { status: 'PENDING', startedAt: null },
+        });
       }
     }
 

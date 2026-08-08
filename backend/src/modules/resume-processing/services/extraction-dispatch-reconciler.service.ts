@@ -36,6 +36,9 @@ export class ExtractionDispatchReconcilerService {
         dispatchStatus: { in: ['PENDING_DISPATCH', 'DISPATCH_FAILED'] },
         dispatchAttempts: { lt: MAX_DISPATCH_RETRIES },
         AND: [{ OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: new Date() } }] }],
+        extraction: {
+          status: { notIn: ['FAILED', 'COMPLETED'] },
+        },
       },
       select: {
         id: true,
@@ -122,11 +125,21 @@ export class ExtractionDispatchReconcilerService {
 
     const extraction = await this.prisma.resumeTextExtraction.findUnique({
       where: { id: extractionId },
-      select: { storedFileId: true, companyId: true },
+      select: { storedFileId: true, companyId: true, status: true },
     });
 
     if (!extraction) {
       await this.markDispatchFailed(extractionId, leaseToken, 'EXTRACTION_NOT_FOUND');
+      return;
+    }
+
+    if (extraction.status === 'FAILED' || extraction.status === 'COMPLETED') {
+      // Terminal generation: never resurrect it. The dispatch record is closed
+      // so the reconciler never re-enqueues a job for a finished generation.
+      await this.markDispatched(extractionId, leaseToken, extractionId);
+      this.logger.warn(
+        `Extraction ${extractionId} is ${extraction.status}; dispatch closed without re-enqueue`,
+      );
       return;
     }
 
@@ -203,36 +216,69 @@ export class ExtractionDispatchReconcilerService {
     for (const dispatch of staleDispatches) {
       try {
         const jobState = await this.getJobStateInBullMQ(dispatch.extractionId);
+        const extractionStatus = await this.getExtractionStatus(dispatch.extractionId);
+        const isTerminalExtraction =
+          extractionStatus === 'FAILED' || extractionStatus === 'COMPLETED';
 
         if (jobState === 'failed') {
-          try {
-            const failedJob = await this.extractionQueue.getJob(dispatch.extractionId);
-            if (failedJob) {
-              await failedJob.remove();
+          if (isTerminalExtraction) {
+            // Terminal generation: the failed BullMQ job is the terminal outcome.
+            // Remove it and close the dispatch without resurrecting the generation.
+            try {
+              const failedJob = await this.extractionQueue.getJob(dispatch.extractionId);
+              if (failedJob) {
+                await failedJob.remove();
+              }
+            } catch (removeErr) {
+              this.logger.warn(
+                `Failed to remove failed job for extraction ${dispatch.extractionId}: ${(removeErr as Error).message}`,
+              );
             }
-          } catch (removeErr) {
+            await this.prisma.extractionDispatch.updateMany({
+              where: {
+                id: dispatch.id,
+                dispatchStatus: 'DISPATCHING',
+                leaseStartedAt: dispatch.leaseStartedAt,
+              },
+              data: {
+                dispatchStatus: 'DISPATCHED',
+                dispatchToken: null,
+                dispatchedAt: new Date(),
+              },
+            });
             this.logger.warn(
-              `Failed to remove failed job for extraction ${dispatch.extractionId}: ${(removeErr as Error).message}`,
+              `Reclaimed stale DISPATCHING → DISPATCHED for terminal extraction ${dispatch.extractionId}: failed job closed`,
+            );
+          } else {
+            try {
+              const failedJob = await this.extractionQueue.getJob(dispatch.extractionId);
+              if (failedJob) {
+                await failedJob.remove();
+              }
+            } catch (removeErr) {
+              this.logger.warn(
+                `Failed to remove failed job for extraction ${dispatch.extractionId}: ${(removeErr as Error).message}`,
+              );
+            }
+            const nextAttemptAt = new Date(Date.now() + DISPATCH_LEASE_TTL_MS);
+            await this.prisma.extractionDispatch.updateMany({
+              where: {
+                id: dispatch.id,
+                dispatchStatus: 'DISPATCHING',
+                leaseStartedAt: dispatch.leaseStartedAt,
+              },
+              data: {
+                dispatchStatus: 'PENDING_DISPATCH',
+                dispatchToken: null,
+                leaseStartedAt: null,
+                dispatchAttempts: { increment: 1 },
+                nextAttemptAt,
+              },
+            });
+            this.logger.warn(
+              `Reclaimed stale DISPATCHING → PENDING_DISPATCH for extraction ${dispatch.extractionId}: job failed, re-enqueue`,
             );
           }
-          const nextAttemptAt = new Date(Date.now() + DISPATCH_LEASE_TTL_MS);
-          await this.prisma.extractionDispatch.updateMany({
-            where: {
-              id: dispatch.id,
-              dispatchStatus: 'DISPATCHING',
-              leaseStartedAt: dispatch.leaseStartedAt,
-            },
-            data: {
-              dispatchStatus: 'PENDING_DISPATCH',
-              dispatchToken: null,
-              leaseStartedAt: null,
-              dispatchAttempts: { increment: 1 },
-              nextAttemptAt,
-            },
-          });
-          this.logger.warn(
-            `Reclaimed stale DISPATCHING → PENDING_DISPATCH for extraction ${dispatch.extractionId}: job failed, re-enqueue`,
-          );
         } else if (
           jobState === 'waiting' ||
           jobState === 'delayed' ||
@@ -253,6 +299,23 @@ export class ExtractionDispatchReconcilerService {
           });
           this.logger.warn(
             `Stale DISPATCHING → DISPATCHED for extraction ${dispatch.extractionId}: job ${jobState}`,
+          );
+        } else if (isTerminalExtraction) {
+          // Job missing/removed but the extraction itself is terminal: close the dispatch.
+          await this.prisma.extractionDispatch.updateMany({
+            where: {
+              id: dispatch.id,
+              dispatchStatus: 'DISPATCHING',
+              leaseStartedAt: dispatch.leaseStartedAt,
+            },
+            data: {
+              dispatchStatus: 'DISPATCHED',
+              dispatchToken: null,
+              dispatchedAt: new Date(),
+            },
+          });
+          this.logger.warn(
+            `Stale DISPATCHING → DISPATCHED for terminal extraction ${dispatch.extractionId}: job missing`,
           );
         } else {
           const nextAttemptAt = new Date(Date.now() + DISPATCH_LEASE_TTL_MS);
@@ -290,6 +353,18 @@ export class ExtractionDispatchReconcilerService {
       const job = await this.extractionQueue.getJob(extractionId);
       if (!job) return null;
       return (await job.getState()) as JobState;
+    } catch {
+      return null;
+    }
+  }
+
+  private async getExtractionStatus(extractionId: string): Promise<string | null> {
+    try {
+      const extraction = await this.prisma.resumeTextExtraction.findUnique({
+        where: { id: extractionId },
+        select: { status: true },
+      });
+      return extraction?.status ?? null;
     } catch {
       return null;
     }
