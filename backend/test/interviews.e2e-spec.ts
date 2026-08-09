@@ -31,8 +31,24 @@ describe('Interview Scheduling (e2e)', () => {
     acceptTerms: true,
   };
 
+  // The verification link is delivered by email; e2e has no SMTP sink, so the
+  // user is activated directly (same pattern as extraction-concurrency).
+  async function activateUser(email: string) {
+    const prisma = new PrismaClient();
+    const dbUser = await prisma.user.findUnique({
+      where: { normalizedEmail: email.toLowerCase().trim() },
+    });
+    if (!dbUser) throw new Error(`user not found for ${email}`);
+    await prisma.user.update({
+      where: { id: dbUser.id },
+      data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
+    });
+    await prisma.$disconnect();
+  }
+
   async function rawCleanup() {
     const prisma = new PrismaClient();
+
     try {
       const norm = testUser.email.toLowerCase().trim();
       await prisma.$executeRawUnsafe(`
@@ -132,10 +148,8 @@ describe('Interview Scheduling (e2e)', () => {
         .post('/api/v1/auth/register-company')
         .send(testUser)
         .expect(201);
-      await request(app.getHttpServer())
-        .post('/api/v1/auth/verify-email')
-        .send({ token: reg.body.data.verificationToken })
-        .expect(200);
+      expect(reg.body.data.userId).toBeDefined();
+      await activateUser(testUser.email);
       const login = await request(app.getHttpServer())
         .post('/api/v1/auth/login')
         .send({ email: testUser.email, password: testUser.password })

@@ -43,12 +43,28 @@ describe('Candidates (e2e)', () => {
     source: 'RECRUITER_CREATED',
   };
 
+  // The verification link is delivered by email; e2e has no SMTP sink, so the
+  // user is activated directly (same pattern as extraction-concurrency).
+  async function activateUser(email: string) {
+    const prisma = new PrismaClient();
+    const dbUser = await prisma.user.findUnique({
+      where: { normalizedEmail: email.toLowerCase().trim() },
+    });
+    if (!dbUser) throw new Error(`user not found for ${email}`);
+    await prisma.user.update({
+      where: { id: dbUser.id },
+      data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
+    });
+    await prisma.$disconnect();
+  }
+
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
 
     // Clean up any prior test data so the suite is idempotent on re-runs.
     // Each step is wrapped independently so a single FK error doesn't abort all cleanup.
     const prisma = new PrismaClient();
+
     const safe = async (label: string, fn: () => Promise<unknown>) => {
       try {
         await fn();
@@ -301,14 +317,8 @@ describe('Candidates (e2e)', () => {
         .send(testUser)
         .expect(201);
 
-      expect(res.body.data.verificationToken).toBeDefined();
-
-      const verifyRes = await request(app.getHttpServer())
-        .post('/api/v1/auth/verify-email')
-        .send({ token: res.body.data.verificationToken })
-        .expect(200);
-
-      expect(verifyRes.body.data.message).toBe('Email verified successfully');
+      expect(res.body.data.userId).toBeDefined();
+      await activateUser(testUser.email);
     });
 
     it('should login and get access token', async () => {

@@ -209,6 +209,22 @@ describe('Applications & CompanyCandidate (e2e)', () => {
     }
   }
 
+  async function activateUser(email: string) {
+    const prisma = new PrismaClient();
+    try {
+      const dbUser = await prisma.user.findUnique({
+        where: { normalizedEmail: email.toLowerCase().trim() },
+      });
+      if (!dbUser) throw new Error(`user not found for ${email}`);
+      await prisma.user.update({
+        where: { id: dbUser.id },
+        data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
+      });
+    } finally {
+      await prisma.$disconnect();
+    }
+  }
+
   async function cleanupCandidateByEmail(email: string) {
     const prisma = new PrismaClient();
     try {
@@ -273,11 +289,8 @@ describe('Applications & CompanyCandidate (e2e)', () => {
         .post('/api/v1/auth/register-company')
         .send(userA)
         .expect(201);
-      expect(res.body.data.verificationToken).toBeDefined();
-      await request(app.getHttpServer())
-        .post('/api/v1/auth/verify-email')
-        .send({ token: res.body.data.verificationToken })
-        .expect(200);
+      expect(res.body.data.userId).toBeDefined();
+      await activateUser(userA.email);
     });
 
     it('logs in as Company A admin', async () => {
@@ -297,10 +310,8 @@ describe('Applications & CompanyCandidate (e2e)', () => {
         .post('/api/v1/auth/register-company')
         .send(userB)
         .expect(201);
-      await request(app.getHttpServer())
-        .post('/api/v1/auth/verify-email')
-        .send({ token: res.body.data.verificationToken })
-        .expect(200);
+      expect(res.body.data.userId).toBeDefined();
+      await activateUser(userB.email);
     });
 
     it('logs in as Company B admin', async () => {
