@@ -1,0 +1,12 @@
+[
+  {
+    "kind": "http4xx",
+    "text": "404 http://localhost:3001/activities?_rsc=j79Vj4yH5aoiafxS",
+    "at": "2026-08-09T15:09:25.862Z"
+  },
+  {
+    "kind": "console:error",
+    "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "at": "2026-08-09T15:09:25.865Z"
+  }
+]
