@@ -40,6 +40,8 @@
     "prisma:studio": "prisma studio",
     "test:infra:up": "docker compose --profile test up -d postgres-test redis-test",
     "test:infra:down": "docker compose rm -f -s postgres-test redis-test",
+    "pretest:e2e": "cross-env DATABASE_URL=postgresql://postgres:postgres@localhost:5433/talentai_test?schema=public ts-node prisma/seed.ts",
+    "pretest:e2e:ci": "cross-env NODE_ENV=test DATABASE_URL=postgresql://postgres:postgres@localhost:5433/talentai_test?schema=public ts-node prisma/seed.ts",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:e2e:ci": "cross-env NODE_ENV=test jest --config ./test/jest-e2e.json --detectOpenHandles",
     "verify:database": "ts-node scripts/verify-database.ts",
