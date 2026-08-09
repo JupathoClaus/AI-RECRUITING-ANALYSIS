@@ -8,8 +8,11 @@ import { RESUME_EXTRACTION_QUEUE } from '../queue/resume-extraction-queue.consta
 
 describe('ExtractionDispatchReconcilerService — state matrix', () => {
   let service: ExtractionDispatchReconcilerService;
-  let prisma: any;
-  let queue: any;
+  let prisma: {
+    extractionDispatch: { findUnique: jest.Mock; findMany: jest.Mock; updateMany: jest.Mock };
+    resumeTextExtraction: { findUnique: jest.Mock };
+  };
+  let queue: { getJob: jest.Mock; add: jest.Mock };
 
   const extractionId = 'extraction-1';
 

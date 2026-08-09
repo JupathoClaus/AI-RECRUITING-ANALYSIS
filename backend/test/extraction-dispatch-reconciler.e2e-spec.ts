@@ -459,7 +459,7 @@ describe('ExtractionDispatchReconciler (e2e)', () => {
 
   // ── 7. Failed BullMQ job semantics (commit 902160c) ───────────────────
 
-  async function addMismatchedJob(extractionId: string, failReason: string) {
+  async function addMismatchedJob(extractionId: string, _failReason: string) {
     // Wrong storedFileId makes the processor throw UnrecoverableError
     // without touching the extraction record - a genuine BullMQ job FAILURE.
     await queue.add(

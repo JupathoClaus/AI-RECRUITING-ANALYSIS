@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { QueueService, QUEUE_NAMES } from '../queue.service';
 import { getQueueToken } from '@nestjs/bullmq';
@@ -75,13 +75,17 @@ describe('QueueService', () => {
     it('should require a real Redis round trip (INFO) for every queue', async () => {
       await service.isHealthy();
       // waitUntilReady is never used; each queue must round-trip on its own client
-      const entries: { name: string; queue: { client: { info: jest.Mock } } }[] = (
-        service as any
-      ).queueEntries();
+      const internals = service as unknown as {
+        queueEntries: () => {
+          name: string;
+          queue: { client: { info: jest.Mock }; waitUntilReady?: unknown };
+        }[];
+      };
+      const entries = internals.queueEntries();
       for (const entry of entries) {
         expect(entry.queue.client.info).toHaveBeenCalledTimes(1);
       }
-      expect((service as any).queueEntries()[0].queue.waitUntilReady).toBeUndefined();
+      expect(internals.queueEntries()[0].queue.waitUntilReady).toBeUndefined();
     });
 
     it('should mark a single queue down when its Redis ping fails', async () => {

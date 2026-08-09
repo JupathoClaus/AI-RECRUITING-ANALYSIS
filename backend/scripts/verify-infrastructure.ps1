@@ -51,20 +51,24 @@ try {
 
 # ----- 3. Docker compose config validation -----
 try {
-  docker compose config 2>&1 | Out-Null
+  cmd /c "docker compose config >nul 2>&1"
+  if ($LASTEXITCODE -ne 0) { throw "docker compose config exited with code $LASTEXITCODE" }
   Write-Pass "docker compose config is valid"
 } catch {
-  Write-Fail "docker compose config validation failed"
+  Write-Fail "docker compose config validation failed: $_"
 }
 
 # ----- 4. Start test infrastructure -----
 try {
   Write-Info "Starting test infrastructure (postgres-test, redis-test)..."
-  docker compose --profile test up -d postgres-test redis-test 2>&1
+  # Route through cmd /c so Docker's stderr progress lines cannot become
+  # terminating error records under $ErrorActionPreference='Stop' (PS 5.1).
+  cmd /c "docker compose --profile test up -d postgres-test redis-test >nul 2>&1"
+  if ($LASTEXITCODE -ne 0) { throw "docker compose up exited with code $LASTEXITCODE" }
   $dockerStarted = $true
   Write-Pass "Test infrastructure containers starting"
 } catch {
-  Write-Fail "Failed to start test infrastructure"
+  Write-Fail "Failed to start test infrastructure: $_"
   exit 1
 }
 
@@ -76,8 +80,14 @@ $pgHealthy = $false
 $redisHealthy = $false
 
 while ($waited -lt $maxWait) {
-  $pgStatus = docker inspect --format='{{.State.Health.Status}}' talentai-postgres-test 2>&1
-  $redisStatus = docker inspect --format='{{.State.Health.Status}}' talentai-redis-test 2>&1
+  $pgStatus = ''
+  $redisStatus = ''
+  try {
+    $pgStatus = docker inspect --format='{{.State.Health.Status}}' talentai-postgres-test
+    $redisStatus = docker inspect --format='{{.State.Health.Status}}' talentai-redis-test
+  } catch {
+    # Container not yet present — treat as not healthy
+  }
 
   if ($pgStatus -eq 'healthy') { $pgHealthy = $true }
   if ($redisStatus -eq 'healthy') { $redisHealthy = $true }
@@ -96,26 +106,31 @@ if (-not $redisHealthy) { Write-Fail "Redis test container not healthy after ${m
 # ----- 6. Prisma generate -----
 try {
   $env:NODE_ENV = 'test'
-  npx prisma generate 2>&1 | Out-Null
+  cmd /c "npx prisma generate >nul 2>&1"
+  if ($LASTEXITCODE -ne 0) { throw "prisma generate exited with code $LASTEXITCODE" }
   Write-Pass "Prisma Client generated"
 } catch {
-  Write-Fail "Prisma generate failed"
+  Write-Fail "Prisma generate failed: $_"
 }
 
-# ----- 7. Prisma migration deploy -----
+# ----- 7. Prisma migration deploy (must target the TEST database) -----
 try {
-  npx prisma migrate deploy 2>&1 | Out-Null
+  $env:DATABASE_URL = 'postgresql://postgres:postgres@localhost:5433/talentai_test?schema=public'
+  cmd /c "npx prisma migrate deploy >nul 2>&1"
+  if ($LASTEXITCODE -ne 0) { throw "prisma migrate deploy exited with code $LASTEXITCODE" }
   Write-Pass "Prisma migration applied (initial_talentai_schema)"
 } catch {
-  Write-Fail "Prisma migration deploy failed"
+  Write-Fail "Prisma migration deploy failed: $_"
 }
 
-# ----- 7b. Prisma seed -----
+# ----- 7b. Prisma seed (system entities only, against the TEST database) -----
 try {
-  npx prisma db seed 2>&1 | Out-Null
+  $env:DATABASE_URL = 'postgresql://postgres:postgres@localhost:5433/talentai_test?schema=public'
+  cmd /c "npx ts-node prisma/seed.ts >nul 2>&1"
+  if ($LASTEXITCODE -ne 0) { throw "prisma seed exited with code $LASTEXITCODE" }
   Write-Pass "Prisma seed completed (system roles, permissions, role-permission mappings)"
 } catch {
-  Write-Fail "Prisma seed failed"
+  Write-Fail "Prisma seed failed: $_"
 }
 
 # ----- 8. Start backend -----
@@ -124,9 +139,9 @@ try {
   $env:DATABASE_URL = 'postgresql://postgres:postgres@localhost:5433/talentai_test?schema=public'
   $env:REDIS_HOST = 'localhost'
   $env:REDIS_PORT = '6380'
-  $env:LOG_LEVEL = 'silent'
+  $env:LOG_LEVEL = 'error'
 
-  $backendProcess = Start-Process -FilePath "node" -ArgumentList "dist/main" -PassThru -NoNewWindow
+  $backendProcess = Start-Process -FilePath "node" -ArgumentList "dist/src/main.js" -PassThru -NoNewWindow
   Start-Sleep -Seconds 5
   Write-Pass "Backend process started (PID: $($backendProcess.Id))"
 } catch {
@@ -160,22 +175,28 @@ $endpoints = @(
 )
 
 foreach ($ep in $endpoints) {
+  $actual = -1
   try {
     $resp = Invoke-WebRequest -Uri "http://localhost:3000$($ep.Path)" -UseBasicParsing -TimeoutSec 5
-    if ($resp.StatusCode -eq $ep.Expected) {
-      Write-Pass "$($ep.Path) → $($resp.StatusCode) (expected $($ep.Expected))"
-    } else {
-      Write-Fail "$($ep.Path) → $($resp.StatusCode) (expected $($ep.Expected))"
-    }
+    $actual = [int]$resp.StatusCode
   } catch {
-    Write-Fail "$($ep.Path) → error: $_"
+    # PS 5.1 throws on non-2xx responses; the expected status is still readable
+    if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+      $actual = [int]$_.Exception.Response.StatusCode
+    }
+  }
+  if ($actual -eq $ep.Expected) {
+    Write-Pass "$($ep.Path) → $($actual) (expected $($ep.Expected))"
+  } else {
+    Write-Fail "$($ep.Path) → $($actual) (expected $($ep.Expected))"
   }
 }
 
 # ----- 11. Run E2E tests (includes auth endpoints when infrastructure is available) -----
 try {
   $env:NODE_ENV = 'test'
-  $testResult = npx jest --config ./test/jest-e2e.json --runInBand --detectOpenHandles 2>&1
+  $env:NODE_OPTIONS = '--max-old-space-size=4096'
+  cmd /c "npx jest --config ./test/jest-e2e.json --runInBand --detectOpenHandles 2>&1"
   if ($LASTEXITCODE -eq 0) {
     Write-Pass "E2E tests passed"
   } else {
@@ -192,7 +213,7 @@ if ($backendProcess -and -not $backendProcess.HasExited) {
 }
 
 if ($dockerStarted) {
-  docker compose rm -f -s postgres-test redis-test 2>&1 | Out-Null
+  cmd /c "docker compose rm -f -s postgres-test redis-test >nul 2>&1"
   Write-Info "Test infrastructure stopped (dev containers untouched)"
 }
 
