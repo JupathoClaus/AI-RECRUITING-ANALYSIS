@@ -444,13 +444,6 @@ export default function DashboardPage() {
                   <Notification className="text-muted-foreground" size={16} />
                   <CardTitle className="text-base">Recent Activity</CardTitle>
                 </div>
-                <Link
-                  href="/activities"
-                  className="inline-flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors"
-                >
-                  View All
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
               </div>
             </CardHeader>
             <CardContent>

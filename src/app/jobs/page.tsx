@@ -302,7 +302,7 @@ export default function JobsPage() {
       title="Jobs"
       description={error ? "" : `${total} position${total !== 1 ? "s" : ""}${activeCount ? ` \u00B7 ${activeCount} active` : ""}`}
       actions={
-        <Dialog open={showCreateDialog} onOpenChange={(open) => { if (!open) { setShowCreateDialog(false); setCreateError(null) } }}>
+        <Dialog open={showCreateDialog} onOpenChange={(open) => { setShowCreateDialog(open); if (!open) setCreateError(null) }}>
           <DialogTrigger asChild>
             <Button size="sm">
               <Add className="h-4 w-4" />

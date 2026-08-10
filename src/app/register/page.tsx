@@ -260,11 +260,11 @@ export default function RegisterPage() {
                   />
                   <label htmlFor="acceptTerms" className="text-sm text-muted-foreground leading-relaxed select-none">
                     I accept the{" "}
-                    <Link href="/terms" className="font-medium text-primary hover:text-primary/80 transition-colors">
+                    <Link prefetch={false} href="/terms" className="font-medium text-primary hover:text-primary/80 transition-colors">
                       Terms of Service
                     </Link>{" "}
                     and{" "}
-                    <Link href="/privacy" className="font-medium text-primary hover:text-primary/80 transition-colors">
+                    <Link prefetch={false} href="/privacy" className="font-medium text-primary hover:text-primary/80 transition-colors">
                       Privacy Policy
                     </Link>
                   </label>
