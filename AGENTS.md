@@ -4,6 +4,31 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
+## Session Summary (August 10, 2026)
+
+### Root cause fixed: CORS blocked all browser mutations (Idempotency-Key header)
+
+Browser-based flows (Add Candidate dialog, etc.) failed at the network layer: the frontend sends an `Idempotency-Key` request header on mutating API calls, but the backend CORS config in `backend/src/main.ts` did not list it in `allowedHeaders`. Every such request was rejected in the preflight — the dialog showed "Failed to fetch / Candidate could not be created."
+
+**Fix** (`backend/src/main.ts:73`): added `'Idempotency-Key'` to the CORS `allowedHeaders` array. Rebuilt backend via `docker compose up -d --build backend`.
+
+**Consequence:** the full browser flow now works end-to-end. `verification/browser-proof.mjs` passes every proof: UI registration → email verification (DB) → login → job creation + publish from UI → candidate added with real PDF via dialog → "Start AI Screening" → extraction COMPLETED (BullMQ) → screening COMPLETED → result rendered ("Overall Score") → retry-extraction HTTP replay returns the SAME extraction id (exactly 1 extraction row) → PDF text extraction contains resume content.
+
+### Important UX discovery (not a bug): screening is user-initiated
+
+The app does NOT auto-start extraction or screening. After resume upload the Add Candidate dialog shows a "Start AI Screening" button (`add-candidate-dialog.tsx` `ready-for-screening` phase). Clicking it triggers `requestScreening` → backend returns `409 RESUME_EXTRACTION_PENDING` (extraction CREATED) → frontend polls `waitForExtraction` until COMPLETED → then auto-requests screening. Verification scripts must click "Start AI Screening" (and the ai-screener page's "Request Screening" button), not expect auto-start.
+
+### Cleanup fixes (`verification/cleanup.mjs`)
+
+- `storedFile` rows must be deleted AFTER `resumeTextExtraction` rows (FK `ResumeTextExtraction_storedFileId_fkey`).
+- `applicationAuditEvent` rows (FK to company) must be deleted before `company`.
+- Deletion order now: extractions → stored files → applications → … → application audit events → company → user. Full cleanup verified: zero leftover `proof%` users/companies after a run.
+
+### Key details
+- Resume upload path: the dialog uploads the file via the screening workflow (`use-ai-screening.ts` `handleUploadResume`); the stored file row links to the application; extraction is only requested on the first screening attempt.
+- The `verification/browser-proof.mjs` flow previously clicked "Done" at `ready-for-screening` (extraction never ran). Now it waits for "Start AI Screening", clicks it, then waits for "Done" (screening-done).
+- Email delivery still fails silently (SMTP port 1025 unavailable) — harmless; verification confirms the user is ACTIVE via DB.
+
 ## Session Summary (July 29, 2026)
 
 ### Root cause fixed: `parserName` / `parserVersion` mismatch in `requestExtraction`
