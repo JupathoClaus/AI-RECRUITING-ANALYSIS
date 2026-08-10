@@ -47,6 +47,7 @@
     "verify:database": "ts-node scripts/verify-database.ts",
     "verify:migration": "node scripts/verify-migration.js",
     "verify:infrastructure": "powershell -ExecutionPolicy Bypass -File ./scripts/verify-infrastructure.ps1",
+    "test:infra-guard": "powershell -ExecutionPolicy Bypass -File ./scripts/infra-port-guard.test.ps1",
     "release:gate": "node scripts/release-gate.js",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",

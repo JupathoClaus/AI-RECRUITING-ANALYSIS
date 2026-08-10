@@ -13,6 +13,9 @@ Set-Location -LiteralPath $rootDir
 $exitCode = 0
 $dockerStarted = $false
 $backendProcess = $null
+$VERIFY_PORT = 3100
+
+. (Join-Path $PSScriptRoot 'verify-infra-backend.ps1')
 
 function Write-Pass {
   Write-Host "[PASS] $args" -ForegroundColor Green
@@ -86,7 +89,7 @@ while ($waited -lt $maxWait) {
     $pgStatus = docker inspect --format='{{.State.Health.Status}}' talentai-postgres-test
     $redisStatus = docker inspect --format='{{.State.Health.Status}}' talentai-redis-test
   } catch {
-    # Container not yet present — treat as not healthy
+    # Container not yet present - treat as not healthy
   }
 
   if ($pgStatus -eq 'healthy') { $pgHealthy = $true }
@@ -133,39 +136,34 @@ try {
   Write-Fail "Prisma seed failed: $_"
 }
 
-# ----- 8. Start backend -----
+# ----- 8. Start backend (dedicated verification port, child-alive guarded) -----
 try {
   $env:NODE_ENV = 'test'
   $env:DATABASE_URL = 'postgresql://postgres:postgres@localhost:5433/talentai_test?schema=public'
   $env:REDIS_HOST = 'localhost'
   $env:REDIS_PORT = '6380'
   $env:LOG_LEVEL = 'error'
+  $env:APP_PORT = "$VERIFY_PORT"
 
-  $backendProcess = Start-Process -FilePath "node" -ArgumentList "dist/src/main.js" -PassThru -NoNewWindow
-  Start-Sleep -Seconds 5
-  Write-Pass "Backend process started (PID: $($backendProcess.Id))"
+  $backendProcess = Start-VerifyBackend -Port $VERIFY_PORT -Cwd $rootDir
+  Write-Pass "Backend process started (PID: $($backendProcess.Id)) on port $VERIFY_PORT"
 } catch {
-  Write-Fail "Backend failed to start"
+  Write-Fail "Backend failed to start: $_"
+  exit 1
 }
 
-# ----- 9. Wait for health endpoint -----
-Write-Info "Waiting for /api/v1/health/live..."
-$healthWait = 30
+# ----- 9. Wait for health endpoint (probe only the dedicated port) -----
+Write-Info "Waiting for /api/v1/health/live on port $VERIFY_PORT..."
 $healthReady = $false
-for ($i = 0; $i -lt $healthWait; $i += 2) {
-  try {
-    $response = Invoke-WebRequest -Uri 'http://localhost:3000/api/v1/health/live' -UseBasicParsing -TimeoutSec 2
-    if ($response.StatusCode -eq 200) {
-      $healthReady = $true
-      Write-Pass "Health endpoint responding (${i}s)"
-      break
-    }
-  } catch {}
-  Start-Sleep -Seconds 2
+try {
+  $healthReady = Test-VerifyHealth -Port $VERIFY_PORT -Process $backendProcess -TimeoutSec 30
+  if ($healthReady) { Write-Pass "Health endpoint responding (PID $($backendProcess.Id) on port $VERIFY_PORT)" }
+} catch {
+  Write-Fail "Health check failed: $_"
 }
-if (-not $healthReady) { Write-Fail "Health endpoint not ready after ${healthWait}s" }
+if (-not $healthReady) { Write-Fail "Health endpoint not ready after 30s (PID $($backendProcess.Id))" }
 
-# ----- 10. Verify all health endpoints -----
+# ----- 10. Verify all health endpoints (dedicated port only) -----
 $endpoints = @(
   @{Path='/api/v1/health/live';   Expected=200},
   @{Path='/api/v1/health/ready';  Expected=200},
@@ -177,7 +175,7 @@ $endpoints = @(
 foreach ($ep in $endpoints) {
   $actual = -1
   try {
-    $resp = Invoke-WebRequest -Uri "http://localhost:3000$($ep.Path)" -UseBasicParsing -TimeoutSec 5
+    $resp = Invoke-WebRequest -Uri "http://localhost:$VERIFY_PORT$($ep.Path)" -UseBasicParsing -TimeoutSec 5
     $actual = [int]$resp.StatusCode
   } catch {
     # PS 5.1 throws on non-2xx responses; the expected status is still readable
