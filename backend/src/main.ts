@@ -12,6 +12,7 @@ import { AppModule } from './app/app.module';
 import { validateEnvironment } from './config/validation';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
+import { buildCorsOptions } from './config/cors.config';
 
 function buildGlobalPrefix(prefix: string, version: string): string {
   const p = prefix.replace(/^\/+|\/+$/g, '');
@@ -49,30 +50,7 @@ async function bootstrap() {
   app.use(cookieParser());
 
   // CORS
-  const allowedOrigins =
-    env === 'development'
-      ? [
-          'http://localhost:3001',
-          'http://127.0.0.1:3001',
-          /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}:3001$/,
-          /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:3001$/,
-          /^https?:\/\/172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}:3001$/,
-        ]
-      : [corsOrigin];
-
-  app.enableCors({
-    origin: allowedOrigins,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'Accept',
-      'Origin',
-      'X-Requested-With',
-      'X-Request-Id',
-    ],
-  });
+  app.enableCors(buildCorsOptions(env, corsOrigin));
 
   // Global prefix: /api/v1 (normalized)
   const globalPrefix = buildGlobalPrefix(apiPrefix, apiVersion);
