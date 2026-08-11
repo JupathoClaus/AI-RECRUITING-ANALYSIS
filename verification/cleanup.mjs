@@ -104,6 +104,7 @@ export async function cleanupExact(prisma, ids, log = console.log) {
   }
   if (ids.companyId) {
     add('applicationAuditEvent', { companyId: ids.companyId }, 'application audit events');
+    add('companyCandidate', { companyId: ids.companyId }, 'company-candidate links (by company)');
     add('company', { id: ids.companyId }, 'company');
   }
   if (ids.userId) {
