@@ -3,8 +3,8 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarImage } from "@/components/ui/avatar"
-import { Cpu, CloseSquare, Minus, Maximize, Send2, MagicStar } from "iconsax-react"
+import { Avatar } from "@/components/ui/avatar"
+import { CloseSquare, Minus, Maximize, Send2, MagicStar } from "iconsax-react"
 
 interface Message {
   id: string
@@ -17,16 +17,19 @@ const WELCOME_MESSAGES: Message[] = [
   {
     id: "welcome",
     role: "assistant",
-    content: "Hi! I'm your AI Hiring Assistant. I can help you with candidate screening, interview scheduling, job posting optimization, and recruitment analytics. How can I help you today?",
+    content:
+      "Hi! This is a preview of the AI Assistant. Actions are unavailable and no live data is shown here. I can point you to the features that already work — screening runs from the AI Screener or candidate dialogs, and interviews are scheduled from the Interviews page. How can I help you find the right tool?",
     timestamp: new Date(),
   },
 ]
 
+// Static capability help only. These chips never trigger actions and the
+// answers never claim to have executed anything.
 const SUGGESTIONS = [
-  "Screen a candidate for me",
-  "Schedule an interview",
-  "Show hiring analytics",
-  "Review job descriptions",
+  "How do I run an AI screening?",
+  "How do I schedule an interview?",
+  "Where do I see hiring metrics?",
+  "How do I send an AI interview?",
 ]
 
 export function FloatingAIAssistant() {
@@ -67,12 +70,12 @@ export function FloatingAIAssistant() {
       const assistantMessage: Message = {
         id: `assistant-${Date.now()}`,
         role: "assistant",
-        content: generateResponse(userMessage.content),
+        content: generateHelpResponse(userMessage.content),
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, assistantMessage])
       setIsTyping(false)
-    }, 1200 + Math.random() * 800)
+    }, 700)
   }, [input])
 
   const handleKeyDown = React.useCallback(
@@ -101,12 +104,12 @@ export function FloatingAIAssistant() {
         const assistantMessage: Message = {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          content: generateResponse(suggestion),
+          content: generateHelpResponse(suggestion),
           timestamp: new Date(),
         }
         setMessages((prev) => [...prev, assistantMessage])
         setIsTyping(false)
-      }, 1200 + Math.random() * 800)
+      }, 700)
     }, 50)
   }, [])
 
@@ -126,13 +129,9 @@ export function FloatingAIAssistant() {
             "active:scale-95",
             "group cursor-pointer"
           )}
-          aria-label="Open AI Assistant"
+          aria-label="Open AI Assistant preview"
         >
-          <Cpu className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
-          <span className="absolute -right-1 -top-1 flex h-4 w-4">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500 border-2 border-surface" />
-          </span>
+          <CpuIcon className="h-6 w-6 transition-transform duration-300 group-hover:scale-110" />
         </button>
       )}
 
@@ -158,16 +157,12 @@ export function FloatingAIAssistant() {
           {/* Header */}
           <div className="flex items-center gap-3 border-b border-border bg-surface/90 backdrop-blur-md px-4 py-3">
             <div className="relative">
-              <Avatar className="h-9 w-9" fallback="AI">
-                <AvatarImage src="/avatars/ai-assistant.jpg" alt="AI Assistant" />
-              </Avatar>
-              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-green-500 border-2 border-surface" />
+              <Avatar className="h-9 w-9" fallback="AI" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-semibold text-foreground leading-none">AI Hiring Assistant</h3>
-              <p className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-500 inline-block" />
-                Online
+              <h3 className="text-sm font-semibold text-foreground leading-none">AI Assistant</h3>
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                Preview — actions unavailable
               </p>
             </div>
             <div className="flex items-center gap-1">
@@ -252,7 +247,7 @@ export function FloatingAIAssistant() {
                 {/* Suggestions (show only when few messages) */}
                 {messages.length <= 1 && !isTyping && (
                   <div className="space-y-2 pt-2">
-                    <p className="text-xs text-muted text-center">Suggested questions</p>
+                    <p className="text-xs text-muted text-center">Need help? Try these</p>
                     <div className="flex flex-wrap gap-2 justify-center">
                       {SUGGESTIONS.map((s) => (
                         <button
@@ -285,7 +280,7 @@ export function FloatingAIAssistant() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Ask about candidates, interviews, jobs..."
+                    placeholder="Ask how to use a feature..."
                     className={cn(
                       "flex-1 h-10 rounded-xl px-4 text-sm",
                       "bg-surface-elevated border border-border",
@@ -299,12 +294,13 @@ export function FloatingAIAssistant() {
                     disabled={!input.trim() || isTyping}
                     size="icon"
                     className="h-10 w-10 rounded-xl shrink-0"
+                    aria-label="Send message"
                   >
                     <Send2 className="h-4 w-4" />
                   </Button>
                 </div>
                 <p className="text-[10px] text-muted text-center mt-2">
-                  AI-powered recruitment assistant
+                  Preview — static help only. No actions are executed and no live data is shown.
                 </p>
               </div>
             </>
@@ -315,26 +311,35 @@ export function FloatingAIAssistant() {
   )
 }
 
-function generateResponse(input: string): string {
+function CpuIcon({ className }: { className?: string }) {
+  return <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3" /></svg>
+}
+
+// Static capability guidance. Never fabricates metrics and never claims that
+// a screening, scheduling or analytics action was performed.
+function generateHelpResponse(input: string): string {
   const lower = input.toLowerCase()
 
-  if (lower.includes("screen") && lower.includes("candidate")) {
-    return "I'd be happy to help you screen a candidate! To get started, I can analyze resumes, evaluate skills match against job requirements, and provide an AI-generated compatibility score. Which candidate would you like me to screen, and for which position?"
+  if (lower.includes("screen") || lower.includes("resume")) {
+    return "AI screening is available now. Open the AI Screener page (AI Tools → AI Screener) or add a candidate and choose “Start AI Screening” in the dialog. The score shown in candidate lists and the dashboard is the real score from the latest completed screening run."
   }
-  if (lower.includes("schedule") && lower.includes("interview")) {
-    return "Let me help you schedule an interview! I can find available time slots, send calendar invites, and prepare interview questions based on the role. Which candidate are you scheduling for, and what type of interview would you prefer (Technical, Behavioral, or Culture Fit)?"
+  if (lower.includes("schedule") || lower.includes("interview") && !lower.includes("ai interview")) {
+    return "Interviews are scheduled from the Interviews page: pick a candidate and a job, choose a time and duration. Overlapping slots for the same candidate or interviewer are rejected automatically."
   }
-  if (lower.includes("analytics") || lower.includes("hiring")) {
-    return "Here's a quick overview of your hiring metrics: You have 12 active job openings with 47 candidates in the pipeline. Your average time-to-hire is 18 days (down 12% from last month). Top performing source: LinkedIn referrals at 34% conversion rate. Would you like me to dive deeper into any specific metric?"
+  if (lower.includes("ai interview")) {
+    return "AI interviews are sent from a candidate’s detail page using “Send AI Interview”. The AI Interviews page shows interviews created for your company."
   }
-  if (lower.includes("job") && (lower.includes("description") || lower.includes("review") || lower.includes("optimize"))) {
-    return "I can help you review and optimize job descriptions! I'll analyze clarity, inclusivity, required vs nice-to-have skills, and market competitiveness. Which job posting would you like me to review?"
+  if (lower.includes("metric") || lower.includes("analytics") || lower.includes("dashboard")) {
+    return "Hiring metrics are shown on the Dashboard (candidate counts, interview counts, average AI score) and the Analytics page. This assistant is a preview and does not load or fabricate metric values."
+  }
+  if (lower.includes("job") || lower.includes("description")) {
+    return "Job postings are managed on the Jobs page. You can create, publish, pause, close and reopen jobs there. Closing a job moves it out of the default Active view into the History view."
   }
   if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey")) {
-    return "Hello! Welcome to the AI Hiring Assistant. I can help you with candidate screening, interview scheduling, job posting optimization, and recruitment analytics. What would you like to work on today?"
+    return "Hello! This is a preview assistant — I can help you find the right tool in TalentAI, but I cannot run actions or show live data. Ask me how to screen, schedule, or review jobs."
   }
   if (lower.includes("thank")) {
-    return "You're welcome! Feel free to ask if you need any more help with your recruitment process. I'm always here to assist!"
+    return "You're welcome! Remember: this assistant is a preview; screening, scheduling and reporting all happen in their dedicated pages."
   }
-  return "Great question! I can help you with candidate screening, interview scheduling, job posting optimization, and hiring analytics. Could you provide more details about what you need? For example, I can analyze a specific candidate's profile, suggest interview questions for a role, or pull up your recruitment funnel metrics."
+  return "I'm a preview assistant with static help content — no live data and no actions. Try asking how to run an AI screening, schedule an interview, or view hiring metrics."
 }

@@ -53,10 +53,10 @@ const navSections: NavSection[] = [
   {
     title: "Recruitment",
     items: [
-      { label: "Jobs", href: "/jobs", icon: Briefcase, badge: 12 },
-      { label: "Candidates", href: "/candidates", icon: Users, badge: 48 },
+      { label: "Jobs", href: "/jobs", icon: Briefcase },
+      { label: "Candidates", href: "/candidates", icon: Users },
       { label: "Pipeline", href: "/pipeline", icon: GitBranch },
-      { label: "Interviews", href: "/interviews", icon: Calendar, badge: 5 },
+      { label: "Interviews", href: "/interviews", icon: Calendar },
     ],
   },
   {
@@ -71,7 +71,7 @@ const navSections: NavSection[] = [
     title: "Organization",
     items: [
       { label: "Company", href: "/company", icon: Building2 },
-      { label: "Notifications", href: "/notifications", icon: Bell, badge: 3 },
+      { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Settings", href: "/settings", icon: Settings },
     ],
   },
