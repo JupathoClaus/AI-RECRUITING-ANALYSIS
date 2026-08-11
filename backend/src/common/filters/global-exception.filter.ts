@@ -26,6 +26,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let message = 'Internal server error';
     let errorCode = 'INTERNAL_SERVER_ERROR';
     const details: unknown = undefined;
+    let structuredConflicts: unknown[] | undefined;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -48,6 +49,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             : typeof resp.errorCode === 'string' && resp.errorCode.length > 0
               ? resp.errorCode
               : this.httpStatusToErrorCode(status);
+        // Structured extra fields (e.g. interview slot conflicts) pass through
+        // so clients can render them without parsing free-form messages.
+        if (Array.isArray(resp.conflicts)) {
+          structuredConflicts = resp.conflicts;
+        }
       }
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       const prismaResult = this.handlePrismaError(exception);
@@ -71,6 +77,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (details) {
       errorResponse.details = details;
+    }
+
+    if (structuredConflicts) {
+      errorResponse.conflicts = structuredConflicts;
     }
 
     this.logger.warn(

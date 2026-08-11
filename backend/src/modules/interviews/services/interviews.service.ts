@@ -22,6 +22,7 @@ import {
   StartInterviewDto,
 } from '../dto/update-interview.dto';
 import { InterviewQueryDto } from '../dto/interview-query.dto';
+import { InterviewConflictService } from './interview-conflict.service';
 
 // FIX 6: Complete state machine — allowed transitions
 const ALLOWED_TRANSITIONS: Partial<Record<InterviewStatus, InterviewStatus[]>> = {
@@ -76,7 +77,35 @@ const RESULT_TO_SUGGESTED_ACTION: Partial<Record<InterviewResult, string>> = {
 export class InterviewsService {
   private readonly logger = new Logger(InterviewsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly conflictService: InterviewConflictService,
+  ) {}
+
+  /**
+   * Runs an interactive transaction at Serializable isolation. Two
+   * simultaneous scheduling requests for the same exclusive participant can
+   * both pass the overlap check on the same snapshot; the losing transaction
+   * then aborts at commit with a write-conflict error (P2034). That abort is
+   * surfaced as a 409 slot conflict instead of a 500.
+   */
+  private runSerializable<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prisma
+      .$transaction(fn, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      })
+      .catch((err: unknown) => {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+          throw new ConflictException({
+            code: 'INTERVIEW_SLOT_CONFLICT',
+            message:
+              'This time slot was just taken by a concurrent scheduling request. Please pick another slot.',
+            conflicts: [],
+          });
+        }
+        throw err;
+      });
+  }
 
   async create(
     dto: CreateInterviewDto,
@@ -113,9 +142,6 @@ export class InterviewsService {
       });
     }
 
-    // Calculate end time
-    const scheduledEnd = new Date(scheduledAt.getTime() + dto.durationMinutes * 60000);
-
     // Validate stage belongs to job pipeline
     if (dto.jobPipelineStageId) {
       const stage = await this.prisma.jobPipelineStage.findFirst({
@@ -149,7 +175,34 @@ export class InterviewsService {
         });
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const scheduledStart = scheduledAt;
+    const scheduledEnd = new Date(scheduledAt.getTime() + dto.durationMinutes * 60000);
+
+    return this.runSerializable(async (tx) => {
+      // Validate participants against the company BEFORE any writes.
+      const participantMembershipIds: string[] = [];
+      if (dto.participants?.length) {
+        for (const p of dto.participants) {
+          const mem = await tx.companyMembership.findFirst({
+            where: { id: p.membershipId, companyId, status: 'ACTIVE' },
+          });
+          if (!mem)
+            throw new BadRequestException(`Participant ${p.membershipId} is not an active member`);
+          participantMembershipIds.push(p.membershipId);
+        }
+      }
+
+      // Tenant-scoped slot conflict check (candidate + assigned participants).
+      // Runs inside a Serializable transaction so simultaneous requests for
+      // the same exclusive participant cannot both succeed.
+      await this.conflictService.assertNoConflict(tx, {
+        companyId,
+        candidateId: application.candidateId,
+        membershipIds: participantMembershipIds,
+        newStart: scheduledStart,
+        newEnd: scheduledEnd,
+      });
+
       const interview = await tx.interview.create({
         data: {
           companyId,
@@ -178,11 +231,6 @@ export class InterviewsService {
       // Add participants
       if (dto.participants?.length) {
         for (const p of dto.participants) {
-          const mem = await tx.companyMembership.findFirst({
-            where: { id: p.membershipId, companyId, status: 'ACTIVE' },
-          });
-          if (!mem)
-            throw new BadRequestException(`Participant ${p.membershipId} is not an active member`);
           await tx.interviewParticipant.create({
             data: {
               interviewId: interview.id,
@@ -423,7 +471,38 @@ export class InterviewsService {
       });
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const newEnd = new Date(
+      scheduledAt.getTime() + (dto.durationMinutes ?? interview.durationMinutes) * 60000,
+    );
+
+    // Tenant-scoped overlap validation for the candidate and the interview's
+    // explicitly assigned participants. The interview itself is excluded.
+    return this.runSerializable(async (tx) => {
+      const application = await tx.application.findFirst({
+        where: { id: interview.applicationId, companyId, deletedAt: null },
+        select: { candidateId: true },
+      });
+
+      const participants = await tx.interviewParticipant.findMany({
+        where: {
+          interviewId: id,
+          membershipId: { not: null },
+          status: { notIn: ['DECLINED', 'CANCELLED'] },
+        },
+        select: { membershipId: true },
+      });
+
+      await this.conflictService.assertNoConflict(tx, {
+        companyId,
+        candidateId: application?.candidateId ?? '',
+        membershipIds: participants
+          .map((p) => p.membershipId)
+          .filter((m): m is string => Boolean(m)),
+        newStart: scheduledAt,
+        newEnd,
+        excludeInterviewId: id,
+      });
+
       const updated = await tx.interview.update({
         where: { id },
         data: {

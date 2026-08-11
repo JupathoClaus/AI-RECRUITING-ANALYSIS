@@ -6,6 +6,7 @@ import { InterviewsController } from './controllers/interviews.controller';
 import { ApplicationInterviewsController } from './controllers/application-interviews.controller';
 import { InterviewConfirmationController } from './controllers/interview-confirmation.controller';
 import { InterviewsService } from './services/interviews.service';
+import { InterviewConflictService } from './services/interview-conflict.service';
 import { InterviewReminderService } from './services/interview-reminder.service';
 import { InterviewTokenService } from './services/interview-token.service';
 
@@ -13,7 +14,12 @@ import { InterviewTokenService } from './services/interview-token.service';
 // in Jest. Workers are production-only.
 const isTest = process.env.NODE_ENV === 'test';
 
-const providers = [InterviewsService, InterviewReminderService, InterviewTokenService];
+const providers = [
+  InterviewsService,
+  InterviewConflictService,
+  InterviewReminderService,
+  InterviewTokenService,
+];
 
 if (!isTest) {
   // Lazy import to avoid loading BullMQ workers during unit tests
@@ -37,6 +43,11 @@ if (!isTest) {
     InterviewConfirmationController,
   ],
   providers,
-  exports: [InterviewsService, InterviewReminderService, InterviewTokenService],
+  exports: [
+    InterviewsService,
+    InterviewConflictService,
+    InterviewReminderService,
+    InterviewTokenService,
+  ],
 })
 export class InterviewsModule {}

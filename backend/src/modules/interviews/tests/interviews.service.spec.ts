@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InterviewsService } from '../services/interviews.service';
+import { InterviewConflictService } from '../services/interview-conflict.service';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   InterviewStatus,
   InterviewType,
@@ -22,12 +24,18 @@ const mockPrisma = {
   interviewParticipant: {
     create: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn().mockResolvedValue([]),
     findUnique: jest.fn(),
     delete: jest.fn(),
   },
   interviewHistory: { create: jest.fn() },
   companyMembership: { findFirst: jest.fn() },
   $transaction: jest.fn((fn: any) => fn(mockPrisma)),
+};
+
+const mockConflictService = {
+  findConflicts: jest.fn().mockResolvedValue([]),
+  assertNoConflict: jest.fn().mockResolvedValue(undefined),
 };
 
 const COMPANY_ID = 'company-1';
@@ -41,6 +49,7 @@ const mockApplication = {
   id: APP_ID,
   companyId: COMPANY_ID,
   jobId: JOB_ID,
+  candidateId: 'candidate-1',
   job: { pipeline: { stages: [{ id: 'stage-1', type: 'RECRUITER_INTERVIEW', sortOrder: 0 }] } },
 };
 
@@ -67,7 +76,11 @@ describe('InterviewsService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     const module: TestingModule = await Test.createTestingModule({
-      providers: [InterviewsService, { provide: PrismaService, useValue: mockPrisma }],
+      providers: [
+        InterviewsService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: InterviewConflictService, useValue: mockConflictService },
+      ],
     }).compile();
     service = module.get<InterviewsService>(InterviewsService);
   });
@@ -792,6 +805,126 @@ describe('InterviewsService', () => {
       await expect(
         service.removeParticipant(INTERVIEW_ID, 'bad-p', COMPANY_ID, MEMBERSHIP_ID, USER_ID),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── Slot-conflict integration ──────────────────────────────────────────────
+  describe('create — slot conflict', () => {
+    const dto = {
+      applicationId: APP_ID,
+      type: InterviewType.TECHNICAL,
+      title: 'Technical Interview',
+      scheduledAt: new Date(Date.now() + 86400000).toISOString(),
+      durationMinutes: 60,
+      timezone: 'Africa/Kampala',
+      participants: [{ membershipId: 'member-9', role: 'INTERVIEWER' as any }],
+    };
+
+    it('checks candidate and participant overlap before creating', async () => {
+      mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+      mockPrisma.interview.findFirst.mockResolvedValue(null);
+      mockPrisma.companyMembership.findFirst.mockResolvedValue({ id: 'member-9' });
+      mockPrisma.interview.create.mockResolvedValue(mockInterview);
+      mockPrisma.interviewHistory.create.mockResolvedValue({});
+      mockPrisma.interview.findFirst.mockResolvedValue({
+        ...mockInterview,
+        participants: [],
+        history: [],
+        stage: null,
+        application: null,
+        job: null,
+        createdBy: null,
+        updatedBy: null,
+      });
+
+      await service.create(dto as any, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+
+      expect(mockConflictService.assertNoConflict).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          companyId: COMPANY_ID,
+          candidateId: 'candidate-1',
+          membershipIds: ['member-9'],
+        }),
+      );
+    });
+
+    it('rejects creation when the slot conflicts', async () => {
+      mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+      mockPrisma.interview.findFirst.mockResolvedValue(null);
+      mockPrisma.companyMembership.findFirst.mockResolvedValue({ id: 'member-9' });
+      mockConflictService.assertNoConflict.mockRejectedValueOnce(
+        new ConflictException({
+          code: 'INTERVIEW_SLOT_CONFLICT',
+          message: 'Interview slot conflict',
+          conflicts: [{ kind: 'CANDIDATE' }],
+        }),
+      );
+
+      await expect(service.create(dto as any, COMPANY_ID, USER_ID, MEMBERSHIP_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockPrisma.interview.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reschedule — slot conflict', () => {
+    const dto = {
+      scheduledAt: new Date(Date.now() + 172800000).toISOString(),
+      expectedVersion: 1,
+      timezone: 'Africa/Kampala',
+    };
+
+    it('checks overlap excluding the interview itself', async () => {
+      mockPrisma.interview.findFirst.mockResolvedValue(mockInterview);
+      mockPrisma.application.findFirst.mockResolvedValue({ candidateId: 'candidate-1' });
+      mockPrisma.interviewParticipant.findMany.mockResolvedValue([{ membershipId: 'member-9' }]);
+      mockPrisma.interview.update.mockResolvedValue(mockInterview);
+      mockPrisma.interviewHistory.create.mockResolvedValue({});
+
+      await service.reschedule(INTERVIEW_ID, dto, COMPANY_ID, USER_ID, MEMBERSHIP_ID);
+
+      expect(mockConflictService.assertNoConflict).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          candidateId: 'candidate-1',
+          membershipIds: ['member-9'],
+          excludeInterviewId: INTERVIEW_ID,
+        }),
+      );
+    });
+
+    it('rejects rescheduling into a conflicting slot', async () => {
+      mockPrisma.interview.findFirst.mockResolvedValue(mockInterview);
+      mockPrisma.application.findFirst.mockResolvedValue({ candidateId: 'candidate-1' });
+      mockPrisma.interviewParticipant.findMany.mockResolvedValue([]);
+      mockConflictService.assertNoConflict.mockRejectedValueOnce(
+        new ConflictException({
+          code: 'INTERVIEW_SLOT_CONFLICT',
+          message: 'Interview slot conflict',
+          conflicts: [{ kind: 'PARTICIPANT' }],
+        }),
+      );
+
+      await expect(
+        service.reschedule(INTERVIEW_ID, dto, COMPANY_ID, USER_ID, MEMBERSHIP_ID),
+      ).rejects.toThrow(ConflictException);
+      expect(mockPrisma.interview.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('runSerializable — concurrent write-conflict mapping', () => {
+    it('converts a P2034 serialization failure into a 409 slot conflict', async () => {
+      const prismaErr = new Prisma.PrismaClientKnownRequestError('write conflict', {
+        code: 'P2034',
+        clientVersion: 'test',
+      });
+      mockPrisma.$transaction.mockRejectedValueOnce(prismaErr);
+
+      await expect((service as any).runSerializable(async () => 'ok')).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'INTERVIEW_SLOT_CONFLICT' },
+      });
     });
   });
 });

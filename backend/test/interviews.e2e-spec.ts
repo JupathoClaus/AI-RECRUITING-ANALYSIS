@@ -456,4 +456,405 @@ describe('Interview Scheduling (e2e)', () => {
       await request(app.getHttpServer()).post('/api/v1/interviews').send({}).expect(401);
     });
   });
+
+  // ── Slot-conflict safety (P0) ──────────────────────────────────────────────
+
+  describe('Interview slot conflict safety', () => {
+    let app2Id: string;
+    let app3Id: string;
+    let cand2Id: string;
+    let cand3Id: string;
+    let job2Id: string;
+    let adminMembershipId: string;
+    const base = Date.now() + 5 * 86400000; // future base instant (UTC)
+
+    function iso(hoursFromBase: number) {
+      return new Date(base + hoursFromBase * 3600000).toISOString();
+    }
+
+    it('prepares a published job and application', async () => {
+      const prisma = new PrismaClient();
+      const mem = await prisma.companyMembership.findFirst({ where: { companyId } });
+      adminMembershipId = mem?.id ?? '';
+      // The approval gate is backend-intentional; disable it for the test
+      // company so jobs can be published directly (same as the browser proof).
+      await prisma.companySettings.upsert({
+        where: { companyId },
+        create: { companyId, requireJobApproval: false },
+        update: { requireJobApproval: false },
+      });
+      await prisma.$disconnect();
+
+      const cand = await request(app.getHttpServer())
+        .post('/api/v1/candidates')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          firstName: 'Slot',
+          lastName: 'Candidate',
+          email: `iv-slot-${base}@test.com`,
+          source: 'RECRUITER_CREATED',
+        })
+        .expect(201);
+      cand2Id = cand.body.data.id;
+
+      const job = await request(app.getHttpServer())
+        .post('/api/v1/jobs')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          title: `Slot Conflict Job ${base}`,
+          employmentType: 'FULL_TIME',
+          workplaceType: 'REMOTE',
+          experienceLevel: 'MID',
+          description: 'E2E slot conflict job',
+        })
+        .expect(201);
+      job2Id = job.body.data.id;
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/jobs/${job2Id}/publish`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const appRes = await request(app.getHttpServer())
+        .post('/api/v1/applications')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ candidateId: cand2Id, jobId: job2Id, source: 'RECRUITER_CREATED' })
+        .expect(201);
+      app2Id = appRes.body.data.id;
+
+      // A second candidate/application so participant overlap can be tested
+      // against a different candidate than the conflicting one.
+      const cand3 = await request(app.getHttpServer())
+        .post('/api/v1/candidates')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          firstName: 'Slot',
+          lastName: 'Other',
+          email: `iv-slot-other-${base}@test.com`,
+          source: 'RECRUITER_CREATED',
+        })
+        .expect(201);
+      cand3Id = cand3.body.data.id;
+      const app3 = await request(app.getHttpServer())
+        .post('/api/v1/applications')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ candidateId: cand3Id, jobId: job2Id, source: 'RECRUITER_CREATED' })
+        .expect(201);
+      app3Id = app3.body.data.id;
+      expect(adminMembershipId).toBeTruthy();
+    });
+
+    it('allows adjacent slots', async () => {
+      // 10:00-11:00 then 11:00-12:00 — adjacent, no conflict.
+      const first = await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'TECHNICAL',
+          title: 'Slot A',
+          scheduledAt: iso(10),
+          durationMinutes: 60,
+          timezone: 'UTC',
+        })
+        .expect(201);
+      expect(first.body.data.status).toBe('SCHEDULED');
+
+      await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'TECHNICAL',
+          title: 'Slot B (adjacent)',
+          scheduledAt: iso(11),
+          durationMinutes: 60,
+          timezone: 'UTC',
+        })
+        .expect(201);
+    });
+
+    it('rejects a partially overlapping candidate slot with a structured 409', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'PHONE',
+          title: 'Overlapping slot',
+          scheduledAt: iso(10.5), // inside Slot A (10:00-11:00)
+          durationMinutes: 30,
+          timezone: 'UTC',
+        })
+        .expect(409);
+      expect(res.body.errorCode).toBe('INTERVIEW_SLOT_CONFLICT');
+      expect(Array.isArray(res.body.conflicts)).toBe(true);
+      expect(res.body.conflicts.some((c: any) => c.kind === 'CANDIDATE')).toBe(true);
+    });
+
+    it('rejects an overlapping explicitly assigned interviewer', async () => {
+      // Existing interview at 13:00 for a DIFFERENT candidate (app3) with the
+      // admin as interviewer.
+      await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app3Id,
+          type: 'TECHNICAL',
+          title: 'Interviewer busy 13:00',
+          scheduledAt: iso(13),
+          durationMinutes: 60,
+          timezone: 'UTC',
+          participants: [{ membershipId: adminMembershipId, role: 'INTERVIEWER' }],
+        })
+        .expect(201);
+
+      // Same slot for a different candidate, same interviewer → PARTICIPANT conflict.
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'PHONE',
+          title: 'Interviewer overlap',
+          scheduledAt: iso(13),
+          durationMinutes: 60,
+          timezone: 'UTC',
+          participants: [{ membershipId: adminMembershipId, role: 'INTERVIEWER' }],
+        })
+        .expect(409);
+      expect(res.body.errorCode).toBe('INTERVIEW_SLOT_CONFLICT');
+      expect(res.body.conflicts.some((c: any) => c.kind === 'PARTICIPANT')).toBe(true);
+    });
+
+    it('rejects containing/contained intervals', async () => {
+      // Slot B is 11:00-12:00. A 2h slot from 10:30-12:30 contains it.
+      const contained = await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'PHONE',
+          title: 'Contains Slot B',
+          scheduledAt: iso(10.5),
+          durationMinutes: 120,
+          timezone: 'UTC',
+        })
+        .expect(409);
+      expect(contained.body.errorCode).toBe('INTERVIEW_SLOT_CONFLICT');
+
+      // A 30-min slot fully inside Slot A (10:00-11:00).
+      await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'PHONE',
+          title: 'Inside Slot A',
+          scheduledAt: iso(10.25),
+          durationMinutes: 30,
+          timezone: 'UTC',
+        })
+        .expect(409);
+    });
+
+    it('rejects rescheduling into a conflicting slot', async () => {
+      // Slot B exists 11:00-12:00. Try to reschedule Slot A into it.
+      const list = await request(app.getHttpServer())
+        .get('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .query({ applicationId: app2Id, status: 'SCHEDULED' })
+        .expect(200);
+      const slotA = list.body.data.find((i: any) => i.title === 'Slot A');
+      expect(slotA).toBeDefined();
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/interviews/${slotA.id}/reschedule`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ scheduledAt: iso(11), timezone: 'UTC', expectedVersion: slotA.version })
+        .expect(409);
+      expect(res.body.errorCode).toBe('INTERVIEW_SLOT_CONFLICT');
+    });
+
+    it('cancelled interviews do not block the slot', async () => {
+      const list = await request(app.getHttpServer())
+        .get('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .query({ applicationId: app2Id })
+        .expect(200);
+      const slotB = list.body.data.find((i: any) => i.title === 'Slot B (adjacent)');
+      const detail = await request(app.getHttpServer())
+        .get(`/api/v1/interviews/${slotB.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      await request(app.getHttpServer())
+        .post(`/api/v1/interviews/${slotB.id}/cancel`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ reason: 'Freed for overlap test', expectedVersion: detail.body.data.version })
+        .expect(200);
+
+      // 11:00-12:00 is now free again.
+      await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'PHONE',
+          title: 'After cancel',
+          scheduledAt: iso(11),
+          durationMinutes: 60,
+          timezone: 'UTC',
+        })
+        .expect(201);
+    });
+
+    it('normalizes timezone offsets (same instant conflicts)', async () => {
+      // Slot A is 10:00 UTC. Express 10:00 UTC as 12:00 +02:00 — same instant.
+      const sameInstantLocal = new Date(base + 10 * 3600000 + 2 * 3600000)
+        .toISOString()
+        .replace('Z', '+02:00');
+      await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'PHONE',
+          title: 'Offset-normalized overlap',
+          scheduledAt: sameInstantLocal,
+          durationMinutes: 30,
+          timezone: 'Europe/Berlin',
+        })
+        .expect(409);
+    });
+
+    it("does not leak or react to another tenant's schedules", async () => {
+      // Second tenant registers and schedules their own interview at the SAME
+      // instant — both succeed because conflicts are company-scoped.
+      const otherUser = {
+        companyName: `Other Corp ${base}`,
+        email: `other-${base}@test.com`,
+        firstName: 'Other',
+        lastName: 'Admin',
+        password: 'E2eStr0ng!Pass',
+        passwordConfirmation: 'E2eStr0ng!Pass',
+        country: 'UG',
+        timezone: 'UTC',
+        acceptTerms: true,
+      };
+      const reg = await request(app.getHttpServer())
+        .post('/api/v1/auth/register-company')
+        .send(otherUser)
+        .expect(201);
+      expect(reg.body.data.userId).toBeDefined();
+
+      const prisma = new PrismaClient();
+      const dbUser = await prisma.user.findUnique({
+        where: { normalizedEmail: otherUser.email.toLowerCase().trim() },
+      });
+      await prisma.user.update({
+        where: { id: dbUser!.id },
+        data: { status: 'ACTIVE', emailVerifiedAt: new Date() },
+      });
+      await prisma.$disconnect();
+
+      const login = await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: otherUser.email, password: otherUser.password })
+        .expect(200);
+      const otherToken = login.body.data.tokens.accessToken;
+
+      const prisma2 = new PrismaClient();
+      const otherMem = await prisma2.companyMembership.findFirst({
+        where: { companyId: login.body.data.activeCompany.id },
+      });
+      await prisma2.companySettings.upsert({
+        where: { companyId: login.body.data.activeCompany.id },
+        create: { companyId: login.body.data.activeCompany.id, requireJobApproval: false },
+        update: { requireJobApproval: false },
+      });
+      await prisma2.$disconnect();
+      expect(otherMem).toBeTruthy();
+
+      const otherCand = await request(app.getHttpServer())
+        .post('/api/v1/candidates')
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({
+          firstName: 'Other',
+          lastName: 'Candidate',
+          email: `other-cand-${base}@test.com`,
+          source: 'RECRUITER_CREATED',
+        })
+        .expect(201);
+
+      const otherJob = await request(app.getHttpServer())
+        .post('/api/v1/jobs')
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({
+          title: `Other Job ${base}`,
+          employmentType: 'FULL_TIME',
+          workplaceType: 'REMOTE',
+          experienceLevel: 'MID',
+          description: 'Other tenant job',
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/jobs/${otherJob.body.data.id}/publish`)
+        .set('Authorization', `Bearer ${otherToken}`)
+        .expect(200);
+      const otherApp = await request(app.getHttpServer())
+        .post('/api/v1/applications')
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({
+          candidateId: otherCand.body.data.id,
+          jobId: otherJob.body.data.id,
+          source: 'RECRUITER_CREATED',
+        })
+        .expect(201);
+
+      // Same UTC instant as Slot A (10:00 UTC) — must NOT conflict across tenants.
+      await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${otherToken}`)
+        .send({
+          applicationId: otherApp.body.data.id,
+          type: 'TECHNICAL',
+          title: 'Other tenant same slot',
+          scheduledAt: iso(10),
+          durationMinutes: 60,
+          timezone: 'UTC',
+        })
+        .expect(201);
+
+      // And tenant A still schedules in their own company at 12:00 UTC.
+      await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'TECHNICAL',
+          title: 'Tenant A after other-tenant test',
+          scheduledAt: iso(12),
+          durationMinutes: 60,
+          timezone: 'UTC',
+        })
+        .expect(201);
+
+      // Conflict response never contains another tenant's interview ids.
+      const conflict = await request(app.getHttpServer())
+        .post('/api/v1/interviews')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          applicationId: app2Id,
+          type: 'PHONE',
+          title: 'Conflict check stays scoped',
+          scheduledAt: iso(12),
+          durationMinutes: 60,
+          timezone: 'UTC',
+        })
+        .expect(409);
+      for (const c of conflict.body.conflicts as any[]) {
+        expect(c.interviewId).not.toContain('other');
+      }
+    });
+  });
 });
