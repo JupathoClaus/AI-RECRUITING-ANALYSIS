@@ -479,21 +479,28 @@ describe('useAiScreening', () => {
       expect(result.current.state.errorCode).toBe('FORBIDDEN')
     })
 
-    it('does not retry AbortError', async () => {
+    it('re-polls after a transient AbortError instead of stopping', async () => {
       const { result } = renderHook(() => useAiScreening())
       act(() => { result.current.selectApplication(APPLICATION_ID) })
       mockRequestAiScreening.mockResolvedValue(
         mockRequestResponse(202, screeningResult({ status: 'PENDING' })),
       )
-      mockGetAiScreeningById.mockRejectedValue(new DOMException('Aborted', 'AbortError'))
+      mockGetAiScreeningById
+        .mockRejectedValueOnce(new DOMException('Aborted', 'AbortError'))
+        .mockResolvedValueOnce(screeningResult({ status: 'COMPLETED' }))
 
       await act(async () => { await result.current.requestScreening() })
 
       act(() => { vi.advanceTimersByTime(2000) })
       await act(async () => { await Promise.resolve() })
-
       expect(mockGetAiScreeningById).toHaveBeenCalledTimes(1)
       expect(result.current.state.workflowState).toBe('SCREENING_PENDING')
+
+      // The poll continues after the abort and reaches completion.
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+      expect(mockGetAiScreeningById).toHaveBeenCalledTimes(2)
+      expect(result.current.state.workflowState).toBe('SCREENING_COMPLETED')
     })
 
     it('ignores stale poll result if application changed', async () => {
@@ -606,6 +613,43 @@ describe('useAiScreening', () => {
 
       expect(result.current.state.workflowState).toBe('SCREENING_COMPLETED')
       expect(result.current.state.screeningResult?.overallScore).toBe(92)
+    })
+
+    it('keeps polling after a transient abort (does not hang at Reading resume)', async () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+
+      mockRequestAiScreening.mockRejectedValueOnce(
+        new MockApiError(409, 'RESUME_EXTRACTION_PENDING', 'Pending'),
+      )
+      mockGetResumeExtractionStatus
+        .mockRejectedValueOnce(new DOMException('Aborted', 'AbortError'))
+        .mockResolvedValueOnce(extractionStatus({ status: 'PENDING' }))
+        .mockResolvedValueOnce(extractionStatus({ status: 'COMPLETED' }))
+      mockRequestAiScreening.mockResolvedValueOnce(
+        mockRequestResponse(200, screeningResult({ status: 'COMPLETED', overallScore: 80 })),
+      )
+
+      await act(async () => { await result.current.requestScreening() })
+      expect(result.current.state.workflowState).toBe('WAITING_FOR_EXTRACTION')
+
+      // First poll aborts → the loop must continue instead of stopping.
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(1)
+      expect(result.current.state.workflowState).toBe('WAITING_FOR_EXTRACTION')
+
+      // Second poll still PENDING → re-poll.
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(2)
+
+      // Third poll COMPLETED → screening proceeds to completion.
+      act(() => { vi.advanceTimersByTime(2000) })
+      await act(async () => { await Promise.resolve() })
+      expect(mockGetResumeExtractionStatus).toHaveBeenCalledTimes(3)
+      expect(result.current.state.workflowState).toBe('SCREENING_COMPLETED')
+      expect(result.current.state.screeningResult?.overallScore).toBe(80)
     })
 
     it('shows EXTRACTION_FAILED without calling POST again', async () => {

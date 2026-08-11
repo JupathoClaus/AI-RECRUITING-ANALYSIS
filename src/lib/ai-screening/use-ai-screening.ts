@@ -171,7 +171,11 @@ export function useAiScreening() {
         }
       } catch (err) {
         if (isStale(currentAppId)) return
-        if (classifyScreeningError(err).isAbort) return
+        // A transient abort must not kill the screening poll permanently.
+        if (classifyScreeningError(err).isAbort) {
+          pollScreeningRef.current(screeningId, startTime)
+          return
+        }
         const apiErr = err instanceof ApiErrorResponse ? err : null
         if (isRetryablePollingError(apiErr)) {
           pollScreeningRef.current(screeningId, startTime)
@@ -235,7 +239,12 @@ export function useAiScreening() {
         }
       } catch (err) {
         if (isStale(currentAppId)) return
-        if (classifyScreeningError(err).isAbort) return
+        // A transient abort (e.g. navigation race) must not kill the poll
+        // permanently — otherwise the dialog hangs at "Reading resume".
+        if (classifyScreeningError(err).isAbort) {
+          waitForExtractionRef.current(startTime)
+          return
+        }
         const apiErr = err instanceof ApiErrorResponse ? err : null
         if (apiErr && isExtractionPendingError(apiErr)) {
           waitForExtractionRef.current(startTime)

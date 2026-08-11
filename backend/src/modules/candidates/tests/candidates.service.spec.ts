@@ -5,6 +5,9 @@ import { CandidatesService } from '../candidates.service';
 import { CandidateAuditService } from '../candidate-audit.service';
 import { CandidateDeduplicationService } from '../candidate-deduplication.service';
 import { IdempotencyService } from '@common/idempotency/idempotency.service';
+import { mapCandidateToResponse as mapCandidateToResponseImpl } from '../mappers/candidate.mapper';
+
+const mapCandidateToResponse = jest.mocked(mapCandidateToResponseImpl);
 
 jest.mock('../mappers/candidate.mapper', () => ({
   mapCandidateToResponse: jest.fn((candidate) => ({
@@ -53,6 +56,9 @@ describe('CandidatesService', () => {
     candidateAuditEvent: {
       findMany: jest.fn(),
       count: jest.fn(),
+    },
+    aiScreeningResult: {
+      findMany: jest.fn().mockResolvedValue([]),
     },
     // Phase 2.2 — auto CompanyCandidate on create
     companyCandidate: {
@@ -329,6 +335,93 @@ describe('CandidatesService', () => {
           orderBy: { createdAt: 'desc' },
         }),
       );
+    });
+
+    it('fetches screening summaries with a single tenant-scoped query (no N+1)', async () => {
+      prisma.candidate.findMany.mockResolvedValue([
+        { ...baseCandidate, id: 'candidate-1' },
+        { ...baseCandidate, id: 'candidate-2' },
+      ]);
+      prisma.candidate.count.mockResolvedValue(2);
+      prisma.aiScreeningResult.findMany.mockResolvedValue([
+        {
+          id: 'res-1',
+          candidateId: 'candidate-2',
+          status: 'COMPLETED',
+          overallScore: 84,
+          recommendation: 'SHORTLIST',
+          confidence: 'HIGH',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        },
+      ]);
+
+      await service.findAll({ page: 1, limit: 20 }, false, 'company-1');
+
+      // exactly one screening query for all listed candidates, scoped to the tenant
+      expect(prisma.aiScreeningResult.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.aiScreeningResult.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: 'company-1',
+            candidateId: { in: ['candidate-1', 'candidate-2'] },
+          }),
+        }),
+      );
+    });
+
+    it('attaches the screening summary to the mapped candidate response', async () => {
+      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'candidate-1' }]);
+      prisma.candidate.count.mockResolvedValue(1);
+      prisma.aiScreeningResult.findMany.mockResolvedValue([
+        {
+          id: 'res-1',
+          candidateId: 'candidate-1',
+          status: 'COMPLETED',
+          overallScore: 92,
+          recommendation: 'SHORTLIST',
+          confidence: 'HIGH',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        },
+      ]);
+
+      mapCandidateToResponse.mockClear();
+
+      await service.findAll({ page: 1, limit: 20 }, false, 'company-1');
+
+      const mapperCall = mapCandidateToResponse.mock.calls[0][0];
+      expect(mapperCall.screeningSummary).toEqual({
+        status: 'COMPLETED',
+        overallScore: 92,
+        recommendation: 'SHORTLIST',
+        confidence: 'HIGH',
+        resultId: 'res-1',
+        completedAt: expect.any(String),
+        pendingRerun: false,
+        failedRerun: false,
+      });
+    });
+
+    it('passes a null screening summary when the candidate was never screened', async () => {
+      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'candidate-1' }]);
+      prisma.candidate.count.mockResolvedValue(1);
+      prisma.aiScreeningResult.findMany.mockResolvedValue([]);
+
+      mapCandidateToResponse.mockClear();
+
+      await service.findAll({ page: 1, limit: 20 }, false, 'company-1');
+
+      expect(mapCandidateToResponse.mock.calls[0][0].screeningSummary).toBeNull();
+    });
+
+    it('does not query screening results without a company scope', async () => {
+      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'candidate-1' }]);
+      prisma.candidate.count.mockResolvedValue(1);
+
+      await service.findAll({ page: 1, limit: 20 }, false);
+
+      expect(prisma.aiScreeningResult.findMany).not.toHaveBeenCalled();
     });
   });
 

@@ -26,6 +26,7 @@ export function mapCandidateToResponse(candidate: any, hasSensitivePermission = 
     preferredInterviewLanguage:
       (candidate.languages || []).find((l: any) => l.preferredInterviewLanguage)?.languageCode ??
       null,
+    screening: candidate.screeningSummary ?? null,
     createdAt: candidate.createdAt,
     updatedAt: candidate.updatedAt,
     version: candidate.version,

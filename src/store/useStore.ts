@@ -112,7 +112,6 @@ interface AppState {
     jobTitle: string
     experience: number
     skills: string[]
-    aiScore: number
     rating: number
     notes: string
   }) => Promise<AddCandidateResult>
@@ -227,7 +226,7 @@ function mapCreatedCandidate(api: CandidateApiDetail): Candidate {
       name: s.name,
       proficiencyLevel: s.proficiencyLevel,
     })),
-    aiScore: 0,
+    aiScore: null,
     status: "ACTIVE" as CandidateStatus,
     source: api.source || undefined,
     createdAt: new Date(api.createdAt),

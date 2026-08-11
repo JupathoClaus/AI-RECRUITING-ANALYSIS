@@ -11,6 +11,7 @@ import { ResumeUploadArea } from '@/components/ai-screening/resume-upload-area'
 import { ScreeningProgress } from '@/components/ai-screening/screening-progress'
 import { ScreeningResultView } from '@/components/ai-screening/screening-result-view'
 import { useAiScreening } from '@/lib/ai-screening/use-ai-screening'
+import { useStore } from '@/store/useStore'
 import { getApplicationResume } from '@/lib/api/files.api'
 import { Shield, RefreshCw } from 'lucide-react'
 
@@ -24,6 +25,19 @@ export default function AiScreenerPage() {
     retryScreening,
     loadLatestScreening,
   } = useAiScreening()
+  const fetchCandidates = useStore((s) => s.fetchCandidates)
+  const refreshedRef = useRef(false)
+
+  // A completed screening produces a real score; refresh the candidate store
+  // so the candidates table, pipeline and dashboard show it immediately.
+  useEffect(() => {
+    if (state.workflowState === 'SCREENING_COMPLETED' && !refreshedRef.current) {
+      refreshedRef.current = true
+      fetchCandidates().catch(() => {})
+    } else if (state.workflowState !== 'SCREENING_COMPLETED') {
+      refreshedRef.current = false
+    }
+  }, [state.workflowState, fetchCandidates])
 
   const checkingRef = useRef(false)
   const checkControllerRef = useRef<AbortController | null>(null)

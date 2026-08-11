@@ -77,6 +77,17 @@ export interface CandidateApplicationInfo {
   current?: CandidateApplicationSummary
 }
 
+export interface CandidateScreeningSummary {
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | null
+  overallScore: number | null
+  recommendation: "SHORTLIST" | "NOT_SHORTLIST" | "HUMAN_REVIEW" | null
+  confidence: "LOW" | "MEDIUM" | "HIGH" | null
+  resultId: string | null
+  completedAt: string | null
+  pendingRerun: boolean
+  failedRerun: boolean
+}
+
 export interface Candidate {
   id: string
   firstName: string
@@ -90,7 +101,7 @@ export interface Candidate {
   currentEmployer?: string
   totalExperienceYears: number
   skills: CandidateSkill[]
-  aiScore: number
+  aiScore: number | null
   status: CandidateStatus
   source?: string
   createdAt: Date
@@ -98,6 +109,7 @@ export interface Candidate {
 
   companyProfile?: CandidateCompanyProfile
   applicationSummary?: CandidateApplicationInfo
+  screening?: CandidateScreeningSummary
   notes?: string
 }
 

@@ -8,6 +8,7 @@ import type {
   CandidateCompanyProfile,
   CandidateApplicationSummary,
   CandidateApplicationInfo,
+  CandidateScreeningSummary,
 } from "@/types"
 
 // ── Candidate API types (from GET /candidates) ─────────────────────
@@ -17,6 +18,17 @@ export interface CandidateApiSkill {
   skillId: string
   name: string
   proficiencyLevel: string | null
+}
+
+export interface CandidateApiScreeningSummary {
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | null
+  overallScore: number | null
+  recommendation: "SHORTLIST" | "NOT_SHORTLIST" | "HUMAN_REVIEW" | null
+  confidence: "LOW" | "MEDIUM" | "HIGH" | null
+  resultId: string | null
+  completedAt: string | null
+  pendingRerun: boolean
+  failedRerun: boolean
 }
 
 export interface CandidateApiListItem {
@@ -33,6 +45,7 @@ export interface CandidateApiListItem {
   source: string
   skillSummary: CandidateApiSkill[]
   preferredInterviewLanguage: string | null
+  screening?: CandidateApiScreeningSummary | null
   email?: string
   phone?: string
   createdAt: string
@@ -298,13 +311,29 @@ export function mapCandidateFromApi(
       name: s.name,
       proficiencyLevel: s.proficiencyLevel,
     })),
-    aiScore: 0,
+    aiScore: api.screening?.overallScore ?? null,
     status: mapCandidateApiStatus(api.status),
     source: api.source || undefined,
     createdAt: parseDate(api.createdAt),
     updatedAt: parseDate(api.updatedAt),
     companyProfile,
     applicationSummary: appInfo,
+    screening: api.screening ? mapScreeningSummary(api.screening) : undefined,
+  }
+}
+
+function mapScreeningSummary(
+  api: CandidateApiScreeningSummary
+): CandidateScreeningSummary {
+  return {
+    status: api.status,
+    overallScore: api.overallScore,
+    recommendation: api.recommendation,
+    confidence: api.confidence,
+    resultId: api.resultId,
+    completedAt: api.completedAt,
+    pendingRerun: api.pendingRerun,
+    failedRerun: api.failedRerun,
   }
 }
 

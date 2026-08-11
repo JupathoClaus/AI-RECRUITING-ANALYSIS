@@ -141,7 +141,7 @@ function CandidateCard({
           <p className="text-sm font-medium text-foreground truncate">{candidate.displayName}</p>
           <p className="text-xs text-muted truncate mt-0.5">{getJobTitle(candidate)}</p>
         </div>
-        {candidate.aiScore > 0 && (
+        {candidate.aiScore !== null && candidate.aiScore !== undefined && (
           <span className={cn("shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold", getScoreBg(candidate.aiScore))}>
             {candidate.aiScore}
           </span>
@@ -533,8 +533,8 @@ export default function PipelinePage() {
                       <MagicStar className="text-muted-foreground" size={14} />
                       <p className="text-xs text-muted">AI Score</p>
                     </div>
-                    <p className={cn("text-lg font-semibold", getScoreColor(s.aiScore))}>
-                      {s.aiScore || "—"}
+                    <p className={cn("text-lg font-semibold", s.aiScore === null || s.aiScore === undefined ? "text-muted-foreground" : getScoreColor(s.aiScore))}>
+                      {s.aiScore === null || s.aiScore === undefined ? "—" : s.aiScore}
                     </p>
                   </div>
                   <div className="rounded-lg bg-surface p-3 text-center">
@@ -589,7 +589,7 @@ export default function PipelinePage() {
                   </div>
                 )}
 
-                {s.aiScore > 0 && (
+                {s.aiScore !== null && s.aiScore !== undefined && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
                       <MagicStar className="h-4 w-4 text-muted" />

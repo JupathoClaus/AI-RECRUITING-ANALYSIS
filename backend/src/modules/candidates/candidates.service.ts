@@ -12,6 +12,10 @@ import { CandidateDeduplicationService } from './candidate-deduplication.service
 import { CreateCandidateDto, UpdateCandidateDto } from './dto/create-candidate.dto';
 import { CandidateQueryDto } from './dto/candidate-query.dto';
 import { mapCandidateToResponse, mapCandidateToDetail } from './mappers/candidate.mapper';
+import {
+  buildScreeningSummaryMap,
+  CandidateScreeningSummary,
+} from './mappers/screening-summary.mapper';
 import { IdempotencyService } from '@common/idempotency/idempotency.service';
 import * as crypto from 'crypto';
 
@@ -349,8 +353,40 @@ export class CandidatesService {
       this.prisma.candidate.count({ where }),
     ]);
 
+    // Attach a tenant-scoped screening summary to every listed candidate.
+    // One extra query (no N+1): fetch screening results for all listed
+    // candidate ids in a single call and fold them into per-candidate
+    // summaries newest-first.
+    let screeningMap = new Map<string, CandidateScreeningSummary>();
+    if (companyId && data.length > 0) {
+      const screeningResults = await this.prisma.aiScreeningResult.findMany({
+        where: {
+          companyId,
+          candidateId: { in: data.map((c) => c.id) },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+        select: {
+          id: true,
+          candidateId: true,
+          status: true,
+          overallScore: true,
+          recommendation: true,
+          confidence: true,
+          completedAt: true,
+          createdAt: true,
+        },
+      });
+      screeningMap = buildScreeningSummaryMap(screeningResults);
+    }
+
     return {
-      data: data.map((c) => mapCandidateToResponse(c, hasSensitivePermission)),
+      data: data.map((c) =>
+        mapCandidateToResponse(
+          { ...c, screeningSummary: screeningMap.get(c.id) ?? null },
+          hasSensitivePermission,
+        ),
+      ),
       meta: {
         page,
         limit,

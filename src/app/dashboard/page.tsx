@@ -179,13 +179,15 @@ export default function DashboardPage() {
         i.scheduledAt < weekEnd
     ).length;
 
+    const scoredCandidates = candidates.filter((c) => c.aiScore !== null && c.aiScore !== undefined);
+
     const avgScore =
-      candidates.length > 0
+      scoredCandidates.length > 0
         ? Math.round(
-            candidates.reduce((sum, c) => sum + c.aiScore, 0) /
-              candidates.length
+            scoredCandidates.reduce((sum, c) => sum + (c.aiScore ?? 0), 0) /
+              scoredCandidates.length
           )
-        : 0;
+        : null;
 
     return { activeJobs, totalCandidates, interviewsThisWeek, avgScore };
   }, [jobs, candidates, interviews]);
@@ -203,9 +205,15 @@ export default function DashboardPage() {
       [...candidates]
         .filter((c) => {
           const ds = c.applicationSummary?.current?.displayStatus;
-          return ds && ds !== "Rejected" && ds !== "Hired";
+          return (
+            ds &&
+            ds !== "Rejected" &&
+            ds !== "Hired" &&
+            c.aiScore !== null &&
+            c.aiScore !== undefined
+          );
         })
-        .sort((a, b) => b.aiScore - a.aiScore)
+        .sort((a, b) => (b.aiScore ?? 0) - (a.aiScore ?? 0))
         .slice(0, 5),
     [candidates]
   );
@@ -226,8 +234,8 @@ export default function DashboardPage() {
       icon: <Briefcase className="h-5 w-5" />,
       color: "text-primary",
       up: true,
-      trend: "+12%",
-      trendLabel: "vs last month",
+      trend: "—",
+      trendLabel: "server-derived",
     },
     {
       label: "Total Candidates",
@@ -235,8 +243,8 @@ export default function DashboardPage() {
       icon: <People className="h-5 w-5" />,
       color: "text-info",
       up: true,
-      trend: "+8%",
-      trendLabel: "vs last month",
+      trend: "—",
+      trendLabel: "server-derived",
     },
     {
       label: "Interviews This Week",
@@ -244,17 +252,17 @@ export default function DashboardPage() {
       icon: <Calendar className="h-5 w-5" />,
       color: "text-warning",
       up: false,
-      trend: "-3%",
-      trendLabel: "vs last week",
+      trend: "—",
+      trendLabel: "server-derived",
     },
     {
       label: "Avg AI Score",
-      value: stats.avgScore.toString(),
+      value: stats.avgScore === null ? "—" : stats.avgScore.toString(),
       icon: <MagicStar className="h-5 w-5" />,
       color: "text-success",
       up: true,
-      trend: "+5%",
-      trendLabel: "vs last month",
+      trend: "—",
+      trendLabel: "no history yet",
     },
   ];
 
@@ -634,16 +642,18 @@ export default function DashboardPage() {
                         <span
                           className={cn(
                             "text-sm font-semibold tabular-nums",
-                            getScoreColor(candidate.aiScore)
+                            candidate.aiScore === null || candidate.aiScore === undefined
+                              ? "text-muted-foreground"
+                              : getScoreColor(candidate.aiScore)
                           )}
                         >
-                          {candidate.aiScore}
+                          {candidate.aiScore === null || candidate.aiScore === undefined ? "—" : candidate.aiScore}
                         </span>
                         <Progress
-                          value={candidate.aiScore}
+                          value={candidate.aiScore ?? 0}
                           className="h-1.5 w-16"
                           indicatorClassName={getScoreIndicatorColor(
-                            candidate.aiScore
+                            candidate.aiScore ?? 0
                           )}
                         />
                       </div>

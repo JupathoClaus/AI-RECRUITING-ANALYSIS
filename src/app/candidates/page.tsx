@@ -25,6 +25,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
+import { buildBulkActionFeedback } from "@/lib/candidates-bulk-actions"
 import { SendAiInterviewModal } from "@/components/ai-interview/send-ai-interview-modal"
 import { AddCandidateDialog } from "@/components/candidates/add-candidate-dialog"
 import { ScreeningProgress } from "@/components/ai-screening/screening-progress"
@@ -294,6 +295,8 @@ export default function CandidatesPage() {
 
   const handleBulkAction = React.useCallback(async (action: string) => {
     setBulkActionLoading(true)
+    let succeeded = 0
+    let failed = 0
     try {
       for (const id of selectedIds) {
         const candidate = candidates.find((c) => c.id === id)
@@ -301,22 +304,27 @@ export default function CandidatesPage() {
         const currentApp = candidate.applicationSummary?.current
         if (!currentApp) continue
 
-        switch (action) {
-          case "reject":
-            await rejectCandidateApplication(id)
-            break
-          case "screening":
-            await advanceCandidateApplication(id, "Screening")
-            break
-          case "interview":
-            await advanceCandidateApplication(id, "Interview")
-            break
+        try {
+          switch (action) {
+            case "reject":
+              await rejectCandidateApplication(id)
+              break
+            case "move-to-screening":
+              await advanceCandidateApplication(id, "Screening")
+              break
+            case "interview":
+              await advanceCandidateApplication(id, "Interview")
+              break
+          }
+          succeeded += 1
+        } catch {
+          failed += 1
         }
       }
       setSelectedIds(new Set())
-      setPageFeedback({ type: "success", message: `Bulk action "${action}" completed for ${selectedIds.size} candidate(s).` })
-    } catch {
-      setPageFeedback({ type: "warning", message: "Some bulk actions failed." })
+      const attempted = succeeded + failed
+      const feedback = buildBulkActionFeedback(action, succeeded, attempted)
+      if (feedback) setPageFeedback(feedback)
     } finally {
       setBulkActionLoading(false)
     }
@@ -449,9 +457,9 @@ export default function CandidatesPage() {
               <div className="flex items-center gap-3 mb-3 px-4 py-2 rounded-lg bg-primary/5 border border-primary/20 animate-fade-in">
                 <span className="text-sm font-medium text-foreground">{selectedIds.size} selected</span>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={bulkActionLoading} onClick={() => handleBulkAction("screening")}>
+                  <Button variant="outline" size="sm" disabled={bulkActionLoading} onClick={() => handleBulkAction("move-to-screening")}>
                     <SearchNormal className="h-4 w-4 mr-1" />
-                    Move to Screening
+                    Move to Screening Stage
                   </Button>
                   <Button variant="outline" size="sm" disabled={bulkActionLoading} onClick={() => handleBulkAction("interview")}>
                     <Calendar className="h-4 w-4 mr-1" />
@@ -460,6 +468,16 @@ export default function CandidatesPage() {
                   <Button variant="outline" size="sm" disabled={bulkActionLoading} onClick={() => handleBulkAction("reject")} className="text-error hover:text-error">
                     <CloseSquare className="h-4 w-4 mr-1" />
                     Reject
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled
+                    title="Run AI Screening is not available yet — screening runs per candidate from the AI Screener page"
+                  >
+                    <MagicStar className="h-4 w-4 mr-1 opacity-50" />
+                    Run AI Screening
+                    <span className="ml-1 text-[10px] text-muted-foreground">coming next</span>
                   </Button>
                 </div>
                 <div className="flex-1" />
@@ -529,16 +547,18 @@ export default function CandidatesPage() {
                         <TableCell>
                           <div className="flex items-center gap-2 min-w-[100px]">
                             <Progress
-                              value={candidate.aiScore}
+                              value={candidate.aiScore ?? 0}
                               className="h-1.5 flex-1"
                               indicatorClassName={cn(
-                                candidate.aiScore >= 80 ? "bg-success" :
-                                candidate.aiScore >= 60 ? "bg-warning" :
-                                candidate.aiScore > 0 ? "bg-error" : ""
+                                candidate.aiScore === null || candidate.aiScore === undefined
+                                  ? ""
+                                  : candidate.aiScore >= 80 ? "bg-success" :
+                                  candidate.aiScore >= 60 ? "bg-warning" :
+                                  "bg-error"
                               )}
                             />
                             <span className="text-xs font-medium text-muted-foreground w-8 text-right">
-                              {candidate.aiScore || "—"}
+                              {candidate.aiScore === null || candidate.aiScore === undefined ? "—" : candidate.aiScore}
                             </span>
                           </div>
                         </TableCell>
@@ -661,11 +681,13 @@ export default function CandidatesPage() {
                       <p className="text-xs text-muted mb-1">AI Score</p>
                       <p className={cn(
                         "text-lg font-semibold",
-                        detailsCandidate.aiScore >= 80 ? "text-success" :
-                        detailsCandidate.aiScore >= 60 ? "text-warning" :
-                        "text-foreground"
+                        detailsCandidate.aiScore === null || detailsCandidate.aiScore === undefined
+                          ? "text-muted-foreground"
+                          : detailsCandidate.aiScore >= 80 ? "text-success" :
+                          detailsCandidate.aiScore >= 60 ? "text-warning" :
+                          "text-foreground"
                       )}>
-                        {detailsCandidate.aiScore || "—"}
+                        {detailsCandidate.aiScore === null || detailsCandidate.aiScore === undefined ? "—" : detailsCandidate.aiScore}
                       </p>
                     </div>
                     <div className="rounded-lg border border-border bg-background p-3 text-center">
@@ -733,7 +755,7 @@ export default function CandidatesPage() {
                   )}
 
                   {/* AI Score Detail */}
-                  {detailsCandidate.aiScore > 0 && (
+                  {(detailsCandidate.aiScore !== null && detailsCandidate.aiScore !== undefined) && (
                     <div>
                       <div className="flex items-center gap-2 mb-3">
                         <MagicStar className="h-4 w-4 text-muted" />
@@ -761,6 +783,16 @@ export default function CandidatesPage() {
                             ? "Good match — meets core requirements with some gaps."
                             : "Moderate match — may need further evaluation."}
                         </p>
+                        {detailsCandidate.screening?.pendingRerun && (
+                          <p className="text-xs text-warning">
+                            A newer AI screening is currently running — the score above reflects the latest completed run.
+                          </p>
+                        )}
+                        {detailsCandidate.screening?.failedRerun && (
+                          <p className="text-xs text-muted-foreground">
+                            A newer AI screening attempt failed. Showing the latest completed score.
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}

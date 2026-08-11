@@ -78,7 +78,7 @@ function makeCandidate(overrides?: Partial<Candidate>): Candidate {
     appliedDate: new Date().toISOString(),
     experience: 5,
     skills: [],
-    aiScore: 0,
+    aiScore: null,
     rating: 0,
     notes: "",
     applicationSummary: {
