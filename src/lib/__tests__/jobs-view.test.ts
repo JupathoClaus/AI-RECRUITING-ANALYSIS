@@ -4,11 +4,7 @@
  */
 
 import { describe, it, expect } from "vitest"
-import {
-  resolveJobStatusFilter,
-  JOB_ACTIVE_STATUSES,
-  JOB_HISTORY_STATUSES,
-} from "@/lib/jobs-view"
+import { resolveJobStatusFilter, JOB_ACTIVE_STATUSES, JOB_HISTORY_STATUSES } from "@/lib/jobs-view"
 
 describe("resolveJobStatusFilter", () => {
   it("defaults to Active statuses that exclude closed/filled/cancelled/archived", () => {
@@ -23,9 +19,11 @@ describe("resolveJobStatusFilter", () => {
     expect(resolveJobStatusFilter("history", null)).toEqual(JOB_HISTORY_STATUSES)
   })
 
-  it("an explicit status filter overrides the scope", () => {
-    expect(resolveJobStatusFilter("active", "CLOSED")).toEqual(["CLOSED"])
-    expect(resolveJobStatusFilter("history", "PUBLISHED")).toEqual(["PUBLISHED"])
+  it("accepts explicit statuses only within the selected scope", () => {
+    expect(resolveJobStatusFilter("active", "PUBLISHED")).toEqual(["PUBLISHED"])
+    expect(resolveJobStatusFilter("history", "CLOSED")).toEqual(["CLOSED"])
+    expect(resolveJobStatusFilter("active", "CLOSED")).toEqual(JOB_ACTIVE_STATUSES)
+    expect(resolveJobStatusFilter("history", "PUBLISHED")).toEqual(JOB_HISTORY_STATUSES)
   })
 
   it("treats 'all' as no explicit filter", () => {

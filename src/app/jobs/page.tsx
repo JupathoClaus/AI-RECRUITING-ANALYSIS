@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { formatCurrency, timeAgo } from "@/lib/utils"
 import { getJobs, getJobById, createJob, updateJob, publishJob, closeJob, reopenJob, pauseJob, resumeJob, archiveJob } from "@/lib/api/jobs.api"
-import { resolveJobStatusFilter } from "@/lib/jobs-view"
+import { JOB_ACTIVE_STATUSES, JOB_HISTORY_STATUSES, resolveJobStatusFilter } from "@/lib/jobs-view"
 import type { JobListDto } from "@/lib/api/types"
 import type { CreateJobRequest, UpdateJobRequest } from "@/lib/api/jobs.api"
 import {
@@ -445,7 +445,7 @@ export default function JobsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                {(["PUBLISHED", "PAUSED", "CLOSED", "DRAFT", "CANCELLED", "FILLED"] as const).map((s) => (
+                {(jobScope === "active" ? JOB_ACTIVE_STATUSES : JOB_HISTORY_STATUSES).map((s) => (
                   <SelectItem key={s} value={s}>{statusConfig[s].label}</SelectItem>
                 ))}
               </SelectContent>
