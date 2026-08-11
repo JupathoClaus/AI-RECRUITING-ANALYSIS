@@ -39,6 +39,8 @@ import {
 import { AppLayout } from "@/components/layout/app-layout";
 import { useStore } from "@/store/useStore";
 import { useAuth } from "@/lib/auth-context";
+import { mapToDisplayStatus } from "@/lib/api/candidates.api";
+import type { ApplicationStatus } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -152,7 +154,7 @@ function getInterviewTypeLabel(type: string): string {
 }
 
 export default function DashboardPage() {
-  const { jobs, candidates, interviews, activities, candidatesLoading, candidatesError, interviewsLoading, interviewsError, fetchCandidates, fetchInterviews } = useStore();
+  const { jobs, candidates, candidatesScoreSummary, interviews, activities, candidatesLoading, candidatesError, interviewsLoading, interviewsError, fetchCandidates, fetchInterviews } = useStore();
   const { user } = useAuth();
 
   useEffect(() => {
@@ -163,7 +165,8 @@ export default function DashboardPage() {
 
   const stats = useMemo(() => {
     const activeJobs = jobs.filter((j) => j.status === "Active").length;
-    const totalCandidates = candidates.length;
+    // Whole-company aggregate when available; falls back to the paged list.
+    const totalCandidates = candidatesScoreSummary?.totalCandidates ?? candidates.length;
 
     const now = new Date();
     const weekStart = new Date(now);
@@ -179,18 +182,20 @@ export default function DashboardPage() {
         i.scheduledAt < weekEnd
     ).length;
 
-    const scoredCandidates = candidates.filter((c) => c.aiScore !== null && c.aiScore !== undefined);
-
-    const avgScore =
-      scoredCandidates.length > 0
-        ? Math.round(
-            scoredCandidates.reduce((sum, c) => sum + (c.aiScore ?? 0), 0) /
-              scoredCandidates.length
-          )
-        : null;
+    const avgScore = candidatesScoreSummary
+      ? candidatesScoreSummary.averageScore
+      : (() => {
+          const scoredCandidates = candidates.filter((c) => c.aiScore !== null && c.aiScore !== undefined);
+          return scoredCandidates.length > 0
+            ? Math.round(
+                scoredCandidates.reduce((sum, c) => sum + (c.aiScore ?? 0), 0) /
+                  scoredCandidates.length
+              )
+            : null;
+        })();
 
     return { activeJobs, totalCandidates, interviewsThisWeek, avgScore };
-  }, [jobs, candidates, interviews]);
+  }, [jobs, candidates, candidatesScoreSummary, interviews]);
 
   const pipelineData = useMemo(() => {
     const stages = ["Applied", "Screening", "Interview", "Offer", "Hired", "Rejected"];
@@ -200,23 +205,39 @@ export default function DashboardPage() {
     }));
   }, [candidates]);
 
-  const topCandidates = useMemo(
-    () =>
-      [...candidates]
-        .filter((c) => {
-          const ds = c.applicationSummary?.current?.displayStatus;
-          return (
-            ds &&
-            ds !== "Rejected" &&
-            ds !== "Hired" &&
-            c.aiScore !== null &&
-            c.aiScore !== undefined
-          );
-        })
-        .sort((a, b) => (b.aiScore ?? 0) - (a.aiScore ?? 0))
-        .slice(0, 5),
-    [candidates]
-  );
+  const topCandidates = useMemo(() => {
+    // Whole-company ranking from the backend aggregate; falls back to the
+    // paged candidate list when the summary is unavailable.
+    if (candidatesScoreSummary) {
+      return candidatesScoreSummary.topCandidates.map((tc) => ({
+        id: tc.candidateId,
+        displayName: tc.displayName,
+        currentJobTitle: tc.currentJobTitle ?? undefined,
+        aiScore: tc.overallScore,
+        applicationSummary: tc.status
+          ? {
+              current: {
+                jobTitle: tc.jobTitle ?? undefined,
+                displayStatus: mapToDisplayStatus(tc.status as ApplicationStatus),
+              },
+            }
+          : undefined,
+      }))
+    }
+    return [...candidates]
+      .filter((c) => {
+        const ds = c.applicationSummary?.current?.displayStatus;
+        return (
+          ds &&
+          ds !== "Rejected" &&
+          ds !== "Hired" &&
+          c.aiScore !== null &&
+          c.aiScore !== undefined
+        );
+      })
+      .sort((a, b) => (b.aiScore ?? 0) - (a.aiScore ?? 0))
+      .slice(0, 5);
+  }, [candidates, candidatesScoreSummary]);
 
   const upcomingInterviews = useMemo(
     () =>

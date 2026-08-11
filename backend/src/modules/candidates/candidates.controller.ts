@@ -140,6 +140,18 @@ export class CandidatesController {
     return this.candidatesService.findAll(query, hasSensitive, user.activeCompanyId);
   }
 
+  @Get('score-summary')
+  @RequirePermissions('candidates.read')
+  @ApiOperation({
+    summary: 'Company-wide AI screening score summary',
+    description:
+      'Aggregates the latest completed screening score of every candidate linked to the company: total, scored count, average score and top 5 candidates. Tenant-scoped with a bounded response.',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Score summary' })
+  async scoreSummary(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.candidatesService.getScreeningScoreSummary(user.activeCompanyId);
+  }
+
   @Get(':candidateId')
   @RequirePermissions('candidates.read')
   @ApiOperation({ summary: 'Get candidate by ID' })

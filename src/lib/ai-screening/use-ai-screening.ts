@@ -172,10 +172,11 @@ export function useAiScreening() {
       } catch (err) {
         if (isStale(currentAppId)) return
         // A transient abort must not kill the screening poll permanently.
-        if (classifyScreeningError(err).isAbort) {
+        if (classifyScreeningError(err).isAbort && !controller.signal.aborted) {
           pollScreeningRef.current(screeningId, startTime)
           return
         }
+        if (controller.signal.aborted) return
         const apiErr = err instanceof ApiErrorResponse ? err : null
         if (isRetryablePollingError(apiErr)) {
           pollScreeningRef.current(screeningId, startTime)
@@ -241,10 +242,11 @@ export function useAiScreening() {
         if (isStale(currentAppId)) return
         // A transient abort (e.g. navigation race) must not kill the poll
         // permanently — otherwise the dialog hangs at "Reading resume".
-        if (classifyScreeningError(err).isAbort) {
+        if (classifyScreeningError(err).isAbort && !controller.signal.aborted) {
           waitForExtractionRef.current(startTime)
           return
         }
+        if (controller.signal.aborted) return
         const apiErr = err instanceof ApiErrorResponse ? err : null
         if (apiErr && isExtractionPendingError(apiErr)) {
           waitForExtractionRef.current(startTime)

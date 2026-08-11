@@ -47,6 +47,7 @@ describe('CandidatesController', () => {
     block: jest.fn(),
     unblock: jest.fn(),
     getActivity: jest.fn(),
+    getScreeningScoreSummary: jest.fn(),
   };
 
   const mockProfileService = {
@@ -188,6 +189,28 @@ describe('CandidatesController', () => {
 
       expect(candidatesService.findAll).toHaveBeenCalledWith(query, true, 'company-1');
       expect(result).toEqual({ data: [], meta: {} });
+    });
+  });
+
+  /* ─── SCORE SUMMARY ─────────────────────────────────────────── */
+  describe('GET /candidates/score-summary', () => {
+    it('should delegate to candidatesService.getScreeningScoreSummary with the active company', async () => {
+      candidatesService.getScreeningScoreSummary.mockResolvedValue({
+        totalCandidates: 12,
+        scoredCandidates: 3,
+        averageScore: 74,
+        topCandidates: [],
+      });
+
+      const result = await controller.scoreSummary(mockUser);
+
+      expect(candidatesService.getScreeningScoreSummary).toHaveBeenCalledWith('company-1');
+      expect(result).toEqual({
+        totalCandidates: 12,
+        scoredCandidates: 3,
+        averageScore: 74,
+        topCandidates: [],
+      });
     });
   });
 

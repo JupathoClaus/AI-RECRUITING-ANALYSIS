@@ -60,6 +60,9 @@ describe('CandidatesService', () => {
     aiScreeningResult: {
       findMany: jest.fn().mockResolvedValue([]),
     },
+    application: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     // Phase 2.2 — auto CompanyCandidate on create
     companyCandidate: {
       upsert: jest.fn().mockResolvedValue({ id: 'cc-1' }),
@@ -339,13 +342,22 @@ describe('CandidatesService', () => {
 
     it('fetches screening summaries with a single tenant-scoped query (no N+1)', async () => {
       prisma.candidate.findMany.mockResolvedValue([
-        { ...baseCandidate, id: 'candidate-1' },
-        { ...baseCandidate, id: 'candidate-2' },
+        {
+          ...baseCandidate,
+          id: 'candidate-1',
+          applications: [{ id: 'app-1', status: 'SUBMITTED' }],
+        },
+        {
+          ...baseCandidate,
+          id: 'candidate-2',
+          applications: [{ id: 'app-2', status: 'INTERVIEW' }],
+        },
       ]);
       prisma.candidate.count.mockResolvedValue(2);
       prisma.aiScreeningResult.findMany.mockResolvedValue([
         {
           id: 'res-1',
+          applicationId: 'app-2',
           candidateId: 'candidate-2',
           status: 'COMPLETED',
           overallScore: 84,
@@ -364,18 +376,25 @@ describe('CandidatesService', () => {
         expect.objectContaining({
           where: expect.objectContaining({
             companyId: 'company-1',
-            candidateId: { in: ['candidate-1', 'candidate-2'] },
+            applicationId: { in: ['app-1', 'app-2'] },
           }),
         }),
       );
     });
 
     it('attaches the screening summary to the mapped candidate response', async () => {
-      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'candidate-1' }]);
+      prisma.candidate.findMany.mockResolvedValue([
+        {
+          ...baseCandidate,
+          id: 'candidate-1',
+          applications: [{ id: 'app-1', status: 'SUBMITTED' }],
+        },
+      ]);
       prisma.candidate.count.mockResolvedValue(1);
       prisma.aiScreeningResult.findMany.mockResolvedValue([
         {
           id: 'res-1',
+          applicationId: 'app-1',
           candidateId: 'candidate-1',
           status: 'COMPLETED',
           overallScore: 92,
@@ -404,7 +423,13 @@ describe('CandidatesService', () => {
     });
 
     it('passes a null screening summary when the candidate was never screened', async () => {
-      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'candidate-1' }]);
+      prisma.candidate.findMany.mockResolvedValue([
+        {
+          ...baseCandidate,
+          id: 'candidate-1',
+          applications: [{ id: 'app-1', status: 'SUBMITTED' }],
+        },
+      ]);
       prisma.candidate.count.mockResolvedValue(1);
       prisma.aiScreeningResult.findMany.mockResolvedValue([]);
 
@@ -422,6 +447,361 @@ describe('CandidatesService', () => {
       await service.findAll({ page: 1, limit: 20 }, false);
 
       expect(prisma.aiScreeningResult.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── getScreeningScoreSummary ──────────────────────────────────────────────────
+  describe('getScreeningScoreSummary', () => {
+    function makeCandidateRow(id: string) {
+      return {
+        id,
+        firstName: `First${id}`,
+        lastName: `Last${id}`,
+        currentJobTitle: 'Engineer',
+      };
+    }
+
+    it('fails closed without an active company context', async () => {
+      await expect(service.getScreeningScoreSummary()).rejects.toThrow(BadRequestException);
+      expect(prisma.candidate.findMany).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty summary for a company without candidates', async () => {
+      prisma.candidate.findMany.mockResolvedValue([]);
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(result).toEqual({
+        totalCandidates: 0,
+        scoredCandidates: 0,
+        averageScore: null,
+        topCandidates: [],
+      });
+      expect(prisma.application.findMany).not.toHaveBeenCalled();
+      expect(prisma.aiScreeningResult.findMany).not.toHaveBeenCalled();
+    });
+
+    it('aggregates the latest completed score across more than 50 candidates', async () => {
+      const candidateCount = 120;
+      const candidates = Array.from({ length: candidateCount }, (_, i) =>
+        makeCandidateRow(`candidate-${i}`),
+      );
+      prisma.candidate.findMany.mockResolvedValue(candidates);
+      prisma.application.findMany.mockResolvedValue(
+        candidates.map((c) => ({
+          id: `app-${c.id}`,
+          candidateId: c.id,
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        })),
+      );
+      // Latest row per candidate is COMPLETED with score 40 + (i % 60):
+      // average = 40 + mean(0..59) = 40 + 29.5 = 69.5 -> rounds to 70.
+      // Each candidate also has an older FAILED row that must not contribute.
+      prisma.aiScreeningResult.findMany.mockResolvedValue(
+        candidates.flatMap((c, i) => [
+          {
+            id: `res-new-${c.id}`,
+            applicationId: `app-${c.id}`,
+            candidateId: c.id,
+            status: 'COMPLETED',
+            overallScore: 40 + (i % 60),
+            recommendation: 'SHORTLIST',
+            confidence: 'HIGH',
+            completedAt: new Date('2026-01-02'),
+            createdAt: new Date('2026-01-02'),
+          },
+          {
+            id: `res-old-${c.id}`,
+            applicationId: `app-${c.id}`,
+            candidateId: c.id,
+            status: 'FAILED',
+            overallScore: null,
+            recommendation: null,
+            confidence: null,
+            completedAt: null,
+            createdAt: new Date('2026-01-01'),
+          },
+        ]),
+      );
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(result.totalCandidates).toBe(120);
+      expect(result.scoredCandidates).toBe(120);
+      expect(result.averageScore).toBe(70);
+      expect(result.topCandidates).toHaveLength(5);
+      // Deterministic top-5: highest scores first (99 from candidates 59 and 119).
+      expect(result.topCandidates[0].overallScore).toBe(99);
+      expect(result.topCandidates.map((t) => t.overallScore)).toEqual([99, 99, 98, 98, 97]);
+      // Scoped to the tenant in every query.
+      const candidateCall = prisma.candidate.findMany.mock.calls[0][0];
+      expect(candidateCall.where.AND).toEqual(
+        expect.arrayContaining([
+          { companyCandidates: { some: { companyId: 'company-1', deletedAt: null } } },
+        ]),
+      );
+      expect(prisma.aiScreeningResult.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ companyId: 'company-1' }),
+        }),
+      );
+    });
+
+    it('excludes candidates without a completed screening from the average', async () => {
+      prisma.candidate.findMany.mockResolvedValue([
+        makeCandidateRow('candidate-1'),
+        makeCandidateRow('candidate-2'),
+        makeCandidateRow('candidate-3'),
+      ]);
+      prisma.application.findMany.mockResolvedValue([
+        {
+          id: 'app-1',
+          candidateId: 'candidate-1',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+        {
+          id: 'app-2',
+          candidateId: 'candidate-2',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+        {
+          id: 'app-3',
+          candidateId: 'candidate-3',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+      ]);
+      // Only candidate-1 and candidate-3 have a completed score.
+      prisma.aiScreeningResult.findMany.mockResolvedValue([
+        {
+          id: 'res-1',
+          applicationId: 'app-1',
+          candidateId: 'candidate-1',
+          status: 'COMPLETED',
+          overallScore: 80,
+          recommendation: 'SHORTLIST',
+          confidence: 'HIGH',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        },
+        {
+          id: 'res-3',
+          applicationId: 'app-3',
+          candidateId: 'candidate-3',
+          status: 'COMPLETED',
+          overallScore: 60,
+          recommendation: 'SHORTLIST',
+          confidence: 'MEDIUM',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(result.totalCandidates).toBe(3);
+      expect(result.scoredCandidates).toBe(2);
+      expect(result.averageScore).toBe(70);
+      expect(result.topCandidates.map((t) => t.candidateId)).toEqual([
+        'candidate-1',
+        'candidate-3',
+      ]);
+      expect(result.topCandidates[0]).toEqual(
+        expect.objectContaining({
+          displayName: 'Firstcandidate-1 Lastcandidate-1',
+          currentJobTitle: 'Engineer',
+          jobTitle: 'Engineer',
+          status: 'SCREENING',
+          overallScore: 80,
+        }),
+      );
+    });
+
+    it('preserves a real score of 0 in the average and top candidates', async () => {
+      prisma.candidate.findMany.mockResolvedValue([
+        makeCandidateRow('candidate-1'),
+        makeCandidateRow('candidate-2'),
+      ]);
+      prisma.application.findMany.mockResolvedValue([
+        {
+          id: 'app-1',
+          candidateId: 'candidate-1',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+        {
+          id: 'app-2',
+          candidateId: 'candidate-2',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+      ]);
+      prisma.aiScreeningResult.findMany.mockResolvedValue([
+        {
+          id: 'res-1',
+          applicationId: 'app-1',
+          candidateId: 'candidate-1',
+          status: 'COMPLETED',
+          overallScore: 0,
+          recommendation: 'NOT_SHORTLIST',
+          confidence: 'HIGH',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        },
+        {
+          id: 'res-2',
+          applicationId: 'app-2',
+          candidateId: 'candidate-2',
+          status: 'COMPLETED',
+          overallScore: 100,
+          recommendation: 'SHORTLIST',
+          confidence: 'HIGH',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(result.scoredCandidates).toBe(2);
+      expect(result.averageScore).toBe(50);
+      expect(result.topCandidates.map((t) => t.overallScore)).toEqual([100, 0]);
+    });
+
+    it('returns a null average when no candidate has a completed screening', async () => {
+      prisma.candidate.findMany.mockResolvedValue([
+        makeCandidateRow('candidate-1'),
+        makeCandidateRow('candidate-2'),
+      ]);
+      prisma.application.findMany.mockResolvedValue([
+        {
+          id: 'app-1',
+          candidateId: 'candidate-1',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+        {
+          id: 'app-2',
+          candidateId: 'candidate-2',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+      ]);
+      prisma.aiScreeningResult.findMany.mockResolvedValue([
+        {
+          id: 'res-1',
+          applicationId: 'app-1',
+          candidateId: 'candidate-1',
+          status: 'FAILED',
+          overallScore: null,
+          recommendation: null,
+          confidence: null,
+          completedAt: null,
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(result.totalCandidates).toBe(2);
+      expect(result.scoredCandidates).toBe(0);
+      expect(result.averageScore).toBeNull();
+      expect(result.topCandidates).toEqual([]);
+    });
+
+    it('uses the current non-terminal application per candidate', async () => {
+      prisma.candidate.findMany.mockResolvedValue([makeCandidateRow('candidate-1')]);
+      prisma.application.findMany.mockResolvedValue([
+        { id: 'app-hired', candidateId: 'candidate-1', status: 'HIRED', job: { title: 'Old Job' } },
+        {
+          id: 'app-current',
+          candidateId: 'candidate-1',
+          status: 'INTERVIEW',
+          job: { title: 'Current Job' },
+        },
+      ]);
+      prisma.aiScreeningResult.findMany.mockResolvedValue([
+        {
+          id: 'res-current',
+          applicationId: 'app-current',
+          candidateId: 'candidate-1',
+          status: 'COMPLETED',
+          overallScore: 90,
+          recommendation: 'SHORTLIST',
+          confidence: 'HIGH',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(result.scoredCandidates).toBe(1);
+      expect(result.averageScore).toBe(90);
+      expect(result.topCandidates[0].jobTitle).toBe('Current Job');
+      expect(prisma.aiScreeningResult.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            applicationId: { in: ['app-current'] },
+          }),
+        }),
+      );
+    });
+
+    it('excludes hired/rejected candidates from top candidates but keeps their score in the average', async () => {
+      prisma.candidate.findMany.mockResolvedValue([
+        makeCandidateRow('candidate-hired'),
+        makeCandidateRow('candidate-active'),
+      ]);
+      prisma.application.findMany.mockResolvedValue([
+        {
+          id: 'app-hired',
+          candidateId: 'candidate-hired',
+          status: 'HIRED',
+          job: { title: 'Old Job' },
+        },
+        {
+          id: 'app-active',
+          candidateId: 'candidate-active',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+      ]);
+      prisma.aiScreeningResult.findMany.mockResolvedValue([
+        {
+          id: 'res-hired',
+          applicationId: 'app-hired',
+          candidateId: 'candidate-hired',
+          status: 'COMPLETED',
+          overallScore: 95,
+          recommendation: 'SHORTLIST',
+          confidence: 'HIGH',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        },
+        {
+          id: 'res-active',
+          applicationId: 'app-active',
+          candidateId: 'candidate-active',
+          status: 'COMPLETED',
+          overallScore: 70,
+          recommendation: 'SHORTLIST',
+          confidence: 'HIGH',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(result.scoredCandidates).toBe(2);
+      expect(result.averageScore).toBe(83); // (95 + 70) / 2 rounds to 83
+      expect(result.topCandidates).toHaveLength(1);
+      expect(result.topCandidates[0].candidateId).toBe('candidate-active');
+      expect(result.topCandidates[0].overallScore).toBe(70);
     });
   });
 

@@ -9,6 +9,7 @@ const mockFetchApplicationById = vi.fn()
 const mockFetchCandidates = vi.fn()
 const mockFetchApplications = vi.fn()
 const mockGetJobPipeline = vi.fn()
+const mockFetchCandidatesScoreSummary = vi.fn()
 
 vi.mock("@/lib/api/applications.api", () => ({
   moveApplication: (...args: unknown[]) => mockMoveApplication(...args),
@@ -23,6 +24,7 @@ vi.mock("@/lib/api/applications.api", () => ({
 
 vi.mock("@/lib/api/candidates.api", () => ({
   fetchCandidates: (...args: unknown[]) => mockFetchCandidates(...args),
+  fetchCandidatesScoreSummary: (...args: unknown[]) => mockFetchCandidatesScoreSummary(...args),
   createCandidate: vi.fn(),
   mapCandidateFromApi: vi.fn((c: unknown) => c),
   buildApplicationInfo: vi.fn(),
@@ -99,10 +101,12 @@ function makeCandidate(overrides?: Partial<Candidate>): Candidate {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockFetchCandidatesScoreSummary.mockResolvedValue(null)
 
   // Reset store before each test
   useStore.setState({
     candidates: [],
+    candidatesScoreSummary: null,
     jobs: [],
     candidatesLoading: false,
     candidatesError: null,
@@ -311,5 +315,78 @@ describe("advanceCandidateApplication", () => {
     const state = useStore.getState()
     expect(state.candidatesError).toBe("Network error")
     expect(state.candidatesLoading).toBe(false)
+  })
+
+  describe("fetchCandidates", () => {
+    it("loads the whole-company score summary alongside the candidate list", async () => {
+      const summary = {
+        totalCandidates: 120,
+        scoredCandidates: 84,
+        averageScore: 71,
+        topCandidates: [
+          {
+            candidateId: "candidate-top",
+            displayName: "Top Candidate",
+            currentJobTitle: "Engineer",
+            jobTitle: "Senior Engineer",
+            status: "SCREENING",
+            overallScore: 99,
+          },
+        ],
+      }
+      mockFetchCandidatesScoreSummary.mockResolvedValue(summary)
+      mockFetchCandidates.mockResolvedValue({
+        data: [{ id: "candidate-1" }],
+        meta: { total: 120, page: 1, limit: 50 },
+      })
+      mockFetchApplications.mockResolvedValue({ data: [] })
+
+      const store = useStore.getState()
+      await store.fetchCandidates()
+
+      expect(mockFetchCandidatesScoreSummary).toHaveBeenCalledTimes(1)
+      const state = useStore.getState()
+      expect(state.candidatesScoreSummary).toEqual(summary)
+      expect(state.candidatesLoading).toBe(false)
+    })
+
+    it("keeps the summary null without failing when the aggregate endpoint errors", async () => {
+      mockFetchCandidatesScoreSummary.mockRejectedValue(new Error("aggregate down"))
+      mockFetchCandidates.mockResolvedValue({
+        data: [{ id: "candidate-1" }],
+        meta: { total: 1, page: 1, limit: 50 },
+      })
+      mockFetchApplications.mockResolvedValue({ data: [] })
+
+      const store = useStore.getState()
+      await store.fetchCandidates()
+
+      const state = useStore.getState()
+      expect(state.candidatesScoreSummary).toBeNull()
+      expect(state.candidatesError).toBeNull()
+      expect(state.candidatesLoading).toBe(false)
+    })
+
+    it("satisfies the >50-candidate requirement: the dashboard average comes from the aggregate, not the 50-row list", async () => {
+      mockFetchCandidatesScoreSummary.mockResolvedValue({
+        totalCandidates: 120,
+        scoredCandidates: 100,
+        averageScore: 61,
+        topCandidates: [],
+      })
+      mockFetchCandidates.mockResolvedValue({
+        data: Array.from({ length: 50 }, (_, i) => ({ id: `candidate-${i}` })),
+        meta: { total: 120, page: 1, limit: 50 },
+      })
+      mockFetchApplications.mockResolvedValue({ data: [] })
+
+      const store = useStore.getState()
+      await store.fetchCandidates()
+
+      const state = useStore.getState()
+      expect(state.candidates).toHaveLength(50)
+      expect(state.candidatesScoreSummary?.totalCandidates).toBe(120)
+      expect(state.candidatesScoreSummary?.averageScore).toBe(61)
+    })
   })
 })

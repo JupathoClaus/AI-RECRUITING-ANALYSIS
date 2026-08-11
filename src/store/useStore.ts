@@ -5,8 +5,9 @@ import {
   createCandidate,
   mapCandidateFromApi,
   buildApplicationInfo,
+  fetchCandidatesScoreSummary,
 } from "@/lib/api/candidates.api"
-import type { CandidateApiDetail } from "@/lib/api/candidates.api"
+import type { CandidateApiDetail, CandidateScoreSummary } from "@/lib/api/candidates.api"
 import {
   fetchApplications,
   fetchApplicationById,
@@ -89,6 +90,7 @@ export type AddCandidateResult =
 interface AppState {
   jobs: Job[]
   candidates: Candidate[]
+  candidatesScoreSummary: CandidateScoreSummary | null
   interviews: Interview[]
   activities: Activity[]
   candidatesLoading: boolean
@@ -238,6 +240,7 @@ function mapCreatedCandidate(api: CandidateApiDetail): Candidate {
 export const useStore = create<AppState>((set, get) => ({
   jobs: [],
   candidates: [],
+  candidatesScoreSummary: null,
   interviews: [],
   activities: [],
   candidatesLoading: false,
@@ -279,10 +282,16 @@ export const useStore = create<AppState>((set, get) => ({
     const requestId = ++candidatesRequestSequence
     set({ candidatesLoading: true, candidatesError: null })
     try {
-      const candidates = await loadCandidatesWithApplications()
+      // Whole-company aggregate runs alongside the paged list; a summary
+      // failure must not break the page (the dashboard falls back to the
+      // list-based computation).
+      const [candidates, scoreSummary] = await Promise.all([
+        loadCandidatesWithApplications(),
+        fetchCandidatesScoreSummary().catch(() => null),
+      ])
       if (requestId !== candidatesRequestSequence) return
       get().fetchJobs()
-      set({ candidates, candidatesLoading: false })
+      set({ candidates, candidatesScoreSummary: scoreSummary, candidatesLoading: false })
     } catch (err) {
       if (requestId !== candidatesRequestSequence) return
       const message = err instanceof Error ? err.message : "Failed to fetch candidates"

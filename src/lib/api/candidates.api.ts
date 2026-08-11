@@ -131,6 +131,30 @@ export async function fetchCandidates(params?: CandidateQueryParams): Promise<Ca
   })
 }
 
+export interface ScoreSummaryTopCandidate {
+  candidateId: string
+  displayName: string
+  currentJobTitle: string | null
+  jobTitle: string | null
+  status: string | null
+  overallScore: number
+}
+
+export interface CandidateScoreSummary {
+  totalCandidates: number
+  scoredCandidates: number
+  averageScore: number | null
+  topCandidates: ScoreSummaryTopCandidate[]
+}
+
+// Whole-company AI screening aggregate (GET /candidates/score-summary).
+// The dashboard uses this instead of averaging only the first page of
+// candidates, so the average and top candidates always cover the whole
+// tenant without an unbounded browser list fetch.
+export async function fetchCandidatesScoreSummary(): Promise<CandidateScoreSummary> {
+  return apiRequest<CandidateScoreSummary>("/candidates/score-summary")
+}
+
 export async function fetchCandidateById(candidateId: string): Promise<CandidateApiDetail> {
   return apiRequest<CandidateApiDetail>(`/candidates/${candidateId}`)
 }
