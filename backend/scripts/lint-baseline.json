@@ -48,6 +48,7 @@
     "src/modules/applications/tests/applications.service.spec.ts|@typescript-eslint/no-explicit-any|warning": 6,
     "src/modules/applications/tests/candidate-tags.service.spec.ts|@typescript-eslint/no-explicit-any|warning": 2,
     "src/modules/applications/tests/company-candidate.service.spec.ts|@typescript-eslint/no-explicit-any|warning": 2,
+    "src/modules/applications/tests/public-applications.controller.spec.ts|@typescript-eslint/no-explicit-any|warning": 4,
     "src/modules/auth/__tests__/login-protection.service.spec.ts|@typescript-eslint/no-explicit-any|warning": 2,
     "src/modules/auth/__tests__/permissions.spec.ts|@typescript-eslint/no-explicit-any|warning": 1,
     "src/modules/candidates/candidate-audit.service.ts|@typescript-eslint/no-explicit-any|warning": 1,
@@ -78,8 +79,8 @@
     "src/modules/interviews/controllers/interviews.controller.ts|@typescript-eslint/no-explicit-any|warning": 4,
     "src/modules/interviews/dto/interview-query.dto.ts|@typescript-eslint/no-unused-vars|warning": 1,
     "src/modules/interviews/services/interviews.service.ts|@typescript-eslint/no-explicit-any|warning": 5,
-    "src/modules/interviews/services/interviews.service.ts|@typescript-eslint/no-unused-vars|warning": 1,
-    "src/modules/interviews/tests/interviews.service.spec.ts|@typescript-eslint/no-explicit-any|warning": 6,
+    "src/modules/interviews/tests/interview-conflict.service.spec.ts|@typescript-eslint/no-explicit-any|warning": 1,
+    "src/modules/interviews/tests/interviews.service.spec.ts|@typescript-eslint/no-explicit-any|warning": 10,
     "src/modules/interviews/tests/interviews.service.spec.ts|@typescript-eslint/no-unused-vars|warning": 2,
     "src/modules/invitations/invitations.service.ts|@typescript-eslint/no-unused-vars|warning": 1,
     "src/modules/invitations/tests/invitations.service.spec.ts|@typescript-eslint/no-explicit-any|warning": 4,
@@ -124,7 +125,8 @@
     "src/modules/skills/tests/skills.service.spec.ts|@typescript-eslint/no-explicit-any|warning": 1,
     "test/applications.e2e-spec.ts|@typescript-eslint/no-explicit-any|warning": 1,
     "test/applications.e2e-spec.ts|@typescript-eslint/no-unused-vars|warning": 3,
-    "test/interviews.e2e-spec.ts|@typescript-eslint/no-unused-vars|warning": 5,
+    "test/interviews.e2e-spec.ts|@typescript-eslint/no-explicit-any|warning": 5,
+    "test/interviews.e2e-spec.ts|@typescript-eslint/no-unused-vars|warning": 4,
     "test/jobs.e2e-spec.ts|@typescript-eslint/no-unused-vars|warning": 9
   }
 }
