@@ -51,8 +51,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
               : this.httpStatusToErrorCode(status);
         // Structured extra fields (e.g. interview slot conflicts) pass through
         // so clients can render them without parsing free-form messages.
-        if (Array.isArray(resp.conflicts)) {
-          structuredConflicts = resp.conflicts;
+        if (errorCode === 'INTERVIEW_SLOT_CONFLICT' && Array.isArray(resp.conflicts)) {
+          structuredConflicts = resp.conflicts.map((conflict) => {
+            const item = conflict as Record<string, unknown>;
+            return {
+              kind: item.kind === 'PARTICIPANT' ? 'PARTICIPANT' : 'CANDIDATE',
+              scheduledAt: typeof item.scheduledAt === 'string' ? item.scheduledAt : undefined,
+              durationMinutes:
+                typeof item.durationMinutes === 'number' ? item.durationMinutes : undefined,
+            };
+          });
         }
       }
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {

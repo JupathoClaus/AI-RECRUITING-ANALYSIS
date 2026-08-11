@@ -305,6 +305,7 @@ describe('InterviewsService', () => {
 
     it('reschedules a SCHEDULED interview', async () => {
       mockPrisma.interview.findFirst.mockResolvedValue(mockInterview);
+      mockPrisma.application.findFirst.mockResolvedValue({ candidateId: 'candidate-1' });
       mockPrisma.interview.update.mockResolvedValue({
         ...mockInterview,
         status: InterviewStatus.RESCHEDULED,

@@ -240,4 +240,43 @@ describe('GlobalExceptionFilter', () => {
       expect.objectContaining({ errorCode: 'MY_DOMAIN_CODE', statusCode: 409 }),
     );
   });
+
+  it('sanitizes interview slot conflict details', () => {
+    const exception = new HttpException(
+      {
+        code: 'INTERVIEW_SLOT_CONFLICT',
+        message: 'Conflict',
+        conflicts: [
+          {
+            kind: 'PARTICIPANT',
+            scheduledAt: '2026-08-11T10:00:00.000Z',
+            durationMinutes: 30,
+            interviewId: 'secret-interview',
+            title: 'Private title',
+            participantMembershipId: 'secret-member',
+          },
+        ],
+      },
+      HttpStatus.CONFLICT,
+    );
+    filter.catch(exception, mockHost);
+    const response = (mockResponse.json as jest.Mock).mock.calls[0][0];
+    expect(response.conflicts).toEqual([
+      {
+        kind: 'PARTICIPANT',
+        scheduledAt: '2026-08-11T10:00:00.000Z',
+        durationMinutes: 30,
+      },
+    ]);
+  });
+
+  it('does not reflect arbitrary conflicts arrays from unrelated errors', () => {
+    const exception = new HttpException(
+      { code: 'OTHER_ERROR', message: 'Bad request', conflicts: [{ secret: 'do-not-reflect' }] },
+      HttpStatus.BAD_REQUEST,
+    );
+    filter.catch(exception, mockHost);
+    const response = (mockResponse.json as jest.Mock).mock.calls[0][0];
+    expect(response).not.toHaveProperty('conflicts');
+  });
 });

@@ -482,6 +482,12 @@ export class InterviewsService {
         where: { id: interview.applicationId, companyId, deletedAt: null },
         select: { candidateId: true },
       });
+      if (!application) {
+        throw new NotFoundException({
+          code: 'APPLICATION_NOT_FOUND',
+          message: 'Application not found',
+        });
+      }
 
       const participants = await tx.interviewParticipant.findMany({
         where: {
@@ -494,7 +500,7 @@ export class InterviewsService {
 
       await this.conflictService.assertNoConflict(tx, {
         companyId,
-        candidateId: application?.candidateId ?? '',
+        candidateId: application.candidateId,
         membershipIds: participants
           .map((p) => p.membershipId)
           .filter((m): m is string => Boolean(m)),

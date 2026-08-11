@@ -46,68 +46,74 @@ describe('Interview Scheduling (e2e)', () => {
     await prisma.$disconnect();
   }
 
-  async function rawCleanup() {
+  const escapeSql = (s: string) => s.replace(/'/g, "''");
+
+  async function rawCleanup(options?: { users?: string[]; candidates?: string[] }) {
     const prisma = new PrismaClient();
+    const users = options?.users?.length ? options.users : [testUser.email];
+    const candidates = options?.candidates?.length
+      ? options.candidates
+      : ['iv-e2e-candidate@test.com'];
+    const userList = users.map((u) => `'${escapeSql(u.toLowerCase().trim())}'`).join(',');
+    const candidateList = candidates.map((c) => `'${escapeSql(c.toLowerCase().trim())}'`).join(',');
 
     try {
-      const norm = testUser.email.toLowerCase().trim();
+      // Per-user loop: all rows reachable from each normalized email are
+      // removed in dependency order (children before parents).
       await prisma.$executeRawUnsafe(`
         DO $$
-        DECLARE uid TEXT; cids TEXT[]; appids TEXT[]; intids TEXT[];
+        DECLARE u RECORD; cids TEXT[]; appids TEXT[]; intids TEXT[];
         BEGIN
-          SELECT id INTO uid FROM "User" WHERE "normalizedEmail" = '${norm}';
-          IF uid IS NULL THEN RETURN; END IF;
-          SELECT ARRAY(SELECT "companyId" FROM "CompanyMembership" WHERE "userId" = uid) INTO cids;
-          SELECT ARRAY(SELECT id FROM "Application" WHERE "companyId" = ANY(cids)) INTO appids;
-          SELECT ARRAY(SELECT id FROM "Interview" WHERE "companyId" = ANY(cids)) INTO intids;
-          DELETE FROM "InterviewHistory" WHERE "interviewId" = ANY(intids);
-          DELETE FROM "InterviewParticipant" WHERE "interviewId" = ANY(intids);
-          DELETE FROM "Interview" WHERE "companyId" = ANY(cids);
-          DELETE FROM "ApplicationAuditEvent" WHERE "applicationId" = ANY(appids);
-          DELETE FROM "ApplicationDecision" WHERE "applicationId" = ANY(appids);
-          DELETE FROM "ApplicationFlag" WHERE "applicationId" = ANY(appids);
-          DELETE FROM "ApplicationNote" WHERE "applicationId" = ANY(appids);
-          DELETE FROM "ApplicationAssignment" WHERE "applicationId" = ANY(appids);
-          DELETE FROM "ApplicationStageHistory" WHERE "applicationId" = ANY(appids);
-          DELETE FROM "ApplicationScreeningAnswer" WHERE "applicationId" = ANY(appids);
-          DELETE FROM "ApplicationTagAssignment" WHERE "applicationId" = ANY(appids);
-          DELETE FROM "Application" WHERE "companyId" = ANY(cids);
-          DELETE FROM "ApplicationCounter" WHERE "companyId" = ANY(cids);
-          DELETE FROM "CompanyCandidate" WHERE "companyId" = ANY(cids);
-          DELETE FROM "CandidateTag" WHERE "companyId" = ANY(cids);
-          DELETE FROM "JobActivityEvent" WHERE "companyId" = ANY(cids);
-          DELETE FROM "JobCollaborator" WHERE "companyMembershipId" IN (SELECT id FROM "CompanyMembership" WHERE "userId" = uid);
-          DELETE FROM "JobApproval" WHERE "requestedByMembershipId" IN (SELECT id FROM "CompanyMembership" WHERE "userId" = uid);
-          DELETE FROM "JobPipelineStage" WHERE "pipelineId" IN (SELECT id FROM "JobPipeline" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids)));
-          DELETE FROM "JobPipeline" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
-          DELETE FROM "JobScreeningQuestion" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
-          DELETE FROM "JobScreeningConfiguration" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
-          DELETE FROM "JobAccessibilityConfiguration" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
-          DELETE FROM "Job" WHERE "companyId" = ANY(cids);
-          DELETE FROM "OrganizationAuditEvent" WHERE "companyId" = ANY(cids);
-          DELETE FROM "AuthAuditEvent" WHERE "userId" = uid;
-          DELETE FROM "UserSession" WHERE "userId" = uid;
-          DELETE FROM "VerificationToken" WHERE "userId" = uid;
-          DELETE FROM "CompanySettings" WHERE "companyId" = ANY(cids);
-          DELETE FROM "DepartmentMembership" WHERE "companyMembershipId" IN (SELECT id FROM "CompanyMembership" WHERE "userId" = uid);
-          DELETE FROM "CompanyMembership" WHERE "userId" = uid;
-          DELETE FROM "Company" WHERE id = ANY(cids);
-          DELETE FROM "User" WHERE id = uid;
+          FOR u IN SELECT id AS uid FROM "User" WHERE "normalizedEmail" = ANY(ARRAY[${userList}]) LOOP
+            SELECT ARRAY(SELECT "companyId" FROM "CompanyMembership" WHERE "userId" = u.uid) INTO cids;
+            SELECT ARRAY(SELECT id FROM "Application" WHERE "companyId" = ANY(cids)) INTO appids;
+            SELECT ARRAY(SELECT id FROM "Interview" WHERE "companyId" = ANY(cids)) INTO intids;
+            DELETE FROM "InterviewHistory" WHERE "interviewId" = ANY(intids);
+            DELETE FROM "InterviewParticipant" WHERE "interviewId" = ANY(intids);
+            DELETE FROM "Interview" WHERE "companyId" = ANY(cids);
+            DELETE FROM "ApplicationAuditEvent" WHERE "applicationId" = ANY(appids);
+            DELETE FROM "ApplicationDecision" WHERE "applicationId" = ANY(appids);
+            DELETE FROM "ApplicationFlag" WHERE "applicationId" = ANY(appids);
+            DELETE FROM "ApplicationNote" WHERE "applicationId" = ANY(appids);
+            DELETE FROM "ApplicationAssignment" WHERE "applicationId" = ANY(appids);
+            DELETE FROM "ApplicationStageHistory" WHERE "applicationId" = ANY(appids);
+            DELETE FROM "ApplicationScreeningAnswer" WHERE "applicationId" = ANY(appids);
+            DELETE FROM "ApplicationTagAssignment" WHERE "applicationId" = ANY(appids);
+            DELETE FROM "Application" WHERE "companyId" = ANY(cids);
+            DELETE FROM "ApplicationCounter" WHERE "companyId" = ANY(cids);
+            DELETE FROM "CompanyCandidate" WHERE "companyId" = ANY(cids);
+            DELETE FROM "CandidateTag" WHERE "companyId" = ANY(cids);
+            DELETE FROM "JobActivityEvent" WHERE "companyId" = ANY(cids);
+            DELETE FROM "JobCollaborator" WHERE "companyMembershipId" IN (SELECT id FROM "CompanyMembership" WHERE "userId" = u.uid);
+            DELETE FROM "JobApproval" WHERE "requestedByMembershipId" IN (SELECT id FROM "CompanyMembership" WHERE "userId" = u.uid);
+            DELETE FROM "JobPipelineStage" WHERE "pipelineId" IN (SELECT id FROM "JobPipeline" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids)));
+            DELETE FROM "JobPipeline" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
+            DELETE FROM "JobScreeningQuestion" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
+            DELETE FROM "JobScreeningConfiguration" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
+            DELETE FROM "JobAccessibilityConfiguration" WHERE "jobId" IN (SELECT id FROM "Job" WHERE "companyId" = ANY(cids));
+            DELETE FROM "Job" WHERE "companyId" = ANY(cids);
+            DELETE FROM "OrganizationAuditEvent" WHERE "companyId" = ANY(cids);
+            DELETE FROM "AuthAuditEvent" WHERE "userId" = u.uid;
+            DELETE FROM "UserSession" WHERE "userId" = u.uid;
+            DELETE FROM "VerificationToken" WHERE "userId" = u.uid;
+            DELETE FROM "CompanySettings" WHERE "companyId" = ANY(cids);
+            DELETE FROM "DepartmentMembership" WHERE "companyMembershipId" IN (SELECT id FROM "CompanyMembership" WHERE "userId" = u.uid);
+            DELETE FROM "CompanyMembership" WHERE "userId" = u.uid;
+            DELETE FROM "Company" WHERE id = ANY(cids);
+            DELETE FROM "User" WHERE id = u.uid;
+          END LOOP;
         END $$;
       `);
-      // Also clean candidate used in test
+      // All candidates created by the suite (by exact email), children first.
       await prisma.$executeRawUnsafe(`
         DO $$
-        DECLARE cid TEXT;
         BEGIN
-          SELECT id INTO cid FROM "Candidate" WHERE "normalizedEmail" = 'iv-e2e-candidate@test.com';
-          IF cid IS NULL THEN RETURN; END IF;
-          DELETE FROM "CandidateAuditEvent" WHERE "candidateId" = cid;
-          DELETE FROM "CandidateMergeRecord" WHERE "primaryCandidateId" = cid OR "mergedCandidateId" = cid;
-          DELETE FROM "CandidateSkill" WHERE "candidateId" = cid;
-          DELETE FROM "CandidateLanguage" WHERE "candidateId" = cid;
-          DELETE FROM "CandidateConsent" WHERE "candidateId" = cid;
-          DELETE FROM "Candidate" WHERE id = cid;
+          DELETE FROM "CandidateSkill" WHERE "candidateId" IN (SELECT id FROM "Candidate" WHERE "normalizedEmail" = ANY(ARRAY[${candidateList}]));
+          DELETE FROM "CandidateLanguage" WHERE "candidateId" IN (SELECT id FROM "Candidate" WHERE "normalizedEmail" = ANY(ARRAY[${candidateList}]));
+          DELETE FROM "CandidateConsent" WHERE "candidateId" IN (SELECT id FROM "Candidate" WHERE "normalizedEmail" = ANY(ARRAY[${candidateList}]));
+          DELETE FROM "CandidateAuditEvent" WHERE "candidateId" IN (SELECT id FROM "Candidate" WHERE "normalizedEmail" = ANY(ARRAY[${candidateList}]));
+          DELETE FROM "CandidateMergeRecord" WHERE "primaryCandidateId" IN (SELECT id FROM "Candidate" WHERE "normalizedEmail" = ANY(ARRAY[${candidateList}])) OR "mergedCandidateId" IN (SELECT id FROM "Candidate" WHERE "normalizedEmail" = ANY(ARRAY[${candidateList}]));
+          DELETE FROM "Candidate" WHERE "normalizedEmail" = ANY(ARRAY[${candidateList}]);
         END $$;
       `);
     } catch {
@@ -574,6 +580,55 @@ describe('Interview Scheduling (e2e)', () => {
         .expect(201);
     });
 
+    it('allows exactly one of two simultaneous requests for the same candidate slot', async () => {
+      const payload = {
+        applicationId: app2Id,
+        type: 'TECHNICAL',
+        scheduledAt: iso(20),
+        durationMinutes: 60,
+        timezone: 'UTC',
+      };
+      const [first, second] = await Promise.all([
+        request(app.getHttpServer())
+          .post('/api/v1/interviews')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ ...payload, title: 'Concurrent slot A' }),
+        request(app.getHttpServer())
+          .post('/api/v1/interviews')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ ...payload, title: 'Concurrent slot B' }),
+      ]);
+
+      // Exactly one request wins; the other is rejected with the structured
+      // conflict code (no reliance on mocked Prisma P2034 behavior).
+      expect([first.status, second.status].sort()).toEqual([201, 409]);
+      const conflict = first.status === 409 ? first : second;
+      expect(conflict.body.errorCode).toBe('INTERVIEW_SLOT_CONFLICT');
+
+      // Sanitized conflict: no interview id, title, membership id or other
+      // metadata of the other (winning) interview leaks into the response.
+      expect(Array.isArray(conflict.body.conflicts)).toBe(true);
+      for (const c of conflict.body.conflicts as Array<Record<string, unknown>>) {
+        expect(c).not.toHaveProperty('interviewId');
+        expect(c).not.toHaveProperty('title');
+        expect(c).not.toHaveProperty('participantMembershipId');
+        expect(c).not.toHaveProperty('candidateId');
+        expect(c).not.toHaveProperty('candidateName');
+      }
+
+      // Only ONE interview row was committed for the contested slot.
+      const prisma = new PrismaClient();
+      const committed = await prisma.interview.count({
+        where: {
+          applicationId: app2Id,
+          title: { in: ['Concurrent slot A', 'Concurrent slot B'] },
+          deletedAt: null,
+        },
+      });
+      expect(committed).toBe(1);
+      await prisma.$disconnect();
+    });
+
     it('rejects a partially overlapping candidate slot with a structured 409', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/interviews')
@@ -853,8 +908,25 @@ describe('Interview Scheduling (e2e)', () => {
         })
         .expect(409);
       for (const c of conflict.body.conflicts as any[]) {
-        expect(c.interviewId).not.toContain('other');
+        expect(c).not.toHaveProperty('interviewId');
+        expect(c).not.toHaveProperty('title');
+        expect(c).not.toHaveProperty('participantMembershipId');
       }
+    });
+
+    // The suite creates two tenants and four candidates; remove every row of
+    // both tenants plus every created candidate after the tests complete so
+    // no verification data remains in the local database.
+    afterAll(async () => {
+      await rawCleanup({
+        users: [testUser.email, `other-${base}@test.com`],
+        candidates: [
+          'iv-e2e-candidate@test.com',
+          `iv-slot-${base}@test.com`,
+          `iv-slot-other-${base}@test.com`,
+          `other-cand-${base}@test.com`,
+        ],
+      });
     });
   });
 });
