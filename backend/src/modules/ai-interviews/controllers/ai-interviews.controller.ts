@@ -32,6 +32,13 @@ export class AiInterviewsController {
     return this.aiInterviewsService.create(dto, user.activeCompanyId!, user.membershipId!);
   }
 
+  @Get()
+  @RequirePermissions('interviews.read')
+  @ApiOperation({ summary: 'List AI interviews for the active company' })
+  async findAll(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.aiInterviewsService.findAll(user.activeCompanyId!);
+  }
+
   @Get(':id')
   @RequirePermissions('interviews.read')
   @ApiOperation({ summary: 'Get AI interview by ID' })

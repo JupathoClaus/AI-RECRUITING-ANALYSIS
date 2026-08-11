@@ -6,35 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import {
-  Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { ModalHeader } from "@/components/ui/modal-header"
-import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
 import { useStore } from "@/store/useStore"
-import {
-  createAiInterview,
-  sendAiInterviewInvitation,
-  cancelAiInterview,
-  regenerateAiInterviewCode,
-  getAiInterview,
-  getAiInterviewsByApplication,
-  type AiInterviewDetail,
-  type AiInterviewStatus,
-} from "@/lib/api/ai-interviews.api"
+import { createAiInterview, sendAiInterviewInvitation, cancelAiInterview, regenerateAiInterviewCode, getAiInterview, listAiInterviews, getAiInterviewsByApplication, type AiInterviewDetail, type AiInterviewStatus } from "@/lib/api/ai-interviews.api"
 import { MagicStar, DocumentText, Clock, Link2, Warning2, Send2, Refresh } from "iconsax-react"
 
 const STATUS_LABEL: Record<AiInterviewStatus, string> = {
@@ -74,27 +52,33 @@ export default function AIInterviewsPage() {
   const [busyId, setBusyId] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchCandidates().catch(() => {})
-    fetchJobs().catch(() => {})
+    let active = true
+    Promise.all([fetchCandidates(), fetchJobs(), listAiInterviews()])
+      .then(([, , interviews]) => {
+        if (active) setCreated(interviews)
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "AI interviews could not be loaded")
+      })
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Applications available for AI interviews: every candidate with a current
   // application gets an entry, matched to a real job.
   const applicationOptions = useMemo(() => {
-    const map = new Map<
-      string,
-      { applicationId: string; candidateName: string; jobTitle: string }
-    >()
+    const map = new Map<string, { applicationId: string; candidateName: string; jobTitle: string }>()
     for (const c of candidates) {
       const app = c.applicationSummary?.current
       if (!app || !app.id) continue
-      const jobTitle =
-        jobs.find((j) => j.id === app.jobId)?.title ||
-        app.jobTitle ||
-        c.currentJobTitle ||
-        "Position"
-      map.set(app.id, { applicationId: app.id, candidateName: c.displayName, jobTitle })
+      const jobTitle = jobs.find((j) => j.id === app.jobId)?.title || app.jobTitle || c.currentJobTitle || "Position"
+      map.set(app.id, {
+        applicationId: app.id,
+        candidateName: c.displayName,
+        jobTitle,
+      })
     }
     return [...map.values()]
   }, [candidates, jobs])
@@ -112,10 +96,7 @@ export default function AIInterviewsPage() {
         estimatedDurationMinutes: Number(durationMinutes) || 30,
       })
       // Load any existing interviews for the same application (tenant-scoped).
-      const [detail, existing] = await Promise.all([
-        getAiInterview(interview.id),
-        getAiInterviewsByApplication(selectedApplicationId).catch(() => []),
-      ])
+      const [detail, existing] = await Promise.all([getAiInterview(interview.id), getAiInterviewsByApplication(selectedApplicationId).catch(() => [])])
       setCreated((prev) => [detail, ...existing.filter((i) => i.id !== detail.id), ...prev])
       setCreateOpen(false)
     } catch (err) {
@@ -168,11 +149,7 @@ export default function AIInterviewsPage() {
     }
   }, [])
 
-  const canCancel = useCallback(
-    (status: AiInterviewStatus) =>
-      ["CREATED", "SENT", "ACCESSED", "READY", "IN_PROGRESS"].includes(status),
-    []
-  )
+  const canCancel = useCallback((status: AiInterviewStatus) => ["CREATED", "SENT", "ACCESSED", "READY", "IN_PROGRESS"].includes(status), [])
   const canSend = useCallback((status: AiInterviewStatus) => status === "CREATED", [])
 
   return (
@@ -180,7 +157,13 @@ export default function AIInterviewsPage() {
       title="AI Interviews"
       description="AI interview sessions are created from candidate applications. Sessions are started by the candidate through their access link."
       actions={
-        <Dialog open={createOpen} onOpenChange={(o) => { setCreateOpen(o); if (!o) setCreateError(null) }}>
+        <Dialog
+          open={createOpen}
+          onOpenChange={(o) => {
+            setCreateOpen(o)
+            if (!o) setCreateError(null)
+          }}
+        >
           <DialogTrigger asChild>
             <Button size="sm">
               <MagicStar className="h-4 w-4 mr-2" />
@@ -193,9 +176,7 @@ export default function AIInterviewsPage() {
                 <MagicStar className="h-5 w-5 text-primary" />
                 Create AI Interview
               </DialogTitle>
-              <DialogDescription>
-                Create an interview invitation for a candidate application.
-              </DialogDescription>
+              <DialogDescription>Create an interview invitation for a candidate application.</DialogDescription>
             </ModalHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
@@ -206,7 +187,9 @@ export default function AIInterviewsPage() {
                   </SelectTrigger>
                   <SelectContent>
                     {applicationOptions.length === 0 && (
-                      <SelectItem value="none" disabled>No candidates available</SelectItem>
+                      <SelectItem value="none" disabled>
+                        No candidates available
+                      </SelectItem>
                     )}
                     {applicationOptions.map((a) => (
                       <SelectItem key={a.applicationId} value={a.applicationId}>
@@ -234,13 +217,7 @@ export default function AIInterviewsPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground">Estimated duration (min)</label>
-                  <Input
-                    type="number"
-                    min={5}
-                    max={180}
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(e.target.value)}
-                  />
+                  <Input type="number" min={5} max={180} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} />
                 </div>
               </div>
               {createError && (
@@ -251,7 +228,9 @@ export default function AIInterviewsPage() {
               )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </Button>
               <Button onClick={handleCreate} disabled={!selectedApplicationId || creating}>
                 <MagicStar className="h-4 w-4 mr-2" />
                 {creating ? "Creating..." : "Create Interview"}
@@ -268,17 +247,13 @@ export default function AIInterviewsPage() {
         </div>
       )}
 
-      {created.length === 0 ? (
+      {created.length === 0 && !error ? (
         <Card>
           <CardContent className="py-16">
-            <EmptyState
-              icon={<MagicStar className="h-12 w-12" />}
-              title="No AI interviews yet"
-              description="AI interviews are created per candidate application. Use “Create AI Interview” above, or open a candidate’s detail page and choose “Send AI Interview”."
-            />
+            <EmptyState icon={<MagicStar className="h-12 w-12" />} title="No AI interviews yet" description="AI interviews are created per candidate application. Use “Create AI Interview” above, or open a candidate’s detail page and choose “Send AI Interview”." />
           </CardContent>
         </Card>
-      ) : (
+      ) : created.length > 0 ? (
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-foreground">AI Interview Sessions</h2>
           <div className="grid grid-cols-1 gap-4">
@@ -296,9 +271,7 @@ export default function AIInterviewsPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-foreground">
-                            {candidate ? `${candidate.firstName} ${candidate.lastName}` : "Candidate"}
-                          </h3>
+                          <h3 className="font-semibold text-foreground">{candidate ? `${candidate.firstName} ${candidate.lastName}` : "Candidate"}</h3>
                           <Badge variant={STATUS_VARIANT[interview.status]} className="text-[10px]">
                             {STATUS_LABEL[interview.status]}
                           </Badge>
@@ -318,51 +291,30 @@ export default function AIInterviewsPage() {
                       <div className="flex flex-col items-end gap-2 shrink-0">
                         <div className="flex flex-wrap gap-2 justify-end">
                           {canSend(interview.status) && (
-                            <Button
-                              size="sm"
-                              className="h-8"
-                              disabled={busyId === interview.id}
-                              onClick={() => handleSend(interview)}
-                            >
+                            <Button size="sm" className="h-8" disabled={busyId === interview.id} onClick={() => handleSend(interview)}>
                               <Send2 className="h-3.5 w-3.5 mr-1.5" />
                               Send Invitation
                             </Button>
                           )}
                           {(interview.status === "CREATED" || interview.status === "SENT") && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8"
-                              disabled={busyId === interview.id}
-                              onClick={() => handleRegenerate(interview)}
-                            >
+                            <Button size="sm" variant="outline" className="h-8" disabled={busyId === interview.id} onClick={() => handleRegenerate(interview)}>
                               <Refresh className="h-3.5 w-3.5 mr-1.5" />
                               Regenerate Code
                             </Button>
                           )}
                           {canCancel(interview.status) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8"
-                              disabled={busyId === interview.id}
-                              onClick={() => handleCancel(interview)}
-                            >
+                            <Button size="sm" variant="outline" className="h-8" disabled={busyId === interview.id} onClick={() => handleCancel(interview)}>
                               Cancel
                             </Button>
                           )}
                         </div>
-                        <p className="text-[10px] text-muted text-right">
-                          The candidate starts the session from the access link.
-                        </p>
+                        <p className="text-[10px] text-muted text-right">The candidate starts the session from the access link.</p>
                       </div>
                     </div>
                     {interview.createdAt && (
                       <>
                         <Separator className="my-4" />
-                        <p className="text-xs text-muted">
-                          Created {new Date(interview.createdAt).toLocaleString()} · Access via candidate invitation email
-                        </p>
+                        <p className="text-xs text-muted">Created {new Date(interview.createdAt).toLocaleString()} · Access via candidate invitation email</p>
                       </>
                     )}
                   </CardContent>
@@ -371,7 +323,7 @@ export default function AIInterviewsPage() {
             })}
           </div>
         </div>
-      )}
+      ) : null}
     </AppLayout>
   )
 }

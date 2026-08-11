@@ -138,6 +138,23 @@ export class AiInterviewsService {
     return this.stripMeetingToken(interview);
   }
 
+  async findAll(companyId: string) {
+    const interviews = await this.prisma.aiInterview.findMany({
+      where: { companyId },
+      include: {
+        application: {
+          include: {
+            candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
+            job: { select: { id: true, title: true } },
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 100,
+    });
+    return interviews.map((interview) => this.stripMeetingToken(interview));
+  }
+
   async findByApplication(applicationId: string, companyId: string) {
     const interviews = await this.prisma.aiInterview.findMany({
       where: { applicationId, company: { id: companyId } },

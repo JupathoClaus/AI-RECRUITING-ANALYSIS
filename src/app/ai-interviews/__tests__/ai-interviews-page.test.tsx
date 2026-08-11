@@ -11,11 +11,13 @@ import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/re
 const mockGetAiInterview = vi.fn()
 const mockCreateAiInterview = vi.fn()
 const mockGetByApplication = vi.fn()
+const mockListAiInterviews = vi.fn()
 
 vi.mock("@/lib/api/ai-interviews.api", () => ({
   createAiInterview: (...args: unknown[]) => mockCreateAiInterview(...args),
   getAiInterview: (...args: unknown[]) => mockGetAiInterview(...args),
   getAiInterviewsByApplication: (...args: unknown[]) => mockGetByApplication(...args),
+  listAiInterviews: (...args: unknown[]) => mockListAiInterviews(...args),
   sendAiInterviewInvitation: vi.fn().mockResolvedValue({ sent: true, sentAt: "", codeHint: "" }),
   cancelAiInterview: vi.fn().mockResolvedValue({ cancelled: true }),
   regenerateAiInterviewCode: vi.fn().mockResolvedValue({ rawCode: "NEW-CODE", displayHint: "NEW-CODE" }),
@@ -62,8 +64,7 @@ vi.mock("@/store/useStore", () => ({
 
 vi.mock("iconsax-react", () => {
   const mock = (name: string) => {
-    const Icon = (props: Record<string, unknown>) =>
-      React.createElement("span", { "data-testid": `icon-${name}`, ...props })
+    const Icon = (props: Record<string, unknown>) => React.createElement("span", { "data-testid": `icon-${name}`, ...props })
     Icon.displayName = name
     return Icon
   }
@@ -99,6 +100,7 @@ describe("AIInterviewsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetByApplication.mockResolvedValue([])
+    mockListAiInterviews.mockResolvedValue([])
   })
 
   afterEach(() => cleanup())
@@ -127,7 +129,11 @@ describe("AIInterviewsPage", () => {
       expiresAt: null,
       createdAt: "2026-08-01T10:00:00Z",
       application: {
-        candidate: { firstName: "Ada", lastName: "Lovelace", email: "ada@test.com" },
+        candidate: {
+          firstName: "Ada",
+          lastName: "Lovelace",
+          email: "ada@test.com",
+        },
         job: { title: "Senior Engineer" },
       },
     })
@@ -154,7 +160,12 @@ describe("AIInterviewsPage", () => {
       createdAt: "2026-08-01T10:00:00Z",
       updatedAt: "2026-08-01T10:00:00Z",
       application: {
-        candidate: { id: "c1", firstName: "Ada", lastName: "Lovelace", email: "ada@test.com" },
+        candidate: {
+          id: "c1",
+          firstName: "Ada",
+          lastName: "Lovelace",
+          email: "ada@test.com",
+        },
         job: { id: "job-1", title: "Senior Engineer" },
       },
     })
@@ -189,6 +200,54 @@ describe("AIInterviewsPage", () => {
       expect(screen.getAllByText(/Created/i).length).toBeGreaterThan(0)
       expect(screen.queryByText("Emily Chen")).toBeNull()
     })
+  }, 15000)
+
+  it("loads persisted interviews on mount", async () => {
+    mockListAiInterviews.mockResolvedValue([
+      {
+        id: "persisted-1",
+        applicationId: "app-c1",
+        provider: "MOCK",
+        status: "SENT",
+        codeDisplayHint: "AB12",
+        invitationSentAt: "2026-08-01T10:00:00Z",
+        invitationEmail: "ada@test.com",
+        accessedAt: null,
+        startedAt: null,
+        completedAt: null,
+        cancelledAt: null,
+        tavusConversationId: null,
+        tavusConversationUrl: null,
+        tavusStatus: null,
+        transcriptStatus: "NOT_REQUESTED",
+        language: "en",
+        estimatedDurationMinutes: 30,
+        expiresAt: null,
+        notes: null,
+        createdAt: "2026-08-01T10:00:00Z",
+        updatedAt: "2026-08-01T10:00:00Z",
+        application: {
+          candidate: {
+            id: "c1",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@test.com",
+          },
+          job: { id: "job-1", title: "Senior Engineer" },
+        },
+      },
+    ])
+
+    render(<AIInterviewsPage />)
+    await waitFor(() => expect(screen.getByText("Ada Lovelace")).toBeTruthy())
+    expect(screen.queryByText("No AI interviews yet")).toBeNull()
+  })
+
+  it("shows an initial load failure instead of an empty state", async () => {
+    mockListAiInterviews.mockRejectedValue(new Error("Interview service unavailable"))
+    render(<AIInterviewsPage />)
+    await waitFor(() => expect(screen.getByText("Interview service unavailable")).toBeTruthy())
+    expect(screen.queryByText("No AI interviews yet")).toBeNull()
   })
 
   it("renders a failure state when creation fails", async () => {

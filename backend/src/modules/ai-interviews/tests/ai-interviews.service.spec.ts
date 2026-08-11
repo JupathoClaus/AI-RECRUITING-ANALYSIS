@@ -247,6 +247,22 @@ describe('AiInterviewsService', () => {
     });
   });
 
+  describe('findAll', () => {
+    it('lists only the active company interviews and strips meeting tokens', async () => {
+      prisma.aiInterview.findMany.mockResolvedValue([
+        { ...mockInterview, tavusMeetingToken: 'secret-token' },
+      ]);
+
+      const result = await service.findAll('company-1');
+
+      expect(prisma.aiInterview.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { companyId: 'company-1' }, take: 100 }),
+      );
+      expect(result).toHaveLength(1);
+      expect(result[0]).not.toHaveProperty('tavusMeetingToken');
+    });
+  });
+
   // ─── SEND INVITATION ──────────────────────────────────────────────────────
 
   describe('sendInvitation', () => {

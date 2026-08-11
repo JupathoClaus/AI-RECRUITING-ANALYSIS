@@ -1,16 +1,7 @@
 import { apiRequest } from "./client"
 
 export type AiInterviewProvider = "MOCK" | "TAVUS"
-export type AiInterviewStatus =
-  | "CREATED"
-  | "SENT"
-  | "ACCESSED"
-  | "READY"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "CANCELLED"
-  | "EXPIRED"
-  | "FAILED"
+export type AiInterviewStatus = "CREATED" | "SENT" | "ACCESSED" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "EXPIRED" | "FAILED"
 export type AiInterviewTranscriptStatus = "NOT_REQUESTED" | "PENDING" | "READY" | "FAILED"
 
 export interface CreateAiInterviewRequest {
@@ -62,7 +53,12 @@ export interface AiInterviewDetail {
   createdAt: string
   updatedAt: string
   application: {
-    candidate: { id: string; firstName: string; lastName: string; email: string }
+    candidate: {
+      id: string
+      firstName: string
+      lastName: string
+      email: string
+    }
     job: { id: string; title: string }
   }
 }
@@ -103,6 +99,10 @@ export async function createAiInterview(dto: CreateAiInterviewRequest): Promise<
 
 export async function getAiInterview(id: string): Promise<AiInterviewDetail> {
   return apiRequest<AiInterviewDetail>(`/ai-interviews/${id}`)
+}
+
+export async function listAiInterviews(): Promise<AiInterviewDetail[]> {
+  return apiRequest<AiInterviewDetail[]>("/ai-interviews")
 }
 
 export async function getAiInterviewsByApplication(applicationId: string): Promise<AiInterviewDetail[]> {
