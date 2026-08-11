@@ -4,6 +4,17 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
+## Session Summary (August 11, 2026) — P0 product-completion correction pass
+
+6 commits on `backend-stabilization` (not pushed): real AI scores in recruiter views, honest AI Assistant (preview-only, no fabricated metrics), truthful bulk "Move to Screening Stage" wording (+ disabled "Run AI Screening — coming next"), AI Interviews page with real data + honest empty/error states, tenant-scoped interview slot-conflict validation (Serializable tx + structured 409 `INTERVIEW_SLOT_CONFLICT` with `conflicts[]`), and Jobs Active/History default view with Reopen. Verified by `verification/product-proof.mjs` (all 19 checks green, zero unexpected console/HTTP errors) plus 293 frontend vitest, 1108 backend jest, 33 interview e2e, and a passing `release:gate`.
+
+### Key architecture notes
+- **Screening summaries**: `candidates.service.findAll` does ONE extra `aiScreeningResult.findMany` (tenant + candidateIds, createdAt desc) folded by `buildScreeningSummaryMap` (no N+1). Contract: latest COMPLETED result supplies score/recommendation/confidence; `status` reflects the newest run; `pendingRerun`/`failedRerun` flags explain newer PENDING/FAILED runs; `overallScore: null` = not screened, `0` = real score. Candidate mapper now emits `screening`.
+- **Screening poll abort fix**: `waitForExtraction`/`pollScreening` previously DIED on a transient AbortError (dialog hung forever at "Reading resume"). Both now retry on abort (only stale/unmounted stops). This was found by the browser proof.
+- **Interview conflicts** (`interview-conflict.service.ts`): candidate (across all their applications) + explicitly assigned participants (DECLINED/CANCELLED participants don't block); terminal interviews don't block; adjacent slots allowed; all instant comparisons timezone-normalized; runs inside a Serializable transaction (P2034 write-conflict → 409). Provider capacity = P1 (documented in the service header). `GlobalExceptionFilter` now passes `conflicts[]` through to error responses.
+- **Jobs**: default view is Active (excludes CLOSED/FILLED/CANCELLED/ARCHIVED via explicit status list, server-derived counts); History tab shows terminal statuses; Reopen (backend `/jobs/:id/reopen` → DRAFT) wired in the UI and switches back to Active. Public apply still only accepts PUBLISHED jobs (covered by `public-applications.controller.spec.ts`).
+- **Cleanup**: `verification/cleanup.mjs` deletes storedFiles after extractions, applicationAuditEvent + companyCandidate before company. Product proof uses exact-ID cleanup and refuses non-local DBs.
+
 ## Session Summary (August 10, 2026)
 
 ### Root cause fixed: CORS blocked all browser mutations (Idempotency-Key header)
