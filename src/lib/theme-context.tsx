@@ -13,15 +13,16 @@ const ThemeContext = React.createContext<ThemeContextType>({
 })
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = React.useState<"light" | "dark">("light")
-
-  React.useEffect(() => {
-    const stored = localStorage.getItem("ai-recruiter-theme") as "light" | "dark" | null
-    const prefersDark = matchMedia("(prefers-color-scheme:dark)").matches
-    const resolved = stored === "dark" || (!stored && prefersDark) ? "dark" : "light"
-    setTheme(resolved) // eslint-disable-line react-hooks/set-state-in-effect -- hydration from localStorage
-    document.documentElement.classList.toggle("dark", resolved === "dark")
-  }, [])
+  const [theme, setTheme] = React.useState<"light" | "dark">(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("ai-recruiter-theme") as "light" | "dark" | null
+      const prefersDark = matchMedia("(prefers-color-scheme:dark)").matches
+      const resolved = stored === "dark" || (!stored && prefersDark) ? "dark" : "light"
+      document.documentElement.classList.toggle("dark", resolved === "dark")
+      return resolved
+    }
+    return "light"
+  })
 
   const toggleTheme = React.useCallback(() => {
     setTheme((prev) => {

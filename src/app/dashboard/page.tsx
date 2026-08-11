@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   Briefcase,
@@ -23,12 +23,11 @@ import {
   Calendar2,
   Cpu,
   Chart2,
+  DocumentText,
   Routing,
   Notification,
 } from "iconsax-react";
 import {
-  AreaChart,
-  Area,
   BarChart,
   Bar,
   XAxis,
@@ -39,6 +38,9 @@ import {
 } from "recharts";
 import { AppLayout } from "@/components/layout/app-layout";
 import { useStore } from "@/store/useStore";
+import { useAuth } from "@/lib/auth-context";
+import { mapToDisplayStatus } from "@/lib/api/candidates.api";
+import type { ApplicationStatus } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,23 +56,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn, timeAgo } from "@/lib/utils";
-
-const applicationData = [
-  { day: "Jun 30", applications: 12 },
-  { day: "Jul 1", applications: 18 },
-  { day: "Jul 2", applications: 24 },
-  { day: "Jul 3", applications: 15 },
-  { day: "Jul 4", applications: 8 },
-  { day: "Jul 5", applications: 6 },
-  { day: "Jul 6", applications: 22 },
-  { day: "Jul 7", applications: 31 },
-  { day: "Jul 8", applications: 28 },
-  { day: "Jul 9", applications: 35 },
-  { day: "Jul 10", applications: 27 },
-  { day: "Jul 11", applications: 42 },
-  { day: "Jul 12", applications: 38 },
-  { day: "Jul 13", applications: 45 },
-];
 
 function getScoreColor(score: number): string {
   if (score >= 90) return "text-success";
@@ -168,30 +153,20 @@ function getInterviewTypeLabel(type: string): string {
   return type;
 }
 
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: Array<{ value: number }>;
-  label?: string;
-}
-
-function ChartTooltip({ active, payload, label }: CustomTooltipProps) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg border border-border bg-surface px-3 py-2 shadow-lg">
-      <p className="text-xs text-muted mb-1">{label}</p>
-      <p className="text-sm font-semibold text-foreground">
-        {payload[0].value} applications
-      </p>
-    </div>
-  );
-}
-
 export default function DashboardPage() {
-  const { jobs, candidates, interviews, activities } = useStore();
+  const { jobs, candidates, candidatesScoreSummary, interviews, activities, candidatesLoading, candidatesError, interviewsLoading, interviewsError, fetchCandidates, fetchInterviews } = useStore();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    fetchCandidates()
+    fetchInterviews()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const stats = useMemo(() => {
     const activeJobs = jobs.filter((j) => j.status === "Active").length;
-    const totalCandidates = candidates.length;
+    // Whole-company aggregate when available; falls back to the paged list.
+    const totalCandidates = candidatesScoreSummary?.totalCandidates ?? candidates.length;
 
     const now = new Date();
     const weekStart = new Date(now);
@@ -207,38 +182,67 @@ export default function DashboardPage() {
         i.scheduledAt < weekEnd
     ).length;
 
-    const avgScore =
-      candidates.length > 0
-        ? Math.round(
-            candidates.reduce((sum, c) => sum + c.aiScore, 0) /
-              candidates.length
-          )
-        : 0;
+    const avgScore = candidatesScoreSummary
+      ? candidatesScoreSummary.averageScore
+      : (() => {
+          const scoredCandidates = candidates.filter((c) => c.aiScore !== null && c.aiScore !== undefined);
+          return scoredCandidates.length > 0
+            ? Math.round(
+                scoredCandidates.reduce((sum, c) => sum + (c.aiScore ?? 0), 0) /
+                  scoredCandidates.length
+              )
+            : null;
+        })();
 
     return { activeJobs, totalCandidates, interviewsThisWeek, avgScore };
-  }, [jobs, candidates, interviews]);
+  }, [jobs, candidates, candidatesScoreSummary, interviews]);
 
   const pipelineData = useMemo(() => {
     const stages = ["Applied", "Screening", "Interview", "Offer", "Hired", "Rejected"];
     return stages.map((stage) => ({
       stage: getStatusLabel(stage),
-      count: candidates.filter((c) => c.status === stage).length,
+      count: candidates.filter((c) => c.applicationSummary?.current?.displayStatus === stage).length,
     }));
   }, [candidates]);
 
-  const topCandidates = useMemo(
-    () =>
-      [...candidates]
-        .filter((c) => c.status !== "Rejected" && c.status !== "Hired")
-        .sort((a, b) => b.aiScore - a.aiScore)
-        .slice(0, 5),
-    [candidates]
-  );
+  const topCandidates = useMemo(() => {
+    // Whole-company ranking from the backend aggregate; falls back to the
+    // paged candidate list when the summary is unavailable.
+    if (candidatesScoreSummary) {
+      return candidatesScoreSummary.topCandidates.map((tc) => ({
+        id: tc.candidateId,
+        displayName: tc.displayName,
+        currentJobTitle: tc.currentJobTitle ?? undefined,
+        aiScore: tc.overallScore,
+        applicationSummary: tc.status
+          ? {
+              current: {
+                jobTitle: tc.jobTitle ?? undefined,
+                displayStatus: mapToDisplayStatus(tc.status as ApplicationStatus),
+              },
+            }
+          : undefined,
+      }))
+    }
+    return [...candidates]
+      .filter((c) => {
+        const ds = c.applicationSummary?.current?.displayStatus;
+        return (
+          ds &&
+          ds !== "Rejected" &&
+          ds !== "Hired" &&
+          c.aiScore !== null &&
+          c.aiScore !== undefined
+        );
+      })
+      .sort((a, b) => (b.aiScore ?? 0) - (a.aiScore ?? 0))
+      .slice(0, 5);
+  }, [candidates, candidatesScoreSummary]);
 
   const upcomingInterviews = useMemo(
     () =>
       interviews
-        .filter((i) => i.status === "Scheduled")
+        .filter((i) => i.status === "Scheduled" && i.scheduledAt instanceof Date && !isNaN(i.scheduledAt.getTime()))
         .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
         .slice(0, 5),
     [interviews]
@@ -248,83 +252,108 @@ export default function DashboardPage() {
     {
       label: "Total Open Positions",
       value: stats.activeJobs.toString(),
-      trend: "+2",
-      trendLabel: "from last month",
-      up: true,
       icon: <Briefcase className="h-5 w-5" />,
       color: "text-primary",
+      up: true,
+      trend: "—",
+      trendLabel: "server-derived",
     },
     {
       label: "Total Candidates",
       value: stats.totalCandidates.toString(),
-      trend: "+18%",
-      trendLabel: "from last month",
-      up: true,
       icon: <People className="h-5 w-5" />,
       color: "text-info",
+      up: true,
+      trend: "—",
+      trendLabel: "server-derived",
     },
     {
       label: "Interviews This Week",
       value: stats.interviewsThisWeek.toString(),
-      trend: "+4",
-      trendLabel: "vs last week",
-      up: true,
       icon: <Calendar className="h-5 w-5" />,
       color: "text-warning",
+      up: false,
+      trend: "—",
+      trendLabel: "server-derived",
     },
     {
       label: "Avg AI Score",
-      value: stats.avgScore.toString(),
-      trend: "+3.2",
-      trendLabel: "from last month",
-      up: true,
+      value: stats.avgScore === null ? "—" : stats.avgScore.toString(),
       icon: <MagicStar className="h-5 w-5" />,
       color: "text-success",
+      up: true,
+      trend: "—",
+      trendLabel: "no history yet",
     },
   ];
+
+  const userFirstName = user?.name?.split(" ")[0] || "User";
 
   return (
     <AppLayout
       title="Dashboard"
-      description="Welcome back, Sarah. Here's your recruitment overview."
+      description={`Welcome back, ${userFirstName}. Here's your recruitment overview.`}
     >
       <div className="space-y-6">
+        {/* Error Banners */}
+        {candidatesError && (
+          <div className="rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error">
+            Candidates: {candidatesError}
+          </div>
+        )}
+        {interviewsError && (
+          <div className="rounded-lg border border-error/30 bg-error/5 p-3 text-sm text-error">
+            Interviews: {interviewsError}
+          </div>
+        )}
+
+        {/* Loading State */}
+        {(candidatesLoading || interviewsLoading) && (
+          <div className="rounded-lg border border-border bg-surface p-3 text-sm text-muted">
+            Loading dashboard data...
+          </div>
+        )}
+
         {/* KPI Stats Row */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {kpiCards.map((card) => (
             <Card
               key={card.label}
-              className="relative overflow-hidden"
+              className="relative overflow-hidden h-full flex flex-col"
             >
-              <CardContent className="p-5">
+              <CardContent className="flex h-full flex-col p-5">
                 <div className="flex items-start justify-between">
-                  <div className="space-y-2">
-                    <p className="text-sm text-black font-bold uppercase tracking-wide">
-                      {card.label}
-                    </p>
-                    <p className="text-3xl font-bold tracking-tight text-foreground">
-                      {card.value}
-                    </p>
-                    <div className="flex items-center gap-1">
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div className="min-h-[48px]">
+                      <p className="text-sm text-black font-bold uppercase tracking-wide">
+                        {card.label}
+                      </p>
+                    </div>
+                    <div className="min-h-[56px] flex items-start">
+                      <p className="text-3xl font-bold leading-none tracking-tight text-foreground">
+                        {card.value}
+                      </p>
+                    </div>
+                    <div className="mt-auto flex min-h-[24px] items-center gap-1 whitespace-nowrap">
                       {card.up ? (
-                        <TrendUp className="h-3.5 w-3.5 text-success" />
+                        <TrendUp className="h-3.5 w-3.5 text-success shrink-0" />
                       ) : (
-                        <TrendDown className="h-3.5 w-3.5 text-error" />
+                        <TrendDown className="h-3.5 w-3.5 text-error shrink-0" />
                       )}
                       <span
                         className={cn(
-                          "text-xs font-semibold",
+                          "text-xs font-semibold leading-none",
                           card.up ? "text-success" : "text-error"
                         )}
                       >
                         {card.trend}
                       </span>
-                      <span className="text-xs text-muted">
+                      <span className="text-xs text-muted leading-none">
                         {card.trendLabel}
                       </span>
                     </div>
                   </div>
-                  <div className={cn("shrink-0", card.color)}>
+                  <div className={cn("shrink-0 ml-3", card.color)}>
                     {card.icon}
                   </div>
                 </div>
@@ -357,60 +386,12 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="h-[280px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={applicationData}
-                    margin={{ top: 5, right: 10, left: -10, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient
-                        id="applicationGradient"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="5%"
-                          stopColor="#6366f1"
-                          stopOpacity={0.3}
-                        />
-                        <stop
-                          offset="95%"
-                          stopColor="#6366f1"
-                          stopOpacity={0}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="#e2e8f0"
-                      vertical={false}
-                    />
-                    <XAxis
-                      dataKey="day"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 12 }}
-                      dy={8}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 12 }}
-                      dx={-4}
-                    />
-                    <RechartsTooltip content={<ChartTooltip />} />
-                    <Area
-                      type="monotone"
-                      dataKey="applications"
-                      stroke="#6366f1"
-                      strokeWidth={2}
-                      fill="url(#applicationGradient)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+              <div className="h-[280px] w-full flex items-center justify-center">
+                <div className="text-center text-muted">
+                  <DocumentText className="h-12 w-12 mx-auto mb-3 text-muted/30" />
+                  <p className="text-sm">No application data available yet</p>
+                  <p className="text-xs mt-1">Create jobs and applications to see trends</p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -492,20 +473,13 @@ export default function DashboardPage() {
                   <Notification className="text-muted-foreground" size={16} />
                   <CardTitle className="text-base">Recent Activity</CardTitle>
                 </div>
-                <Link
-                  href="/activities"
-                  className="inline-flex items-center gap-1 text-xs text-muted hover:text-foreground transition-colors"
-                >
-                  View All
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
               </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-0">
                 {activities.map((activity, index) => {
                   const candidate = candidates.find(
-                    (c) => c.name === activity.candidateName
+                    (c) => c.displayName === activity.candidateName
                   );
                   return (
                     <div key={activity.id}>
@@ -522,7 +496,7 @@ export default function DashboardPage() {
                               {activity.message}
                             </span>{" "}
                             <span className="font-medium text-foreground">
-                              {candidate?.jobTitle || "a position"}
+                              {candidate?.applicationSummary?.current?.jobTitle || candidate?.currentJobTitle || "a position"}
                             </span>
                           </p>
                           <p className="text-xs text-muted mt-0.5">
@@ -663,7 +637,7 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
                           <span className="text-[10px] font-medium">
-                            {candidate.name
+                            {candidate.displayName
                               .split(" ")
                               .map((n) => n[0])
                               .join("")}
@@ -671,17 +645,17 @@ export default function DashboardPage() {
                         </Avatar>
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground truncate">
-                            {candidate.name}
+                            {candidate.displayName}
                           </p>
                           <p className="text-xs text-muted truncate sm:hidden">
-                            {candidate.jobTitle}
+                            {candidate.applicationSummary?.current?.jobTitle || candidate.currentJobTitle || ""}
                           </p>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
                       <p className="text-sm text-muted-foreground truncate max-w-[180px]">
-                        {candidate.jobTitle}
+                        {candidate.applicationSummary?.current?.jobTitle || candidate.currentJobTitle || ""}
                       </p>
                     </TableCell>
                     <TableCell>
@@ -689,23 +663,25 @@ export default function DashboardPage() {
                         <span
                           className={cn(
                             "text-sm font-semibold tabular-nums",
-                            getScoreColor(candidate.aiScore)
+                            candidate.aiScore === null || candidate.aiScore === undefined
+                              ? "text-muted-foreground"
+                              : getScoreColor(candidate.aiScore)
                           )}
                         >
-                          {candidate.aiScore}
+                          {candidate.aiScore === null || candidate.aiScore === undefined ? "—" : candidate.aiScore}
                         </span>
                         <Progress
-                          value={candidate.aiScore}
+                          value={candidate.aiScore ?? 0}
                           className="h-1.5 w-16"
                           indicatorClassName={getScoreIndicatorColor(
-                            candidate.aiScore
+                            candidate.aiScore ?? 0
                           )}
                         />
                       </div>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
-                      <Badge variant={getStatusBadgeVariant(candidate.status)}>
-                        {getStatusLabel(candidate.status)}
+                      <Badge variant={getStatusBadgeVariant(candidate.applicationSummary?.current?.displayStatus || "No Application")}>
+                        {getStatusLabel(candidate.applicationSummary?.current?.displayStatus || "No Application")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">

@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import Image from "next/image"
 import { Eye, EyeSlash, ArrowLeft } from "iconsax-react"
+import { resendVerification } from "@/lib/api/auth.api"
 
 export default function LoginPage() {
   const { user, login } = useAuth()
@@ -16,6 +18,9 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = React.useState(false)
   const [error, setError] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
+  const [emailNotVerified, setEmailNotVerified] = React.useState(false)
+  const [resending, setResending] = React.useState(false)
+  const [resent, setResent] = React.useState(false)
 
   React.useEffect(() => {
     if (user) router.replace("/dashboard")
@@ -24,14 +29,34 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setEmailNotVerified(false)
+    setResent(false)
     setSubmitting(true)
 
     const result = await login(email, password)
     if (result.error) {
-      setError(result.error)
+      if (result.error.includes("verify your email")) {
+        setEmailNotVerified(true)
+        setError("")
+      } else {
+        setError(result.error)
+      }
       setSubmitting(false)
     } else {
       router.replace("/dashboard")
+    }
+  }
+
+  const handleResend = async () => {
+    if (!email.trim()) return
+    setResending(true)
+    try {
+      await resendVerification(email.trim())
+      setResent(true)
+    } catch {
+      setResent(true)
+    } finally {
+      setResending(false)
     }
   }
 
@@ -42,8 +67,8 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5" />
         <div className="relative flex flex-col justify-between p-12 w-full">
           <Link href="/" className="flex items-center">
-            <div className="flex h-[150px] w-[150px] items-center justify-center overflow-hidden">
-              <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
+            <div className="relative flex h-[150px] w-[150px] items-center justify-center overflow-hidden">
+              <Image src="/ai-recruiter-logo.png" alt="AI Recruiter" fill className="object-contain" />
             </div>
           </Link>
           <div>
@@ -94,6 +119,28 @@ export default function LoginPage() {
             {error && (
               <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">
                 {error}
+              </div>
+            )}
+
+            {emailNotVerified && (
+              <div className="rounded-lg border border-warning/20 bg-warning/5 px-4 py-3 text-sm">
+                <p className="text-warning-foreground font-medium mb-2">
+                  Please verify your email address before signing in.
+                </p>
+                {resent ? (
+                  <p className="text-success-foreground">
+                    If the email exists and requires verification, a new link has been sent.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={resending || !email.trim()}
+                    className="text-primary hover:text-primary/80 font-medium underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {resending ? "Sending..." : "Resend verification email"}
+                  </button>
+                )}
               </div>
             )}
 

@@ -5,7 +5,8 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
-import { Avatar, AvatarImage } from "@/components/ui/avatar"
+import { useNotificationStore } from "@/store/notification-store"
+import { Avatar } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -52,10 +53,10 @@ const navSections: NavSection[] = [
   {
     title: "Recruitment",
     items: [
-      { label: "Jobs", href: "/jobs", icon: Briefcase, badge: 12 },
-      { label: "Candidates", href: "/candidates", icon: Users, badge: 48 },
+      { label: "Jobs", href: "/jobs", icon: Briefcase },
+      { label: "Candidates", href: "/candidates", icon: Users },
       { label: "Pipeline", href: "/pipeline", icon: GitBranch },
-      { label: "Interviews", href: "/interviews", icon: Calendar, badge: 5 },
+      { label: "Interviews", href: "/interviews", icon: Calendar },
     ],
   },
   {
@@ -70,7 +71,7 @@ const navSections: NavSection[] = [
     title: "Organization",
     items: [
       { label: "Company", href: "/company", icon: Building2 },
-      { label: "Notifications", href: "/notifications", icon: Bell, badge: 3 },
+      { label: "Notifications", href: "/notifications", icon: Bell },
       { label: "Settings", href: "/settings", icon: Settings },
     ],
   },
@@ -82,6 +83,9 @@ export function Sidebar() {
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = React.useState(false)
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const { unreadCount: notificationUnread, fetchUnreadCount } = useNotificationStore()
+
+  React.useEffect(() => { fetchUnreadCount() }, [fetchUnreadCount])
 
   const handleLogout = () => {
     logout()
@@ -214,11 +218,14 @@ export function Sidebar() {
                       {!collapsed && (
                         <>
                           <span className="flex-1">{item.label}</span>
-                          {item.badge && (
-                            <Badge variant={isActive ? "default" : "secondary"} className="h-5 px-1.5 text-[10px] font-normal">
-                              {item.badge}
-                            </Badge>
-                          )}
+                          {(() => {
+                            const displayBadge = item.label === "Notifications" ? notificationUnread : item.badge
+                            return displayBadge ? (
+                              <Badge variant={isActive ? "default" : "secondary"} className="h-5 px-1.5 text-[10px] font-normal">
+                                {displayBadge}
+                              </Badge>
+                            ) : null
+                          })()}
                         </>
                       )}
                     </Link>
@@ -232,9 +239,7 @@ export function Sidebar() {
         {/* User section */}
         <div className={cn("border-t border-border p-3 shrink-0", collapsed && "px-2")}>
           <div className={cn("flex items-center gap-3 rounded-lg p-2 hover:bg-surface-hover transition-colors duration-150", collapsed && "justify-center")}>
-            <Avatar className="h-8 w-8" fallback={userInitials}>
-              <AvatarImage src="/avatars/sarah.jpg" alt={user?.name || "User"} />
-            </Avatar>
+            <Avatar className="h-8 w-8" fallback={userInitials} />
             {!collapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-normal text-foreground truncate">{user?.name || "User"}</p>

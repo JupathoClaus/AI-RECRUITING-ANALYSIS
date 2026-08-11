@@ -1,6 +1,10 @@
 "use client"
 
 import * as React from "react"
+import * as authApi from "./api/auth.api"
+import { clearTokens, isAuthenticated } from "./api/client"
+import { getErrorMessage } from "./utils"
+import type { RegisterCompanyRequest, RegisterCompanyResponse } from "./api/types"
 
 export interface User {
   id: string
@@ -13,119 +17,111 @@ interface AuthContextType {
   user: User | null
   loading: boolean
   login: (email: string, password: string) => Promise<{ error?: string }>
-  register: (name: string, email: string, password: string, role: string) => Promise<{ error?: string }>
+  register: (dto: RegisterCompanyRequest) => Promise<{ error?: string; data?: RegisterCompanyResponse }>
   logout: () => void
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = React.createContext<AuthContextType>({
   user: null,
   loading: true,
   login: async () => ({}),
-  register: async () => ({}),
+  register: async () => ({ error: "AuthProvider not initialized" }),
   logout: () => {},
+  refreshUser: async () => {},
 })
-
-const USERS_KEY = "ai-recruiter-users"
-const SESSION_KEY = "ai-recruiter-session"
-
-interface StoredUser extends User {
-  password: string
-}
-
-function getStoredUsers(): StoredUser[] {
-  if (typeof window === "undefined") return []
-  try {
-    const raw = localStorage.getItem(USERS_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
-}
-
-function saveStoredUsers(users: StoredUser[]) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users))
-}
-
-function getStoredSession(): User | null {
-  if (typeof window === "undefined") return null
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
-function saveStoredSession(user: User | null) {
-  if (user) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user))
-  } else {
-    localStorage.removeItem(SESSION_KEY)
-  }
-}
-
-function seedDefaultUsers() {
-  const users = getStoredUsers()
-  if (users.length === 0) {
-    const defaultUsers: StoredUser[] = [
-      { id: "u1", name: "Sarah Anderson", email: "sarah@airecruiter.com", password: "admin123", role: "Admin" },
-      { id: "u2", name: "David Park", email: "david@airecruiter.com", password: "admin123", role: "Recruiter" },
-      { id: "u3", name: "Emily Chen", email: "emily@airecruiter.com", password: "admin123", role: "Interviewer" },
-    ]
-    saveStoredUsers(defaultUsers)
-  }
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
-    seedDefaultUsers()
-    const session = getStoredSession()
-    setUser(session) // eslint-disable-line react-hooks/set-state-in-effect
-    setLoading(false)
+    if (!isAuthenticated()) {
+      queueMicrotask(() => setLoading(false))
+      return
+    }
+
+    let cancelled = false
+    authApi
+      .getMe()
+      .then((me) => {
+        if (cancelled) return
+        const u: User = {
+          id: me.user.id,
+          name: `${me.user.firstName} ${me.user.lastName}`.trim(),
+          email: me.user.email,
+          role: me.role || "VIEWER",
+        }
+        setUser(u)
+      })
+      .catch(() => {
+        if (!cancelled) clearTokens()
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [])
+
+  const refreshUser = React.useCallback(async () => {
+    try {
+      const me = await authApi.getMe()
+      const u: User = {
+        id: me.user.id,
+        name: `${me.user.firstName} ${me.user.lastName}`.trim(),
+        email: me.user.email,
+        role: me.role || "VIEWER",
+      }
+      setUser(u)
+    } catch {
+      clearTokens()
+      setUser(null)
+    }
   }, [])
 
   const login = React.useCallback(async (email: string, password: string) => {
-    const users = getStoredUsers()
-    const found = users.find((u) => u.email === email && u.password === password)
-    if (!found) {
-      return { error: "Invalid email or password" }
+    try {
+      const result = await authApi.login({ email, password })
+      const u: User = {
+        id: result.user.id,
+        name: `${result.user.firstName} ${result.user.lastName}`.trim(),
+        email: result.user.email,
+        role: result.role,
+      }
+      setUser(u)
+      return {}
+    } catch (err: unknown) {
+      return { error: getErrorMessage(err, "Invalid email or password") }
     }
-    const sessionUser: User = { id: found.id, name: found.name, email: found.email, role: found.role }
-    setUser(sessionUser)
-    saveStoredSession(sessionUser)
-    return {}
   }, [])
 
-  const register = React.useCallback(async (name: string, email: string, password: string, role: string) => {
-    const users = getStoredUsers()
-    if (users.find((u) => u.email === email)) {
-      return { error: "An account with this email already exists" }
+  const register = React.useCallback(async (dto: RegisterCompanyRequest) => {
+    try {
+      const result = await authApi.registerCompany(dto)
+      return { data: result }
+    } catch (err: unknown) {
+      if (err && typeof err === "object" && "errors" in err && Array.isArray((err as Record<string, unknown>).errors)) {
+        const messages: string[] = (err as { errors: string[] }).errors
+        if (messages.length > 0) {
+          return { error: messages.join(" ") }
+        }
+      }
+      return { error: getErrorMessage(err, "Registration failed. Please try again.") }
     }
-    const newUser: StoredUser = {
-      id: `u${Date.now()}`,
-      name,
-      email,
-      password,
-      role,
-    }
-    users.push(newUser)
-    saveStoredUsers(users)
-    const sessionUser: User = { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role }
-    setUser(sessionUser)
-    saveStoredSession(sessionUser)
-    return {}
   }, [])
 
-  const logout = React.useCallback(() => {
+  const logout = React.useCallback(async () => {
+    try {
+      await authApi.logout()
+    } catch {
+      clearTokens()
+    }
     setUser(null)
-    saveStoredSession(null)
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   )

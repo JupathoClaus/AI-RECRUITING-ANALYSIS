@@ -1,0 +1,1 @@
+export const AI_SCREENING_PROVIDER = Symbol('AI_SCREENING_PROVIDER');

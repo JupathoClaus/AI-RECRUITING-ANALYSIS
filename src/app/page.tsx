@@ -15,12 +15,10 @@ import {
   Flash,
   Clock,
   TrendUp,
-  Briefcase,
 } from "iconsax-react"
 import Image from "next/image"
 import { Swiper, SwiperSlide } from "swiper/react"
 import { Autoplay, EffectFade, Navigation, Pagination } from "swiper/modules"
-import type { Swiper as SwiperType } from "swiper"
 
 import "swiper/css"
 import "swiper/css/effect-fade"
@@ -121,8 +119,8 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-[160px] max-w-6xl items-center justify-between px-4 sm:px-6">
           <Link href="/" className="flex items-center">
-            <div className="flex h-[135px] w-[135px] items-center justify-center overflow-hidden">
-              <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
+            <div className="relative flex h-[135px] w-[135px] items-center justify-center overflow-hidden">
+              <Image src="/ai-recruiter-logo.png" alt="AI Recruiter" fill className="object-contain" />
             </div>
           </Link>
           <div className="flex items-center gap-3">
@@ -338,8 +336,8 @@ export default function LandingPage() {
       <footer className="border-t border-border bg-surface/30">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 flex flex-col items-center gap-6">
           <Link href="/" className="flex flex-col items-center">
-            <div className="flex h-[140px] w-[140px] sm:h-[160px] sm:w-[160px] md:h-[180px] md:w-[180px] lg:h-[200px] lg:w-[200px] items-center justify-center overflow-hidden mb-6">
-              <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
+            <div className="relative flex h-[140px] w-[140px] sm:h-[160px] sm:w-[160px] md:h-[180px] md:w-[180px] lg:h-[200px] lg:w-[200px] items-center justify-center overflow-hidden mb-6">
+              <Image src="/ai-recruiter-logo.png" alt="AI Recruiter" fill className="object-contain" />
             </div>
           </Link>
           <p className="text-sm text-muted text-center">

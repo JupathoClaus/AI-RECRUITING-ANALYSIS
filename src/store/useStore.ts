@@ -1,339 +1,259 @@
 import { create } from "zustand"
 import type { Job, Candidate, Interview, Activity, JobStatus, CandidateStatus } from "@/types"
+import {
+  fetchCandidates,
+  createCandidate,
+  mapCandidateFromApi,
+  buildApplicationInfo,
+  fetchCandidatesScoreSummary,
+} from "@/lib/api/candidates.api"
+import type { CandidateApiDetail, CandidateScoreSummary } from "@/lib/api/candidates.api"
+import {
+  fetchApplications,
+  fetchApplicationById,
+  createApplication,
+  rejectApplication,
+  shortlistApplication,
+  moveApplication,
+  submitApplication,
+  markApplicationHired,
+} from "@/lib/api/applications.api"
+import type { CreateCandidateRequest } from "@/lib/api/candidates.api"
+import type { ApplicationListItem, ApplicationQueryParams } from "@/lib/api/applications.api"
+import { getJobs, getJobPipeline } from "@/lib/api/jobs.api"
+import type { PipelineStageDto } from "@/lib/api/jobs.api"
+import type { JobListDto } from "@/lib/api/types"
+import {
+  fetchInterviews as fetchInterviewsApi,
+  cancelInterview as cancelInterviewApi,
+  completeInterview as completeInterviewApi,
+  createInterview as createInterviewApi,
+  mapInterviewListItem,
+  mapFrontendToBackendType,
+} from "@/lib/api/interviews.api"
+import type { CreateInterviewRequest, FrontendInterviewType, RescheduleInterviewRequest, RecordResultRequest, BackendInterviewResult } from "@/lib/api/interviews.api"
+import { startInterview as startInterviewApi, confirmInterview as confirmInterviewApi } from "@/lib/api/interviews.api"
+import { rescheduleInterview as rescheduleInterviewApi, recordResult as recordResultApi } from "@/lib/api/interviews.api"
+import {
+  getAnalyticsOverview,
+  getAnalyticsFunnel,
+  getAnalyticsDepartments,
+  getAnalyticsSources,
+  getAnalyticsTimeToHire,
+} from "@/lib/api/analytics.api"
+import type { OverviewResponse, FunnelStage, DeptPerformance, SourceItem, TimeToHirePoint } from "@/lib/api/analytics.api"
+
+function mapJobDto(dto: JobListDto): Job {
+  const statusMap: Record<string, JobStatus> = {
+    DRAFT: "Draft",
+    PENDING_APPROVAL: "Draft",
+    APPROVED: "Draft",
+    SCHEDULED: "Draft",
+    PUBLISHED: "Active",
+    PAUSED: "Paused",
+    CLOSED: "Closed",
+    FILLED: "Closed",
+    CANCELLED: "Closed",
+    ARCHIVED: "Closed",
+  }
+  return {
+    id: dto.id,
+    title: dto.title,
+    department: dto.department?.name || "",
+    location: dto.location ? `${dto.location.city}` : "",
+    type: mapEmploymentType(dto.employmentType),
+    salaryMin: dto.salaryMin ?? 0,
+    salaryMax: dto.salaryMax ?? 0,
+    description: dto.description,
+    status: statusMap[dto.status] || "Draft",
+    applicants: dto._count?.collaborators ?? 0,
+    createdAt: dto.createdAt ? new Date(dto.createdAt) : new Date(),
+  }
+}
+
+function mapEmploymentType(t: string): Job["type"] {
+  switch (t) {
+    case "FULL_TIME": return "full-time"
+    case "PART_TIME": return "part-time"
+    case "CONTRACT": return "contract"
+    case "INTERNSHIP": return "internship"
+    default: return "full-time"
+  }
+}
+
+export type AddCandidateResult =
+  | { status: "candidate-created"; candidateId: string; applicationId: null }
+  | { status: "candidate-and-application-created"; candidateId: string; applicationId: string }
+  | { status: "candidate-created-application-failed"; candidateId: string; applicationId: null; error: string }
+  | { status: "candidate-creation-failed"; candidateId: null; applicationId: null; error: string }
 
 interface AppState {
   jobs: Job[]
   candidates: Candidate[]
+  candidatesScoreSummary: CandidateScoreSummary | null
   interviews: Interview[]
   activities: Activity[]
+  candidatesLoading: boolean
+  candidatesError: string | null
+  interviewsLoading: boolean
+  interviewsError: string | null
+  analyticsOverview: OverviewResponse | null
+  analyticsFunnel: FunnelStage[]
+  analyticsDepartments: DeptPerformance[]
+  analyticsSources: SourceItem[]
+  analyticsTimeToHire: TimeToHirePoint[]
+  analyticsLoading: boolean
+  analyticsError: string | null
   addJob: (job: Omit<Job, "id" | "createdAt" | "applicants">) => void
   updateJobStatus: (id: string, status: JobStatus) => void
-  addCandidate: (candidate: Omit<Candidate, "id" | "appliedAt" | "stage">) => void
-  updateCandidateStatus: (id: string, status: CandidateStatus) => void
+  addCandidateApplication: (data: {
+    name: string
+    email: string
+    phone?: string
+    jobId: string
+    jobTitle: string
+    experience: number
+    skills: string[]
+    rating: number
+    notes: string
+  }) => Promise<AddCandidateResult>
+  rejectCandidateApplication: (candidateId: string) => Promise<void>
+  advanceCandidateApplication: (candidateId: string, toStatus: string) => Promise<void>
+  fetchCandidates: () => Promise<void>
+  fetchJobs: () => Promise<void>
+  fetchInterviews: () => Promise<void>
+  scheduleInterview: (data: {
+    applicationId: string
+    jobId: string
+    type: FrontendInterviewType
+    title: string
+    scheduledAt: string
+    durationMinutes: number
+    timezone: string
+  }) => Promise<void>
+  cancelInterviewById: (id: string) => Promise<void>
+  rescheduleInterviewById: (id: string, dto: { scheduledAt: string; durationMinutes?: number; timezone?: string; reason?: string }) => Promise<void>
+  recordResultById: (id: string, dto: { result: BackendInterviewResult; resultNotes?: string }) => Promise<void>
+  completeInterviewById: (id: string) => Promise<void>
+  fetchAnalytics: (dateFrom?: string) => Promise<void>
 }
 
-const sampleJobs: Job[] = [
-  {
-    id: "j1",
-    title: "Senior Frontend Engineer",
-    department: "Engineering",
-    location: "San Francisco, CA",
-    type: "full-time",
-    salaryMin: 150000,
-    salaryMax: 200000,
-    description: "We are looking for a senior frontend engineer to lead our React-based dashboard.",
-    status: "Active",
-    applicants: 24,
-    createdAt: new Date("2026-06-01"),
-  },
-  {
-    id: "j2",
-    title: "Product Manager",
-    department: "Product",
-    location: "New York, NY",
-    type: "full-time",
-    salaryMin: 130000,
-    salaryMax: 175000,
-    description: "Lead product strategy for our AI-powered recruitment platform.",
-    status: "Active",
-    applicants: 18,
-    createdAt: new Date("2026-06-05"),
-  },
-  {
-    id: "j3",
-    title: "ML Engineer",
-    department: "Engineering",
-    location: "Remote",
-    type: "full-time",
-    salaryMin: 160000,
-    salaryMax: 220000,
-    description: "Build and optimize our AI screening models.",
-    status: "Active",
-    applicants: 31,
-    createdAt: new Date("2026-05-20"),
-  },
-  {
-    id: "j4",
-    title: "UX Designer",
-    department: "Design",
-    location: "Austin, TX",
-    type: "full-time",
-    salaryMin: 100000,
-    salaryMax: 140000,
-    description: "Design intuitive interfaces for enterprise recruitment workflows.",
-    status: "Paused",
-    applicants: 12,
-    createdAt: new Date("2026-05-15"),
-  },
-  {
-    id: "j5",
-    title: "DevOps Engineer",
-    department: "Engineering",
-    location: "Seattle, WA",
-    type: "full-time",
-    salaryMin: 140000,
-    salaryMax: 185000,
-    description: "Manage and scale our cloud infrastructure on AWS.",
-    status: "Active",
-    applicants: 9,
-    createdAt: new Date("2026-06-10"),
-  },
-  {
-    id: "j6",
-    title: "Data Analyst Intern",
-    department: "Data",
-    location: "Remote",
-    type: "internship",
-    salaryMin: 30000,
-    salaryMax: 45000,
-    description: "Assist the data team with analysis and reporting.",
-    status: "Draft",
-    applicants: 0,
-    createdAt: new Date("2026-07-01"),
-  },
-  {
-    id: "j7",
-    title: "Backend Engineer",
-    department: "Engineering",
-    location: "San Francisco, CA",
-    type: "full-time",
-    salaryMin: 145000,
-    salaryMax: 195000,
-    description: "Design and build scalable microservices.",
-    status: "Closed",
-    applicants: 42,
-    createdAt: new Date("2026-04-01"),
-  },
-  {
-    id: "j8",
-    title: "Technical Writer",
-    department: "Marketing",
-    location: "Remote",
-    type: "contract",
-    salaryMin: 80000,
-    salaryMax: 110000,
-    description: "Create comprehensive API documentation and user guides.",
-    status: "Active",
-    applicants: 7,
-    createdAt: new Date("2026-06-20"),
-  },
-]
+async function fetchAllPages<T>(
+  fetcher: (params: Record<string, unknown>) => Promise<{ data?: T[]; meta?: { total: number; page: number; limit: number } }>,
+  baseParams: Record<string, unknown>,
+  maxPages = 5,
+): Promise<T[]> {
+  const results: T[] = []
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await fetcher({ ...baseParams, page, limit: 100 })
+    results.push(...(res.data || []))
+    const meta = res.meta
+    if (!meta || results.length >= meta.total) break
+  }
+  return results
+}
 
-const sampleCandidates: Candidate[] = [
-  {
-    id: "c1",
-    name: "Emily Chen",
-    email: "emily.chen@email.com",
-    phone: "+1 555-0101",
-    jobId: "j1",
-    jobTitle: "Senior Frontend Engineer",
-    experience: 8,
-    skills: ["React", "TypeScript", "Next.js", "GraphQL", "Tailwind CSS"],
-    aiScore: 92,
-    rating: 5,
-    status: "Interview",
-    stage: "Interview",
-    notes: "Strong candidate with extensive React experience. Led migration from Vue to React at previous company.",
-    appliedAt: new Date("2026-06-10"),
-  },
-  {
-    id: "c2",
-    name: "Marcus Johnson",
-    email: "marcus.j@email.com",
-    phone: "+1 555-0102",
-    jobId: "j1",
-    jobTitle: "Senior Frontend Engineer",
-    experience: 5,
-    skills: ["React", "JavaScript", "CSS", "Redux", "Jest"],
-    aiScore: 78,
-    rating: 4,
-    status: "Screening",
-    stage: "Screening",
-    notes: "Good technical skills. Needs to demonstrate leadership experience.",
-    appliedAt: new Date("2026-06-12"),
-  },
-  {
-    id: "c3",
-    name: "Sarah Kim",
-    email: "sarah.kim@email.com",
-    phone: "+1 555-0103",
-    jobId: "j2",
-    jobTitle: "Product Manager",
-    experience: 10,
-    skills: ["Product Strategy", "Agile", "Jira", "Data Analysis", "Stakeholder Management"],
-    aiScore: 88,
-    rating: 5,
-    status: "Offer",
-    stage: "Offer",
-    notes: "Exceptional product sense. Previously PM at a Series C startup.",
-    appliedAt: new Date("2026-05-28"),
-  },
-  {
-    id: "c4",
-    name: "David Park",
-    email: "david.park@email.com",
-    phone: "+1 555-0104",
-    jobId: "j3",
-    jobTitle: "ML Engineer",
-    experience: 6,
-    skills: ["Python", "TensorFlow", "PyTorch", "NLP", "MLOps"],
-    aiScore: 95,
-    rating: 5,
-    status: "Interview",
-    stage: "Interview",
-    notes: "Published researcher in NLP. Strong coding skills and system design thinking.",
-    appliedAt: new Date("2026-06-01"),
-  },
-  {
-    id: "c5",
-    name: "Lisa Wang",
-    email: "lisa.wang@email.com",
-    phone: "+1 555-0105",
-    jobId: "j4",
-    jobTitle: "UX Designer",
-    experience: 7,
-    skills: ["Figma", "User Research", "Prototyping", "Design Systems", "Accessibility"],
-    aiScore: 85,
-    rating: 4,
-    status: "Applied",
-    stage: "Applied",
-    notes: "Impressive portfolio with enterprise SaaS experience.",
-    appliedAt: new Date("2026-06-15"),
-  },
-  {
-    id: "c6",
-    name: "James O'Brien",
-    email: "james.ob@email.com",
-    phone: "+1 555-0106",
-    jobId: "j5",
-    jobTitle: "DevOps Engineer",
-    experience: 4,
-    skills: ["AWS", "Docker", "Kubernetes", "Terraform", "CI/CD"],
-    aiScore: 72,
-    rating: 3,
-    status: "Screening",
-    stage: "Screening",
-    notes: "Solid infrastructure skills. AWS certified.",
-    appliedAt: new Date("2026-06-18"),
-  },
-  {
-    id: "c7",
-    name: "Priya Patel",
-    email: "priya.p@email.com",
-    phone: "+1 555-0107",
-    jobId: "j3",
-    jobTitle: "ML Engineer",
-    experience: 3,
-    skills: ["Python", "Scikit-learn", "Pandas", "SQL", "Computer Vision"],
-    aiScore: 68,
-    rating: 3,
-    status: "Rejected",
-    stage: "Rejected",
-    notes: "Good fundamentals but lacks experience with large-scale ML systems.",
-    appliedAt: new Date("2026-06-05"),
-  },
-  {
-    id: "c8",
-    name: "Alex Rivera",
-    email: "alex.r@email.com",
-    phone: "+1 555-0108",
-    jobId: "j7",
-    jobTitle: "Backend Engineer",
-    experience: 9,
-    skills: ["Go", "Rust", "PostgreSQL", "Redis", "Microservices"],
-    aiScore: 91,
-    rating: 5,
-    status: "Hired",
-    stage: "Hired",
-    notes: "Started on July 1st. Excellent system design skills.",
-    appliedAt: new Date("2026-04-15"),
-  },
-  {
-    id: "c9",
-    name: "Nina Zhao",
-    email: "nina.zhao@email.com",
-    phone: "+1 555-0109",
-    jobId: "j2",
-    jobTitle: "Product Manager",
-    experience: 4,
-    skills: ["User Research", "Analytics", "Roadmapping", "A/B Testing", "SQL"],
-    aiScore: 74,
-    rating: 3,
-    status: "Applied",
-    stage: "Applied",
-    notes: "Transitioning from data analytics to product. Strong analytical background.",
-    appliedAt: new Date("2026-06-25"),
-  },
-  {
-    id: "c10",
-    name: "Tom Bradley",
-    email: "tom.b@email.com",
-    phone: "+1 555-0110",
-    jobId: "j1",
-    jobTitle: "Senior Frontend Engineer",
-    experience: 12,
-    skills: ["React", "Vue", "Angular", "TypeScript", "Web Performance"],
-    aiScore: 89,
-    rating: 4,
-    status: "Interview",
-    stage: "Interview",
-    notes: "Very experienced. Concerned about cultural fit — prefers smaller teams.",
-    appliedAt: new Date("2026-06-08"),
-  },
-  {
-    id: "c11",
-    name: "Aisha Mohammed",
-    email: "aisha.m@email.com",
-    phone: "+1 555-0111",
-    jobId: "j8",
-    jobTitle: "Technical Writer",
-    experience: 5,
-    skills: ["Technical Writing", "API Docs", "Markdown", "OpenAPI", "Git"],
-    aiScore: 82,
-    rating: 4,
-    status: "Screening",
-    stage: "Screening",
-    notes: "Excellent writing samples. Previously documented a public API with 10K+ developers.",
-    appliedAt: new Date("2026-06-22"),
-  },
-  {
-    id: "c12",
-    name: "Carlos Mendez",
-    email: "carlos.m@email.com",
-    phone: "+1 555-0112",
-    jobId: "j5",
-    jobTitle: "DevOps Engineer",
-    experience: 6,
-    skills: ["AWS", "GCP", "Docker", "Python", "Monitoring"],
-    aiScore: 80,
-    rating: 4,
-    status: "Applied",
-    stage: "Applied",
-    notes: "Multi-cloud experience. Strong monitoring and observability skills.",
-    appliedAt: new Date("2026-07-02"),
-  },
-]
+async function loadCandidatesWithApplications(): Promise<Candidate[]> {
+  const candidateRes = await fetchCandidates({ limit: 50, page: 1, sortBy: "createdAt", sortOrder: "desc" })
 
-const sampleInterviews: Interview[] = [
-  { id: "i1", candidateId: "c1", candidateName: "Emily Chen", jobId: "j1", jobTitle: "Senior Frontend Engineer", scheduledAt: new Date("2026-07-15T10:00:00"), date: new Date("2026-07-15T10:00:00"), duration: 60, status: "Scheduled", type: "Video" },
-  { id: "i2", candidateId: "c4", candidateName: "David Park", jobId: "j3", jobTitle: "ML Engineer", scheduledAt: new Date("2026-07-16T14:00:00"), date: new Date("2026-07-16T14:00:00"), duration: 90, status: "Scheduled", type: "AI" },
-  { id: "i3", candidateId: "c10", candidateName: "Tom Bradley", jobId: "j1", jobTitle: "Senior Frontend Engineer", scheduledAt: new Date("2026-07-17T11:00:00"), date: new Date("2026-07-17T11:00:00"), duration: 60, status: "Scheduled", type: "Video" },
-  { id: "i4", candidateId: "c8", candidateName: "Alex Rivera", jobId: "j7", jobTitle: "Backend Engineer", scheduledAt: new Date("2026-06-28T09:00:00"), date: new Date("2026-06-28T09:00:00"), duration: 60, status: "Completed", type: "On-site", score: 91 },
-]
+  const candidateIds = (candidateRes.data || []).map((c) => c.id)
 
-const sampleActivities: Activity[] = [
-  { id: "a1", type: "application", candidateName: "Carlos Mendez", message: "applied for", timestamp: new Date("2026-07-12T14:30:00") },
-  { id: "a2", type: "interview", candidateName: "Emily Chen", message: "scheduled interview for", timestamp: new Date("2026-07-12T11:00:00") },
-  { id: "a3", type: "hire", candidateName: "Alex Rivera", message: "was hired for", timestamp: new Date("2026-07-01T09:00:00") },
-  { id: "a4", type: "rejection", candidateName: "Priya Patel", message: "was not selected for", timestamp: new Date("2026-06-28T16:00:00") },
-  { id: "a5", type: "offer", candidateName: "Sarah Kim", message: "received offer for", timestamp: new Date("2026-06-27T10:00:00") },
-]
+  const allApps: ApplicationListItem[] = []
+  if (candidateIds.length > 0) {
+    try {
+      const appParams: ApplicationQueryParams = {
+        candidateId: candidateIds,
+        limit: 100,
+      }
+      const firstPage = await fetchApplications(appParams)
+      allApps.push(...(firstPage.data || []))
+      const meta = firstPage.meta
+      if (meta && meta.total > (firstPage.data || []).length) {
+        const remaining = await fetchAllPages(fetchApplications, { candidateId: candidateIds }, 5)
+        allApps.push(...remaining)
+      }
+    } catch {
+      // Applications unavailable; candidates still load without application data
+    }
+  }
 
-export const useStore = create<AppState>((set) => ({
-  jobs: sampleJobs,
-  candidates: sampleCandidates,
-  interviews: sampleInterviews,
-  activities: sampleActivities,
+  const appsByCandidateId = new Map<string, ApplicationListItem[]>()
+  for (const app of allApps) {
+    const cid = app.candidate?.id
+    if (cid) {
+      const existing = appsByCandidateId.get(cid) || []
+      existing.push(app)
+      appsByCandidateId.set(cid, existing)
+    }
+  }
+
+  return (candidateRes.data || []).map((apiCandidate) => {
+    const applications = appsByCandidateId.get(apiCandidate.id) || []
+    const rawApps = applications.map((app) => ({
+      id: app.id,
+      candidateId: apiCandidate.id,
+      jobId: app.job?.id || "",
+      jobTitle: app.job?.title || "",
+      status: app.status,
+      version: app.version,
+      stageId: app.currentStage?.id,
+      stageName: app.currentStage?.name,
+      createdAt: app.createdAt,
+      updatedAt: app.updatedAt,
+    }))
+
+    const appInfo = buildApplicationInfo(rawApps)
+
+    return mapCandidateFromApi(apiCandidate, appInfo)
+  })
+}
+
+let candidatesRequestSequence = 0
+
+function mapCreatedCandidate(api: CandidateApiDetail): Candidate {
+  return {
+    id: api.id,
+    firstName: api.firstName,
+    lastName: api.lastName,
+    displayName: api.displayName,
+    email: api.email || "",
+    phone: api.phone || "",
+    headline: api.headline || undefined,
+    currentJobTitle: api.currentJobTitle || undefined,
+    currentEmployer: api.currentEmployer || undefined,
+    totalExperienceYears: api.totalExperienceYears ?? 0,
+    skills: (api.skills || []).map((s) => ({
+      id: s.id,
+      skillId: s.skillId,
+      name: s.name,
+      proficiencyLevel: s.proficiencyLevel,
+    })),
+    aiScore: null,
+    status: "ACTIVE" as CandidateStatus,
+    source: api.source || undefined,
+    createdAt: new Date(api.createdAt),
+    updatedAt: new Date(api.updatedAt),
+    applicationSummary: { total: 0, active: 0 },
+  }
+}
+
+export const useStore = create<AppState>((set, get) => ({
+  jobs: [],
+  candidates: [],
+  candidatesScoreSummary: null,
+  interviews: [],
+  activities: [],
+  candidatesLoading: false,
+  candidatesError: null,
+  interviewsLoading: false,
+  interviewsError: null,
+  analyticsOverview: null,
+  analyticsFunnel: [],
+  analyticsDepartments: [],
+  analyticsSources: [],
+  analyticsTimeToHire: [],
+  analyticsLoading: false,
+  analyticsError: null,
   addJob: (job) =>
     set((state) => ({
       jobs: [
@@ -350,22 +270,287 @@ export const useStore = create<AppState>((set) => ({
     set((state) => ({
       jobs: state.jobs.map((j) => (j.id === id ? { ...j, status } : j)),
     })),
-  addCandidate: (candidate) =>
-    set((state) => ({
-      candidates: [
-        {
-          ...candidate,
-          id: `c${Date.now()}`,
-          stage: candidate.status,
-          appliedAt: new Date(),
-        },
-        ...state.candidates,
-      ],
-    })),
-  updateCandidateStatus: (id, status) =>
-    set((state) => ({
-      candidates: state.candidates.map((c) =>
-        c.id === id ? { ...c, status, stage: status } : c
-      ),
-    })),
+  fetchJobs: async () => {
+    try {
+      const res = await getJobs({ limit: 100 })
+      set({ jobs: (res.data || []).map(mapJobDto) })
+    } catch {
+      // jobs stay as-is (possibly empty) on failure
+    }
+  },
+  fetchCandidates: async () => {
+    const requestId = ++candidatesRequestSequence
+    set({ candidatesLoading: true, candidatesError: null })
+    try {
+      // Whole-company aggregate runs alongside the paged list; a summary
+      // failure must not break the page (the dashboard falls back to the
+      // list-based computation).
+      const [candidates, scoreSummary] = await Promise.all([
+        loadCandidatesWithApplications(),
+        fetchCandidatesScoreSummary().catch(() => null),
+      ])
+      if (requestId !== candidatesRequestSequence) return
+      get().fetchJobs()
+      set({ candidates, candidatesScoreSummary: scoreSummary, candidatesLoading: false })
+    } catch (err) {
+      if (requestId !== candidatesRequestSequence) return
+      const message = err instanceof Error ? err.message : "Failed to fetch candidates"
+      set({ candidatesError: message, candidatesLoading: false })
+    }
+  },
+  addCandidateApplication: async (data) => {
+    set({ candidatesLoading: true, candidatesError: null })
+    try {
+      const nameParts = data.name.trim().split(/\s+/)
+      const firstName = nameParts[0]
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : ""
+
+      const dto: CreateCandidateRequest = {
+        firstName,
+        lastName,
+        email: data.email,
+        source: "RECRUITER_CREATED",
+        currentJobTitle: data.jobTitle || undefined,
+        totalExperienceYears: data.experience || undefined,
+      }
+      if (data.phone) dto.phone = data.phone
+
+      const newCand = await createCandidate(dto)
+      const candidateId = newCand.id
+
+      ++candidatesRequestSequence
+
+      const mappedCandidate = mapCreatedCandidate(newCand)
+
+      set((state) => {
+        const withoutCreated = state.candidates.filter((c) => c.id !== mappedCandidate.id)
+        return { candidates: [mappedCandidate, ...withoutCreated] }
+      })
+
+      if (data.jobId) {
+        try {
+          const app = await createApplication({
+            candidateId,
+            jobId: data.jobId,
+            source: "RECRUITER_CREATED",
+          })
+          await get().fetchCandidates()
+          return { status: "candidate-and-application-created" as const, candidateId, applicationId: app.id }
+        } catch (appErr) {
+          await get().fetchCandidates()
+          const error = appErr instanceof Error ? appErr.message : "Application could not be created"
+          return { status: "candidate-created-application-failed" as const, candidateId, applicationId: null, error }
+        }
+      }
+
+      await get().fetchCandidates()
+      return { status: "candidate-created" as const, candidateId, applicationId: null }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create candidate"
+      set({ candidatesError: message, candidatesLoading: false })
+      return { status: "candidate-creation-failed" as const, candidateId: null, applicationId: null, error: message }
+    }
+  },
+  rejectCandidateApplication: async (candidateId) => {
+    const state = get()
+    const candidate = state.candidates.find((c) => c.id === candidateId)
+    if (!candidate) return
+
+    const currentApp = candidate.applicationSummary?.current
+    if (!currentApp) {
+      set({ candidatesError: "No active application to reject" })
+      return
+    }
+
+    set({ candidatesLoading: true, candidatesError: null })
+    try {
+      const detail = await fetchApplicationById(currentApp.id)
+      const version = detail.version
+
+      await rejectApplication(currentApp.id, { expectedVersion: version, reasonCode: "OTHER" })
+
+      const candidates = await loadCandidatesWithApplications()
+      set({ candidates, candidatesLoading: false })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to reject application"
+      set({ candidatesError: message, candidatesLoading: false })
+    }
+  },
+  advanceCandidateApplication: async (candidateId, toStatus) => {
+    const state = get()
+    const candidate = state.candidates.find((c) => c.id === candidateId)
+    if (!candidate) return
+
+    const currentApp = candidate.applicationSummary?.current
+    if (!currentApp) {
+      set({ candidatesError: "No active application to advance" })
+      return
+    }
+
+    set({ candidatesLoading: true, candidatesError: null })
+    try {
+      const detail = await fetchApplicationById(currentApp.id)
+      const version = detail.version
+
+      switch (toStatus) {
+        case "Screening":
+          if (detail.status === "DRAFT") {
+            await submitApplication(currentApp.id, { expectedVersion: version, consentConfirmed: true })
+          } else {
+            const pipeline = await getJobPipeline(currentApp.jobId)
+            const sorted = [...pipeline.stages].sort((a, b) => a.sortOrder - b.sortOrder)
+            const target = sorted.find(s => s.name.toLowerCase() === "screening") ?? sorted[0]
+            if (target) {
+              await moveApplication(currentApp.id, { expectedVersion: version, toStageId: target.id })
+            }
+          }
+          break
+        case "Interview":
+          await shortlistApplication(currentApp.id, { expectedVersion: version })
+          break
+        case "Hired":
+          await markApplicationHired(currentApp.id, { expectedVersion: version })
+          break
+        default:
+          break
+      }
+
+      const candidates = await loadCandidatesWithApplications()
+      set({ candidates, candidatesLoading: false })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update application"
+      set({ candidatesError: message, candidatesLoading: false })
+    }
+  },
+  fetchInterviews: async () => {
+    set({ interviewsLoading: true, interviewsError: null })
+    try {
+      await get().fetchJobs()
+      const res = await fetchInterviewsApi({ limit: 100, sortBy: "scheduledAt", sortOrder: "desc" })
+      const jobsMap = new Map(get().jobs.map((j) => [j.id, j.title]))
+      const interviews = (res.data || []).map((item) => mapInterviewListItem(item, jobsMap))
+      set({ interviews, interviewsLoading: false })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to fetch interviews"
+      set({ interviewsError: message, interviewsLoading: false })
+    }
+  },
+  scheduleInterview: async (data) => {
+    set({ interviewsLoading: true, interviewsError: null })
+    try {
+      const dto: CreateInterviewRequest = {
+        applicationId: data.applicationId,
+        type: mapFrontendToBackendType(data.type),
+        title: data.title,
+        scheduledAt: data.scheduledAt,
+        durationMinutes: data.durationMinutes,
+        timezone: data.timezone,
+      }
+      await createInterviewApi(dto)
+      await get().fetchInterviews()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to schedule interview"
+      set({ interviewsError: message, interviewsLoading: false })
+    }
+  },
+  cancelInterviewById: async (id) => {
+    const state = get()
+    const interview = state.interviews.find((i) => i.id === id)
+    if (!interview) return
+
+    set({ interviewsLoading: true, interviewsError: null })
+    try {
+      const version = interview.version ?? 1
+      await cancelInterviewApi(id, { expectedVersion: version })
+      await get().fetchInterviews()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to cancel interview"
+      set({ interviewsError: message, interviewsLoading: false })
+    }
+  },
+  rescheduleInterviewById: async (id, dto) => {
+    const state = get()
+    const interview = state.interviews.find((i) => i.id === id)
+    if (!interview) return
+
+    set({ interviewsLoading: true, interviewsError: null })
+    try {
+      await rescheduleInterviewApi(id, { ...dto, expectedVersion: interview.version ?? 1 })
+      await get().fetchInterviews()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to reschedule interview"
+      set({ interviewsError: message, interviewsLoading: false })
+    }
+  },
+  recordResultById: async (id, dto) => {
+    const state = get()
+    const interview = state.interviews.find((i) => i.id === id)
+    if (!interview) return
+
+    set({ interviewsLoading: true, interviewsError: null })
+    try {
+      await recordResultApi(id, { ...dto, expectedVersion: interview.version ?? 1 })
+      await get().fetchInterviews()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to record result"
+      set({ interviewsError: message, interviewsLoading: false })
+    }
+  },
+  completeInterviewById: async (id) => {
+    const state = get()
+    const interview = state.interviews.find((i) => i.id === id)
+    if (!interview) return
+
+    const TERMINAL = ["COMPLETED", "CANCELLED", "NO_SHOW", "EXPIRED"] as const
+    if ((TERMINAL as readonly string[]).includes(interview.backendStatus)) {
+      set({ interviewsError: `Cannot complete an interview with status ${interview.backendStatus}`, interviewsLoading: false })
+      return
+    }
+
+    set({ interviewsLoading: true, interviewsError: null })
+    try {
+      let version = interview.version ?? 1
+
+      const needsConfirm = interview.backendStatus === "SCHEDULED" || interview.backendStatus === "RESCHEDULED"
+      const needsStart = needsConfirm || interview.backendStatus === "CONFIRMED"
+
+      if (needsConfirm) {
+        await confirmInterviewApi(id, { expectedVersion: version })
+        version++
+      }
+      if (needsStart) {
+        await startInterviewApi(id, { expectedVersion: version })
+        version++
+      }
+
+      await completeInterviewApi(id, { expectedVersion: version })
+      await get().fetchInterviews()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to complete interview"
+      set({ interviewsError: message, interviewsLoading: false })
+    }
+  },
+  fetchAnalytics: async (dateFrom?: string) => {
+    set({ analyticsLoading: true, analyticsError: null })
+    try {
+      const [overview, funnel, departments, sources, timeToHire] = await Promise.all([
+        getAnalyticsOverview(dateFrom),
+        getAnalyticsFunnel(dateFrom),
+        getAnalyticsDepartments(dateFrom),
+        getAnalyticsSources(dateFrom),
+        getAnalyticsTimeToHire(dateFrom),
+      ])
+      set({
+        analyticsOverview: overview,
+        analyticsFunnel: funnel,
+        analyticsDepartments: departments,
+        analyticsSources: sources,
+        analyticsTimeToHire: timeToHire,
+        analyticsLoading: false,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to fetch analytics"
+      set({ analyticsError: message, analyticsLoading: false })
+    }
+  },
 }))
