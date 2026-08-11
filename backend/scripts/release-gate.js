@@ -22,7 +22,10 @@ for (const [cmd, label] of STEPS) {
     const out = execSync(cmd, {
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 180_000,
+      // Nest compilation can exceed three minutes on constrained Windows CI
+      // hosts. Keep the gate fail-closed, but avoid reporting a healthy build
+      // as failed solely because the verifier's own timeout was too short.
+      timeout: 300_000,
     });
     const lines = out.toString().trim();
     if (lines) console.log(lines);

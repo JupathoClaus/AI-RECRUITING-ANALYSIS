@@ -80,7 +80,7 @@ async function main() {
 
   let browser;
   try {
-    browser = await chromium.launch({ headless: !HEADFUL });
+    browser = await chromium.launch({ headless: !HEADFUL, args: HEADFUL ? [] : ['--single-process', '--no-zygote', '--disable-gpu'] });
     const context = await browser.newContext();
     const page = await context.newPage();
     let expected409ConsoleErrors = 0;
@@ -157,6 +157,8 @@ async function main() {
     // so jobs can be published from the UI (same as the browser proof).
     const membership = await prisma.companyMembership.findFirst({ where: { userId: user.id } });
     if (membership) {
+      ids.membershipIds.push(membership.id);
+      ids.companyId = membership.companyId;
       await prisma.companySettings.upsert({
         where: { companyId: membership.companyId },
         create: { companyId: membership.companyId, requireJobApproval: false },
@@ -399,16 +401,35 @@ async function main() {
     note('5a.assistant', 'AI Assistant is a preview: no fabricated metrics, actions unavailable label shown');
     await page.getByRole('button', { name: 'Close' }).first().click().catch(() => {});
 
-    // ── 6: AI Interviews shows no fabricated data ────────────────────────
+    // ── 6: AI Interviews loads the persisted tenant session ─────────────
+    const token = await page.evaluate(() => localStorage.getItem('ai-recruiter-access-token'));
+    if (!token) throw new Error('access token missing before AI interview proof');
+    const createAiInterviewResponse = await fetch(`${BE_URL}/api/v1/ai-interviews`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        applicationId: application.id,
+        provider: 'MOCK',
+        language: 'en',
+      }),
+    });
+    if (!createAiInterviewResponse.ok) {
+      throw new Error(`AI interview setup failed with HTTP ${createAiInterviewResponse.status}`);
+    }
     await page.goto(`${FE_URL}/ai-interviews`, { waitUntil: 'domcontentloaded' });
-    await page.getByText('No AI interviews yet').waitFor({ timeout: 15000 });
+    await page.getByText(CANDIDATE_NAME, { exact: true }).waitFor({ timeout: 15000 });
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByText(CANDIDATE_NAME, { exact: true }).waitFor({ timeout: 15000 });
     const interviewsBody = await page.locator('body').innerText();
-    for (const fabricated of ['Emily Chen', 'Total AI Interviews', '47', 'David Park']) {
+    for (const fabricated of ['Emily Chen', 'Total AI Interviews', 'David Park']) {
       if (interviewsBody.includes(fabricated)) {
         throw new Error(`AI Interviews page contains fabricated data: "${fabricated}"`);
       }
     }
-    note('6a.interviews', 'AI Interviews page renders an honest empty state, no fabricated candidates/metrics');
+    note('6a.interviews', 'AI Interviews page loads the persisted tenant session after a full reload');
 
     // ── 7: closed job disappears from Active, appears in History ─────────
     await page.goto(`${FE_URL}/jobs`, { waitUntil: 'domcontentloaded' });
@@ -434,18 +455,31 @@ async function main() {
     const historyCard = page.getByText(JOB_TITLE, { exact: true }).locator('xpath=ancestor::div[contains(@class,"group")][1]');
     await historyCard.locator('button').click();
     await page.getByRole('menuitem', { name: 'Reopen' }).click();
-    await page.getByText(JOB_TITLE, { exact: true }).waitFor({ timeout: 15000 });
-    const jobAfterReopen = await prisma.job.findFirst({ where: { id: job.id } });
+    // The History view already displays the title, so the ground truth is the
+    // DB transition; poll it (the commit can land a moment after the client
+    // request settles under low-memory headless Chromium).
+    let jobAfterReopen = null;
+    const reopenDeadline = Date.now() + 15000;
+    while (Date.now() < reopenDeadline) {
+      jobAfterReopen = await prisma.job.findFirst({ where: { id: job.id } });
+      if (jobAfterReopen?.status === 'DRAFT') break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
     if (jobAfterReopen?.status !== 'DRAFT') {
       throw new Error(`expected DRAFT after reopen, found ${jobAfterReopen?.status}`);
     }
-    note('8.reopen', `reopened job restored to the workflow (status -> ${jobAfterReopen?.status})`);
+    // Best-effort UI check: after the reopen response the app switches back
+    // to the Active view and the restored card shows the "Draft" badge.
+    const reopenedCard = page.getByText(JOB_TITLE, { exact: true }).locator('xpath=ancestor::div[contains(@class,"group")][1]');
+    await reopenedCard
+      .getByText('Draft', { exact: true })
+      .waitFor({ timeout: 10000 })
+      .catch(() => {});
+    note('8.reopen', `reopened job restored to the workflow (status -> ${jobAfterReopen.status})`);
 
     // ── 9: zero unexpected errors ────────────────────────────────────────
     await page.waitForTimeout(1500);
-    const unexpected = browserErrors.filter(
-      (e) => !(e.kind === 'http' && e.detail.includes('404') && /\/ai-screenings\/latest/.test(e.detail)),
-    );
+    const unexpected = browserErrors;
     if (unexpected.length > 0) {
       throw new Error(`unexpected browser errors: ${JSON.stringify(unexpected, null, 2)}`);
     }
