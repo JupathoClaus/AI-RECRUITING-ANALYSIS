@@ -85,6 +85,10 @@ export async function closeJob(jobId: string): Promise<void> {
   return apiRequest<void>(`/jobs/${jobId}/close`, { method: "POST" })
 }
 
+export async function reopenJob(jobId: string): Promise<void> {
+  return apiRequest<void>(`/jobs/${jobId}/reopen`, { method: "POST" })
+}
+
 export async function pauseJob(jobId: string): Promise<void> {
   return apiRequest<void>(`/jobs/${jobId}/pause`, { method: "POST" })
 }

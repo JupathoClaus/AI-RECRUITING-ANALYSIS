@@ -15,7 +15,8 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
 import { formatCurrency, timeAgo } from "@/lib/utils"
-import { getJobs, getJobById, createJob, updateJob, publishJob, closeJob, pauseJob, resumeJob, archiveJob } from "@/lib/api/jobs.api"
+import { getJobs, getJobById, createJob, updateJob, publishJob, closeJob, reopenJob, pauseJob, resumeJob, archiveJob } from "@/lib/api/jobs.api"
+import { resolveJobStatusFilter } from "@/lib/jobs-view"
 import type { JobListDto } from "@/lib/api/types"
 import type { CreateJobRequest, UpdateJobRequest } from "@/lib/api/jobs.api"
 import {
@@ -127,6 +128,9 @@ export default function JobsPage() {
   const [typeFilter, setTypeFilter] = React.useState<string>("all")
   const [departmentFilter, setDepartmentFilter] = React.useState<string>("all")
   const [view, setView] = React.useState<"grid" | "table">("grid")
+  // Default view is Active: closed/filled/cancelled/archived jobs are hidden
+  // unless the user opens the History view.
+  const [jobScope, setJobScope] = React.useState<"active" | "history">("active")
 
   const [detailsJobId, setDetailsJobId] = React.useState<string | null>(null)
   const [detailsJob, setDetailsJob] = React.useState<JobListDto | null>(null)
@@ -165,6 +169,12 @@ export default function JobsPage() {
           break
         case "archive":
           await archiveJob(jobId)
+          break
+        case "reopen":
+          await reopenJob(jobId)
+          // Reopening moves the job back to DRAFT (active workflow); switch the
+          // view so it is immediately visible again.
+          setJobScope("active")
           break
       }
       setDetailsJobId(null)
@@ -213,7 +223,7 @@ export default function JobsPage() {
 
       const params: Record<string, string | number | string[] | undefined> = { page, limit: LIMIT }
       if (debouncedSearch) params.search = debouncedSearch
-      if (statusFilter !== "all") params.status = [statusFilter]
+      params.status = resolveJobStatusFilter(jobScope, statusFilter === "all" ? null : statusFilter)
       if (typeFilter !== "all") params.employmentType = [typeFilter]
 
       try {
@@ -241,7 +251,7 @@ export default function JobsPage() {
 
     load()
     return () => { cancelled = true }
-  }, [page, debouncedSearch, statusFilter, typeFilter, fetchKey])
+  }, [page, debouncedSearch, statusFilter, typeFilter, jobScope, fetchKey])
 
   React.useEffect(() => {
     if (!detailsJobId) return
@@ -397,6 +407,27 @@ export default function JobsPage() {
     >
       {/* Filters */}
       <div className="flex flex-col gap-4 mb-6 animate-fade-in">
+        {/* Active / History scope */}
+        <Tabs
+          value={jobScope}
+          onValueChange={(v) => {
+            setJobScope(v as "active" | "history")
+            setStatusFilter("all")
+            setPage(1)
+          }}
+          className="w-fit"
+        >
+          <TabsList>
+            <TabsTrigger value="active" className="gap-1.5">
+              <TickCircle className="h-4 w-4" />
+              Active
+            </TabsTrigger>
+            <TabsTrigger value="history" className="gap-1.5">
+              <Archive className="h-4 w-4" />
+              Closed &amp; Archived
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
@@ -585,10 +616,20 @@ export default function JobsPage() {
                                 </DropdownMenuItem>
                               )}
                               {(job.status === "CLOSED" || job.status === "CANCELLED" || job.status === "FILLED" || job.status === "ARCHIVED") && (
-                                <DropdownMenuItem onClick={() => handleJobAction(job.id, "archive")} disabled={actionLoading === `${job.id}-archive`}>
-                                  <Archive className="h-4 w-4 mr-2" />
-                                  Archive
-                                </DropdownMenuItem>
+                                <>
+                                  {(job.status === "CLOSED" || job.status === "CANCELLED" || job.status === "ARCHIVED") && (
+                                    <DropdownMenuItem onClick={() => handleJobAction(job.id, "reopen")} disabled={actionLoading === `${job.id}-reopen`}>
+                                      <TickCircle className="h-4 w-4 mr-2" />
+                                      Reopen
+                                    </DropdownMenuItem>
+                                  )}
+                                  {job.status !== "ARCHIVED" && (
+                                    <DropdownMenuItem onClick={() => handleJobAction(job.id, "archive")} disabled={actionLoading === `${job.id}-archive`}>
+                                      <Archive className="h-4 w-4 mr-2" />
+                                      Archive
+                                    </DropdownMenuItem>
+                                  )}
+                                </>
                               )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => { openDetails(job.id); setEditMode(true); setEditForm({ title: job.title, description: job.description || "", numberOfOpenings: job.numberOfOpenings, salaryMin: job.salaryMin ?? undefined, salaryMax: job.salaryMax ?? undefined }) }}>
@@ -729,6 +770,12 @@ export default function JobsPage() {
                                     <DropdownMenuItem onClick={() => handleJobAction(job.id, "resume")}>
                                       <TickCircle className="h-4 w-4 mr-2" />
                                       Resume
+                                    </DropdownMenuItem>
+                                  )}
+                                  {(job.status === "CLOSED" || job.status === "CANCELLED" || job.status === "ARCHIVED") && (
+                                    <DropdownMenuItem onClick={() => handleJobAction(job.id, "reopen")}>
+                                      <TickCircle className="h-4 w-4 mr-2" />
+                                      Reopen
                                     </DropdownMenuItem>
                                   )}
                                 </DropdownMenuContent>
