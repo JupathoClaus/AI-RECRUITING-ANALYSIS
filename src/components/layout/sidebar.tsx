@@ -152,6 +152,15 @@ export function Sidebar() {
               <img src="/ai-recruiter-logo.png" alt="AI Recruiter" className="h-full w-full object-contain" />
             </div>
           </Link>
+          {/* Desktop collapse toggle */}
+          <button
+            className="absolute top-3 right-3 hidden lg:flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-hover transition-colors duration-150"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={!collapsed}
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
           {/* Mobile close */}
           <button
             className="absolute top-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-hover lg:hidden transition-colors duration-150"
@@ -226,20 +235,6 @@ export function Sidebar() {
             </div>
           ))}
         </nav>
-
-        {/* Collapse toggle (desktop only) */}
-        <div className="hidden lg:flex items-center justify-center border-t border-border p-2 shrink-0">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setCollapsed(!collapsed)}
-            className="h-8 w-8"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            aria-expanded={!collapsed}
-          >
-            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </Button>
-        </div>
 
         {/* User section */}
         <div className={cn("border-t border-border p-3 shrink-0", collapsed && "px-2")}>
