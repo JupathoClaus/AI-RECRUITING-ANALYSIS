@@ -12,9 +12,11 @@ export class RedisService implements OnModuleDestroy {
     this.client = new Redis({
       host: this.configService.get<string>('redis.host'),
       port: this.configService.get<number>('redis.port'),
+      username: this.configService.get<string>('redis.username') || undefined,
       password: this.configService.get<string>('redis.password') || undefined,
       db: this.configService.get<number>('redis.db'),
       keyPrefix: this.configService.get<string>('redis.keyPrefix'),
+      tls: this.configService.get<boolean>('redis.tls') ? {} : undefined,
       retryStrategy: (times) => {
         if (this.destroyed) return null;
         return Math.min(times * 100, 3000);

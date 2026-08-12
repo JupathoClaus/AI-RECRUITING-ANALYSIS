@@ -2,50 +2,72 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { motion } from "framer-motion"
+import { useRouter } from "next/navigation"
 import { CandidateLayout } from "@/components/candidate/candidate-layout"
 import { FadeIn } from "@/components/candidate/page-transition"
 import { DeviceStatusCard } from "@/components/candidate/device-status-card"
-import { CameraPreview } from "@/components/candidate/camera-preview"
 import { Button } from "@/components/ui/button"
-import { Video, Mic, Wifi, Globe, Shield, ArrowLeft, ArrowRight } from "lucide-react"
+import { startAiInterview } from "@/lib/api/ai-interviews.api"
+import { ApiErrorResponse } from "@/lib/api/client"
+import { loadCandidateInterviewSession } from "@/lib/candidate-interview-session"
+import { Video, Mic, Wifi, Globe, ArrowLeft, ArrowRight } from "lucide-react"
 
 type DeviceStatus = "checking" | "ready" | "error" | "warning"
 
-interface DeviceState {
-  camera: DeviceStatus
-  microphone: DeviceStatus
-  internet: DeviceStatus
-  browser: DeviceStatus
-  permissions: DeviceStatus
-}
-
 export default function DeviceCheckPage() {
-  const [devices, setDevices] = React.useState<DeviceState>({
-    camera: "checking",
-    microphone: "checking",
-    internet: "checking",
-    browser: "checking",
-    permissions: "checking",
-  })
-
-  const allReady = Object.values(devices).every((s) => s === "ready")
+  const router = useRouter()
+  const videoRef = React.useRef<HTMLVideoElement>(null)
+  const streamRef = React.useRef<MediaStream | null>(null)
+  const [mediaStatus, setMediaStatus] = React.useState<DeviceStatus>("checking")
+  const [accepted, setAccepted] = React.useState(false)
+  const [starting, setStarting] = React.useState(false)
+  const [error, setError] = React.useState("")
 
   React.useEffect(() => {
-    const checks: [keyof DeviceState, DeviceStatus, number][] = [
-      ["browser", "ready", 600],
-      ["internet", "ready", 900],
-      ["camera", "ready", 1200],
-      ["microphone", "ready", 1500],
-      ["permissions", "ready", 1800],
-    ]
+    if (!loadCandidateInterviewSession()) {
+      router.replace("/candidate")
+      return
+    }
 
-    const timers = checks.map(([key, status, delay]) =>
-      setTimeout(() => setDevices((prev) => ({ ...prev, [key]: status })), delay)
-    )
+    navigator.mediaDevices?.getUserMedia({ video: true, audio: true })
+      .then((stream) => {
+        streamRef.current = stream
+        if (videoRef.current) videoRef.current.srcObject = stream
+        setMediaStatus("ready")
+      })
+      .catch(() => setMediaStatus("error"))
 
-    return () => timers.forEach(clearTimeout)
-  }, [])
+    return () => streamRef.current?.getTracks().forEach((track) => track.stop())
+  }, [router])
+
+  const handleStart = async () => {
+    const session = loadCandidateInterviewSession()
+    if (!session) {
+      router.replace("/candidate")
+      return
+    }
+
+    setStarting(true)
+    setError("")
+    try {
+      const started = await startAiInterview(session.accessToken, accepted)
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      if (started.provider === "MOCK") {
+        router.push("/candidate/interview/session")
+      } else {
+        const conversationUrl = new URL(started.conversationUrl)
+        if (started.meetingToken) conversationUrl.searchParams.set("t", started.meetingToken)
+        window.location.assign(conversationUrl.toString())
+      }
+    } catch (cause) {
+      setError(cause instanceof ApiErrorResponse ? cause.message : "The interview could not be started. Please try again.")
+      setStarting(false)
+    }
+  }
+
+  const browserReady = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia
+  const online = typeof navigator === "undefined" || navigator.onLine
+  const allReady = mediaStatus === "ready" && browserReady && online
 
   return (
     <CandidateLayout>
@@ -53,83 +75,45 @@ export default function DeviceCheckPage() {
         <div className="mx-auto max-w-2xl">
           <FadeIn>
             <div className="rounded-3xl bg-surface shadow-xl border border-border/50 overflow-hidden">
-              {/* Header */}
               <div className="p-6 sm:p-8 border-b border-border">
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-                    <Shield className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <h1 className="text-lg font-bold text-foreground">Device Check</h1>
-                    <p className="text-xs text-muted">Verify your setup before the interview</p>
-                  </div>
-                </div>
+                <h1 className="text-lg font-bold text-foreground">Device check</h1>
+                <p className="text-xs text-muted">Allow camera and microphone access to verify your setup.</p>
               </div>
 
               <div className="p-6 sm:p-8 space-y-6">
-                {/* Camera Preview */}
-                <CameraPreview />
-
-                {/* Device Status Cards */}
-                <div className="space-y-3">
-                  <DeviceStatusCard
-                    icon={<Video className="h-5 w-5 text-foreground" />}
-                    label="Camera"
-                    status={devices.camera}
-                    detail={devices.camera === "ready" ? "HD Webcam detected" : undefined}
-                  />
-                  <DeviceStatusCard
-                    icon={<Mic className="h-5 w-5 text-foreground" />}
-                    label="Microphone"
-                    status={devices.microphone}
-                    detail={devices.microphone === "ready" ? "Built-in Microphone" : undefined}
-                  />
-                  <DeviceStatusCard
-                    icon={<Wifi className="h-5 w-5 text-foreground" />}
-                    label="Internet Connection"
-                    status={devices.internet}
-                    detail={devices.internet === "ready" ? "42 Mbps - Excellent" : undefined}
-                  />
-                  <DeviceStatusCard
-                    icon={<Globe className="h-5 w-5 text-foreground" />}
-                    label="Browser Compatibility"
-                    status={devices.browser}
-                    detail={devices.browser === "ready" ? "Chrome 128 - Supported" : undefined}
-                  />
-                  <DeviceStatusCard
-                    icon={<Shield className="h-5 w-5 text-foreground" />}
-                    label="Permissions"
-                    status={devices.permissions}
-                    detail={devices.permissions === "ready" ? "Camera & microphone access granted" : undefined}
-                  />
+                <div className="aspect-video overflow-hidden rounded-2xl bg-slate-950">
+                  <video ref={videoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
                 </div>
 
-                {/* Status Summary */}
-                {allReady && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded-xl bg-success/5 border border-success/20 p-4 text-center"
-                  >
-                    <p className="text-sm font-semibold text-success">All systems ready</p>
-                    <p className="text-xs text-success/70 mt-0.5">Your device is fully configured for the interview</p>
-                  </motion.div>
+                <div className="space-y-3">
+                  <DeviceStatusCard icon={<Video className="h-5 w-5" />} label="Camera" status={mediaStatus} detail={mediaStatus === "ready" ? "Camera access granted" : undefined} />
+                  <DeviceStatusCard icon={<Mic className="h-5 w-5" />} label="Microphone" status={mediaStatus} detail={mediaStatus === "ready" ? "Microphone access granted" : undefined} />
+                  <DeviceStatusCard icon={<Wifi className="h-5 w-5" />} label="Internet connection" status={online ? "ready" : "error"} detail={online ? "Browser is online" : "No connection detected"} />
+                  <DeviceStatusCard icon={<Globe className="h-5 w-5" />} label="Browser compatibility" status={browserReady ? "ready" : "error"} detail={browserReady ? "Media devices supported" : "Use a modern browser with camera support"} />
+                </div>
+
+                {mediaStatus === "error" && (
+                  <p className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm text-error">
+                    Camera or microphone access was denied or unavailable. Update your browser permissions and reload this page.
+                  </p>
                 )}
 
-                {/* Actions */}
+                <label className="flex items-start gap-3 rounded-xl bg-surface-elevated p-4 text-sm text-foreground">
+                  <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-0.5" />
+                  <span>I consent to this AI-assisted video interview and understand that the session may be recorded and reviewed by the hiring team.</span>
+                </label>
+
+                {error && <p className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm text-error">{error}</p>}
+
                 <div className="flex gap-3">
                   <Link href="/candidate/interview/details" className="flex-1">
                     <Button variant="outline" className="w-full h-12 rounded-xl">
-                      <ArrowLeft className="h-4 w-4 mr-2" />
-                      Back
+                      <ArrowLeft className="h-4 w-4 mr-2" /> Back
                     </Button>
                   </Link>
-                  <Link href="/candidate/interview/session" className="flex-1">
-                    <Button className="w-full h-12 rounded-xl" disabled={!allReady}>
-                      Continue
-                      <ArrowRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  </Link>
+                  <Button className="flex-1 h-12 rounded-xl" disabled={!allReady || !accepted || starting} onClick={handleStart}>
+                    {starting ? "Starting…" : "Begin interview"} <ArrowRight className="h-4 w-4 ml-2" />
+                  </Button>
                 </div>
               </div>
             </div>

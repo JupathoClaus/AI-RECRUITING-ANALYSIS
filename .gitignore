@@ -35,6 +35,7 @@ dev-server*.log
 dev_output.log
 backend-startup.log
 backend/serve.log
+/.runtime/
 
 # env files (can opt-in for committing if needed)
 .env*

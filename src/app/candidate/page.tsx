@@ -8,10 +8,11 @@ import { CandidateLayout } from "@/components/candidate/candidate-layout"
 import { FadeIn } from "@/components/candidate/page-transition"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { verifyInterviewCode } from "@/lib/api/ai-interviews.api"
+import { ApiErrorResponse } from "@/lib/api/client"
+import { saveCandidateInterviewSession } from "@/lib/candidate-interview-session"
 
 type ViewState = "idle" | "loading" | "error" | "expired"
-
-const validCode = "AIR-2026-8XKQ4M"
 
 export default function CandidateLandingPage() {
   const router = useRouter()
@@ -22,18 +23,20 @@ export default function CandidateLandingPage() {
   const codeLength = 13
   const formattedCode = code.toUpperCase().replace(/[^A-Z0-9-]/g, "")
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (formattedCode.length < 5) return
     setViewState("loading")
-    setTimeout(() => {
-      if (formattedCode === validCode) {
-        router.push("/candidate/interview/details")
-      } else if (formattedCode.includes("EXPIRED")) {
+    try {
+      const session = await verifyInterviewCode(formattedCode)
+      saveCandidateInterviewSession(session)
+      router.push("/candidate/interview/details")
+    } catch (error) {
+      if (error instanceof ApiErrorResponse && error.errorCode === "INTERVIEW_EXPIRED") {
         setViewState("expired")
       } else {
         setViewState("error")
       }
-    }, 1500)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

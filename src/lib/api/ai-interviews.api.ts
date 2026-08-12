@@ -148,6 +148,7 @@ export async function verifyInterviewCode(code: string): Promise<{
   return apiRequest("/ai-interviews/public/verify-code", {
     method: "POST",
     body: { code },
+    skipAuth: true,
   })
 }
 
@@ -164,6 +165,7 @@ export async function getInterviewSession(accessToken: string): Promise<{
 }> {
   return apiRequest("/ai-interviews/public/session", {
     headers: { Authorization: `Bearer ${accessToken}` },
+    skipAuth: true,
   })
 }
 
@@ -181,6 +183,7 @@ export async function startAiInterview(
     method: "POST",
     body: { acknowledgementsAccepted },
     headers: { Authorization: `Bearer ${accessToken}` },
+    skipAuth: true,
   })
 }
 
@@ -188,5 +191,6 @@ export async function completeAiInterview(accessToken: string): Promise<{ comple
   return apiRequest("/ai-interviews/public/complete", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
+    skipAuth: true,
   })
 }

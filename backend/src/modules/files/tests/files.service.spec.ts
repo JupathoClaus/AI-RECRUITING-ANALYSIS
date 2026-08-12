@@ -216,6 +216,12 @@ describe('FilesService', () => {
       expect(result!.id).toBe('file-1');
       expect(storage.put).toHaveBeenCalled();
       expect(audit.record).toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventType: 'APPLICATION_RESUME_UPLOADED',
+          actorType: 'RECRUITER',
+        }),
+      );
     });
 
     it('should accept valid DOCX', async () => {
@@ -273,6 +279,53 @@ describe('FilesService', () => {
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ eventType: 'APPLICATION_RESUME_REPLACED' }),
       );
+    });
+  });
+
+  describe('uploadPublicResume', () => {
+    it('rejects an unknown public application reference', async () => {
+      prisma.application.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.uploadPublicResume('a'.repeat(32), pdfBuffer, 'resume.pdf', 'application/pdf'),
+      ).rejects.toThrow(NotFoundException);
+      expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it('uploads with candidate attribution and returns no internal identifiers', async () => {
+      prisma.application.findFirst
+        .mockResolvedValueOnce({ id: mockApplicationId, companyId: mockCompanyId })
+        .mockResolvedValueOnce({ id: mockApplicationId, companyId: mockCompanyId });
+      prisma.storedFile.findFirst.mockResolvedValue(null);
+      prisma.storedFile.updateMany.mockResolvedValue({ count: 0 });
+      prisma.storedFile.create.mockResolvedValue({ id: 'file-public' });
+      prisma.storedFile.findUnique.mockResolvedValue({
+        id: 'file-public',
+        originalName: 'resume.pdf',
+        sizeBytes: 100,
+        storageKey: 'company-1/uuid-abc.pdf',
+      });
+
+      const result = await service.uploadPublicResume(
+        'b'.repeat(32),
+        pdfBuffer,
+        'resume.pdf',
+        'application/pdf',
+      );
+
+      expect(result).toEqual({ uploaded: true, fileName: 'resume.pdf', sizeBytes: 100 });
+      expect(prisma.storedFile.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ uploadedByUserId: null }) }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorType: 'CANDIDATE',
+          actorUserId: undefined,
+          eventType: 'APPLICATION_RESUME_UPLOADED',
+        }),
+      );
+      expect(result).not.toHaveProperty('id');
+      expect(result).not.toHaveProperty('storageKey');
     });
   });
 
