@@ -1,0 +1,11 @@
+.git
+.github
+.next
+.runtime
+backend
+node_modules
+verification
+awesome-design-md-main
+*.log
+.env*
+!.env.example
