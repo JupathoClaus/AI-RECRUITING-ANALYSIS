@@ -7,6 +7,7 @@ export const validationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   APP_NAME: Joi.string().default('TalentAI'),
   APP_PORT: Joi.number().port().default(3000),
+  PORT: Joi.number().port().optional(),
   APP_VERSION: Joi.string().default('1.0.0'),
   API_PREFIX: Joi.string().default('api'),
   API_VERSION: Joi.string().default('v1'),
@@ -15,10 +16,12 @@ export const validationSchema = Joi.object({
     .required()
     .pattern(/^postgresql:\/\//),
   REDIS_HOST: Joi.string().default('localhost'),
+  REDIS_URL: Joi.string().uri({ scheme: ['redis', 'rediss'] }).optional().allow(''),
   REDIS_PORT: Joi.number().port().default(6379),
   REDIS_PASSWORD: Joi.string().optional().allow(''),
   REDIS_DB: Joi.number().default(0),
   REDIS_KEY_PREFIX: Joi.string().default('talentai:'),
+  REDIS_TLS: Joi.boolean().default(false),
   JWT_SECRET: Joi.string().required(),
   JWT_REFRESH_SECRET: Joi.string().required(),
   JWT_EXPIRATION: Joi.string().default('15m'),
@@ -63,6 +66,29 @@ export const validationSchema = Joi.object({
   RESUME_EXTRACTION_MAX_TEXT_CHARS: Joi.number().min(100).max(500000).default(50000),
   RESUME_EXTRACTION_MIN_TEXT_CHARS: Joi.number().min(1).max(1000).default(20),
   RESUME_EXTRACTION_TIMEOUT_MS: Joi.number().min(1000).max(120000).default(30000),
+
+  // Tavus AI Interviews
+  TAVUS_ENABLED: Joi.boolean().default(false),
+  TAVUS_API_KEY: Joi.string().when('TAVUS_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().optional().allow(''),
+  }),
+  TAVUS_PERSONA_ID: Joi.string().when('TAVUS_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().optional().allow(''),
+  }),
+  TAVUS_REPLICA_ID: Joi.string().when('TAVUS_ENABLED', {
+    is: true,
+    then: Joi.string().min(1).required(),
+    otherwise: Joi.string().optional().allow(''),
+  }),
+  TAVUS_CALLBACK_BASE_URL: Joi.string().uri().optional().allow(''),
+  TAVUS_CALLBACK_SECRET: Joi.string().optional().allow(''),
+  TAVUS_MAX_CALL_DURATION_SECONDS: Joi.number().min(60).max(14400).default(600),
+  TAVUS_PARTICIPANT_ABSENT_TIMEOUT_SECONDS: Joi.number().min(10).max(3600).default(120),
+  TAVUS_PARTICIPANT_LEFT_TIMEOUT_SECONDS: Joi.number().min(10).max(3600).default(60),
 });
 
 export interface ValidatedEnv {
@@ -132,6 +158,12 @@ export function validateEnvironment(): ValidatedEnv {
       postErrors.push(
         'DATABASE_URL contains placeholder credentials. Set a strong production password.',
       );
+    }
+    if (env.TAVUS_ENABLED && !env.TAVUS_CALLBACK_BASE_URL) {
+      postErrors.push('TAVUS_CALLBACK_BASE_URL is required when Tavus is enabled in production');
+    }
+    if (env.TAVUS_ENABLED && !env.TAVUS_CALLBACK_SECRET) {
+      postErrors.push('TAVUS_CALLBACK_SECRET is required when Tavus is enabled in production');
     }
   }
 

@@ -1970,7 +1970,7 @@ model StoredFile {
   id               String       @id @default(uuid())
   companyId        String
   applicationId    String?
-  uploadedByUserId String
+  uploadedByUserId String?
   storageKey       String       @unique
   originalName     String
   storedName       String

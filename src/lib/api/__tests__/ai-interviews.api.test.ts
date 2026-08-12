@@ -44,6 +44,7 @@ describe("ai-interviews.api", () => {
       expect(apiRequest).toHaveBeenCalledWith("/ai-interviews/public/verify-code", {
         method: "POST",
         body: { code: "ABCD-EFGH" },
+        skipAuth: true,
       })
       expect(result.accessToken).toBe("tok-1")
     })
@@ -58,6 +59,7 @@ describe("ai-interviews.api", () => {
         method: "POST",
         body: { acknowledgementsAccepted: true },
         headers: { Authorization: "Bearer tok-1" },
+        skipAuth: true,
       })
       expect(result.provider).toBe("TAVUS")
     })
@@ -71,6 +73,7 @@ describe("ai-interviews.api", () => {
       expect(apiRequest).toHaveBeenCalledWith("/ai-interviews/public/complete", {
         method: "POST",
         headers: { Authorization: "Bearer tok-1" },
+        skipAuth: true,
       })
       expect(result.completed).toBe(true)
     })

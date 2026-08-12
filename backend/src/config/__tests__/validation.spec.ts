@@ -74,6 +74,7 @@ describe('validationSchema', () => {
     expect(value.NODE_ENV).toBe('development');
     expect(value.APP_PORT).toBe(3000);
     expect(value.REDIS_HOST).toBe('localhost');
+    expect(value.REDIS_TLS).toBe(false);
     expect(value.HEALTH_CHECK_TIMEOUT_MS).toBe(3000);
     expect(value.API_PREFIX).toBe('api');
     expect(value.API_VERSION).toBe('v1');
@@ -156,5 +157,37 @@ describe('validationSchema', () => {
       { allowUnknown: true },
     );
     expect(error).toBeDefined();
+  });
+
+  it('should allow Tavus to remain disabled without provider credentials', () => {
+    const { error, value } = validationSchema.validate(validEnv, { allowUnknown: true });
+    expect(error).toBeUndefined();
+    expect(value.TAVUS_ENABLED).toBe(false);
+  });
+
+  it('should require Tavus provider identifiers when enabled', () => {
+    const { error } = validationSchema.validate(
+      { ...validEnv, TAVUS_ENABLED: true },
+      { allowUnknown: true, abortEarly: false },
+    );
+    expect(error?.details.map((detail) => detail.path[0])).toEqual(
+      expect.arrayContaining(['TAVUS_API_KEY', 'TAVUS_PERSONA_ID', 'TAVUS_REPLICA_ID']),
+    );
+  });
+
+  it('should accept a complete Tavus configuration', () => {
+    const { error } = validationSchema.validate(
+      {
+        ...validEnv,
+        TAVUS_ENABLED: true,
+        TAVUS_API_KEY: 'tavus-key',
+        TAVUS_PERSONA_ID: 'persona-id',
+        TAVUS_REPLICA_ID: 'replica-id',
+        TAVUS_CALLBACK_BASE_URL: 'https://api.example.com',
+        TAVUS_CALLBACK_SECRET: 'callback-secret',
+      },
+      { allowUnknown: true },
+    );
+    expect(error).toBeUndefined();
   });
 });

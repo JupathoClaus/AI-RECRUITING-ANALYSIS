@@ -42,10 +42,11 @@ export class FilesService {
   async uploadResume(
     applicationId: string,
     companyId: string,
-    userId: string,
+    userId: string | null,
     buffer: Buffer,
     originalName: string,
     mimeType: string,
+    actorType: ApplicationActorType = ApplicationActorType.RECRUITER,
   ) {
     if (!buffer || buffer.length === 0) {
       throw new BadRequestException('FILE_EMPTY');
@@ -64,6 +65,7 @@ export class FilesService {
       throw new NotFoundException('APPLICATION_NOT_FOUND');
     }
 
+    const isReplacement = await this.hasExistingResume(applicationId);
     const storedName = this.storage.generateStoredName(extension);
     const { storageKey, checksumSha256, sizeBytes } = await this.storage.put(
       companyId,
@@ -105,7 +107,6 @@ export class FilesService {
       where: { storageKey },
     });
 
-    const isReplacement = await this.hasExistingResume(applicationId);
     const auditEventType = isReplacement
       ? ApplicationAuditEventType.APPLICATION_RESUME_REPLACED
       : ApplicationAuditEventType.APPLICATION_RESUME_UPLOADED;
@@ -113,7 +114,7 @@ export class FilesService {
       companyId,
       applicationId,
       eventType: auditEventType,
-      actorType: ApplicationActorType.RECRUITER,
+      actorType,
       entityType: 'StoredFile',
       entityId: file!.id,
       description: isReplacement ? 'Resume replaced' : 'Resume uploaded',
@@ -122,10 +123,44 @@ export class FilesService {
         fileSize: sizeBytes,
         mimeType,
       },
-      actorUserId: userId,
+      actorUserId: userId ?? undefined,
     });
 
     return file;
+  }
+
+  async uploadPublicResume(
+    publicReference: string,
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+  ) {
+    if (!/^[a-f0-9]{32}$/i.test(publicReference)) {
+      throw new NotFoundException('APPLICATION_NOT_FOUND');
+    }
+    const application = await this.prisma.application.findFirst({
+      where: { publicReference, deletedAt: null },
+      select: { id: true, companyId: true },
+    });
+    if (!application) {
+      throw new NotFoundException('APPLICATION_NOT_FOUND');
+    }
+
+    const file = await this.uploadResume(
+      application.id,
+      application.companyId,
+      null,
+      buffer,
+      originalName,
+      mimeType,
+      ApplicationActorType.CANDIDATE,
+    );
+
+    return {
+      uploaded: true,
+      fileName: file!.originalName,
+      sizeBytes: file!.sizeBytes,
+    };
   }
 
   async downloadFile(fileId: string, companyId: string, userId: string) {
