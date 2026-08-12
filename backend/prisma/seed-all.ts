@@ -9,6 +9,6 @@ try {
 
   console.log('\nAll seeding completed successfully!');
 } catch (e) {
-  console.error('Seed failed:', e.message);
+  console.error('Seed failed:', e instanceof Error ? e.message : String(e));
   process.exit(1);
 }
