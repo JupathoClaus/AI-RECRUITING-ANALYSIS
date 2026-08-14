@@ -261,6 +261,117 @@ export class AnalyticsService {
     });
   }
 
+  /**
+   * Returns daily application counts for the last N days (default 14).
+   * Each point: { date: "YYYY-MM-DD", count: number }
+   */
+  async getApplicationsOverTime(
+    companyId: string,
+    days = 14,
+  ): Promise<{ date: string; count: number }[]> {
+    const now = new Date();
+    const rangeStart = new Date(now);
+    rangeStart.setDate(now.getDate() - (days - 1));
+    rangeStart.setHours(0, 0, 0, 0);
+
+    // Aggregate by day using groupBy on the date portion of createdAt.
+    // Prisma doesn't support date truncation natively so we fetch the raw
+    // createdAt values and bucket them in JS — safe for ≤14-day windows.
+    const apps = await this.prisma.application.findMany({
+      where: {
+        companyId,
+        deletedAt: null,
+        createdAt: { gte: rangeStart },
+        status: { notIn: [ApplicationStatus.ARCHIVED] },
+      },
+      select: { createdAt: true },
+    });
+
+    const dayCounts = new Map<string, number>();
+    for (let i = 0; i < days; i++) {
+      const d = new Date(rangeStart);
+      d.setDate(rangeStart.getDate() + i);
+      dayCounts.set(d.toISOString().slice(0, 10), 0);
+    }
+
+    for (const app of apps) {
+      const key = app.createdAt.toISOString().slice(0, 10);
+      if (dayCounts.has(key)) {
+        dayCounts.set(key, dayCounts.get(key)! + 1);
+      }
+    }
+
+    return [...dayCounts.entries()].map(([date, count]) => ({ date, count }));
+  }
+
+  /**
+   * Returns the most recent application audit events for a company, suitable
+   * for the dashboard activity feed.
+   */
+  async getRecentActivity(
+    companyId: string,
+    limit = 20,
+  ): Promise<
+    {
+      id: string;
+      eventType: string;
+      description: string;
+      candidateId: string | null;
+      candidateName: string | null;
+      occurredAt: Date;
+    }[]
+  > {
+    const events = await this.prisma.applicationAuditEvent.findMany({
+      where: {
+        companyId,
+        // Only surface meaningful events for recruiters
+        eventType: {
+          in: [
+            'APPLICATION_CREATED',
+            'APPLICATION_SUBMITTED',
+            'APPLICATION_STAGE_CHANGED',
+            'APPLICATION_SHORTLISTED',
+            'APPLICATION_REJECTED',
+            'APPLICATION_HIRED',
+            'APPLICATION_RESUME_UPLOADED',
+            'COMPANY_CANDIDATE_CREATED',
+          ] as any,
+        },
+      },
+      orderBy: { occurredAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        eventType: true,
+        description: true,
+        candidateId: true,
+        occurredAt: true,
+      },
+    });
+
+    // Resolve candidate display names for events that have a candidateId.
+    const candidateIds = [...new Set(events.map((e) => e.candidateId).filter(Boolean) as string[])];
+    const candidateNames = new Map<string, string>();
+    if (candidateIds.length > 0) {
+      const candidates = await this.prisma.candidate.findMany({
+        where: { id: { in: candidateIds } },
+        select: { id: true, firstName: true, lastName: true },
+      });
+      for (const c of candidates) {
+        candidateNames.set(c.id, `${c.firstName} ${c.lastName}`.trim());
+      }
+    }
+
+    return events.map((e) => ({
+      id: e.id,
+      eventType: e.eventType,
+      description: e.description,
+      candidateId: e.candidateId,
+      candidateName: e.candidateId ? (candidateNames.get(e.candidateId) ?? null) : null,
+      occurredAt: e.occurredAt,
+    }));
+  }
+
   private async fetchHiredAppsWithValidCount(
     where: Prisma.ApplicationWhereInput,
   ): Promise<{ hiredApps: { createdAt: Date; hiredAt: Date | null }[]; validHiredCount: number }> {

@@ -63,4 +63,32 @@ export class AnalyticsController {
   ) {
     return this.analyticsService.getTimeToHireTrend(user.activeCompanyId!, dateFrom, dateTo);
   }
+
+  @Get('applications-over-time')
+  @RequirePermissions('applications.read')
+  @ApiOperation({ summary: 'Daily application counts for the last N days (default 14)' })
+  async getApplicationsOverTime(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query('days') days?: string,
+  ) {
+    const parsedDays = days ? parseInt(days, 10) : 14;
+    return this.analyticsService.getApplicationsOverTime(
+      user.activeCompanyId!,
+      isNaN(parsedDays) || parsedDays < 1 ? 14 : Math.min(parsedDays, 90),
+    );
+  }
+
+  @Get('recent-activity')
+  @RequirePermissions('applications.read')
+  @ApiOperation({ summary: 'Recent application audit events for the activity feed' })
+  async getRecentActivity(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 20;
+    return this.analyticsService.getRecentActivity(
+      user.activeCompanyId!,
+      isNaN(parsedLimit) || parsedLimit < 1 ? 20 : Math.min(parsedLimit, 50),
+    );
+  }
 }
