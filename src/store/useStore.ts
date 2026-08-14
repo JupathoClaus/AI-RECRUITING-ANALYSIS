@@ -40,8 +40,10 @@ import {
   getAnalyticsDepartments,
   getAnalyticsSources,
   getAnalyticsTimeToHire,
+  getApplicationsOverTime,
+  getRecentActivity,
 } from "@/lib/api/analytics.api"
-import type { OverviewResponse, FunnelStage, DeptPerformance, SourceItem, TimeToHirePoint } from "@/lib/api/analytics.api"
+import type { OverviewResponse, FunnelStage, DeptPerformance, SourceItem, TimeToHirePoint, ApplicationsOverTimePoint, ActivityFeedItem } from "@/lib/api/analytics.api"
 
 function mapJobDto(dto: JobListDto): Job {
   const statusMap: Record<string, JobStatus> = {
@@ -102,8 +104,10 @@ interface AppState {
   analyticsDepartments: DeptPerformance[]
   analyticsSources: SourceItem[]
   analyticsTimeToHire: TimeToHirePoint[]
+  analyticsApplicationsOverTime: ApplicationsOverTimePoint[]
   analyticsLoading: boolean
   analyticsError: string | null
+  activitiesLoading: boolean
   addJob: (job: Omit<Job, "id" | "createdAt" | "applicants">) => void
   updateJobStatus: (id: string, status: JobStatus) => void
   addCandidateApplication: (data: {
@@ -136,6 +140,7 @@ interface AppState {
   recordResultById: (id: string, dto: { result: BackendInterviewResult; resultNotes?: string }) => Promise<void>
   completeInterviewById: (id: string) => Promise<void>
   fetchAnalytics: (dateFrom?: string) => Promise<void>
+  fetchActivities: () => Promise<void>
 }
 
 async function fetchAllPages<T>(
@@ -252,8 +257,10 @@ export const useStore = create<AppState>((set, get) => ({
   analyticsDepartments: [],
   analyticsSources: [],
   analyticsTimeToHire: [],
+  analyticsApplicationsOverTime: [],
   analyticsLoading: false,
   analyticsError: null,
+  activitiesLoading: false,
   addJob: (job) =>
     set((state) => ({
       jobs: [
@@ -533,12 +540,13 @@ export const useStore = create<AppState>((set, get) => ({
   fetchAnalytics: async (dateFrom?: string) => {
     set({ analyticsLoading: true, analyticsError: null })
     try {
-      const [overview, funnel, departments, sources, timeToHire] = await Promise.all([
+      const [overview, funnel, departments, sources, timeToHire, applicationsOverTime] = await Promise.all([
         getAnalyticsOverview(dateFrom),
         getAnalyticsFunnel(dateFrom),
         getAnalyticsDepartments(dateFrom),
         getAnalyticsSources(dateFrom),
         getAnalyticsTimeToHire(dateFrom),
+        getApplicationsOverTime(14),
       ])
       set({
         analyticsOverview: overview,
@@ -546,11 +554,39 @@ export const useStore = create<AppState>((set, get) => ({
         analyticsDepartments: departments,
         analyticsSources: sources,
         analyticsTimeToHire: timeToHire,
+        analyticsApplicationsOverTime: applicationsOverTime,
         analyticsLoading: false,
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch analytics"
       set({ analyticsError: message, analyticsLoading: false })
+    }
+  },
+  fetchActivities: async () => {
+    set({ activitiesLoading: true })
+    try {
+      const items: ActivityFeedItem[] = await getRecentActivity(20)
+      const eventTypeMap: Record<string, Activity["type"]> = {
+        APPLICATION_CREATED: "application",
+        APPLICATION_SUBMITTED: "application",
+        APPLICATION_STAGE_CHANGED: "application",
+        APPLICATION_SHORTLISTED: "application",
+        APPLICATION_REJECTED: "rejection",
+        APPLICATION_HIRED: "hire",
+        APPLICATION_RESUME_UPLOADED: "application",
+        COMPANY_CANDIDATE_CREATED: "application",
+      }
+      const activities: Activity[] = items.map((item) => ({
+        id: item.id,
+        type: eventTypeMap[item.eventType] ?? "application",
+        candidateName: item.candidateName ?? "A candidate",
+        message: item.description,
+        timestamp: new Date(item.occurredAt),
+      }))
+      set({ activities, activitiesLoading: false })
+    } catch {
+      // Activities are non-critical; silently fail so the dashboard still loads
+      set({ activitiesLoading: false })
     }
   },
 }))

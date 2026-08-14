@@ -36,31 +36,67 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Progress } from "@/components/ui/progress"
 import { cn, formatNumber } from "@/lib/utils"
-import type { DeptPerformance } from "@/lib/api/analytics.api"
+import type { DeptPerformance, SourceItem, OverviewResponse } from "@/lib/api/analytics.api"
 import { Skeleton } from "@/components/ui/skeleton"
 
 const DEPT_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#3b82f6", "#ef4444", "#a855f7"]
 
-const aiInsights = [
-  {
-    icon: Clock,
-    title: "Engineering roles take 15% longer to fill",
-    description: "Senior engineering positions average 32 days to hire compared to 26 days for other departments. Consider expanding sourcing channels for these roles.",
-    type: "warning" as const,
-  },
-  {
-    icon: Flag,
-    title: "Referrals yield the highest-quality candidates",
-    description: "Referred candidates score an average of 89 on AI assessments versus 76 from job boards. Increasing the referral bonus could improve quality further.",
-    type: "success" as const,
-  },
-  {
-    icon: MagicStar,
-    title: "AI screening accuracy improved 6% this quarter",
-    description: "Model v2.3 shows 94% correlation with final hiring decisions. The NLP update has reduced false positives in engineering screenings by 12%.",
-    type: "info" as const,
-  },
-]
+// AI Insights are derived from real analytics data. This function computes
+// observations that are honest: every number shown comes from the same data
+// the charts are built on.
+function deriveInsights(
+  departments: DeptPerformance[],
+  sources: SourceItem[],
+  overview: OverviewResponse | null,
+): { icon: React.ComponentType<{ className?: string }>; title: string; description: string; type: "warning" | "success" | "info" }[] {
+  const insights: { icon: React.ComponentType<{ className?: string }>; title: string; description: string; type: "warning" | "success" | "info" }[] = []
+
+  // Slowest vs fastest department
+  const deptsWithTime = departments.filter((d) => d.timeToHire != null && d.timeToHire > 0)
+  if (deptsWithTime.length >= 2) {
+    const sorted = [...deptsWithTime].sort((a, b) => (b.timeToHire ?? 0) - (a.timeToHire ?? 0))
+    const slowest = sorted[0]
+    const fastest = sorted[sorted.length - 1]
+    const diff = Math.round(((slowest.timeToHire! - fastest.timeToHire!) / fastest.timeToHire!) * 100)
+    if (diff > 10) {
+      insights.push({
+        icon: Clock,
+        title: `${slowest.dept} roles take ${diff}% longer to fill`,
+        description: `${slowest.dept} averages ${slowest.timeToHire} days vs ${fastest.timeToHire} days for ${fastest.dept}. Consider expanding sourcing channels or pipeline capacity for ${slowest.dept} roles.`,
+        type: "warning",
+      })
+    }
+  }
+
+  // Best candidate source by volume
+  const topSource = [...sources].sort((a, b) => b.value - a.value)[0]
+  const totalApps = sources.reduce((sum, s) => sum + s.value, 0)
+  if (topSource && totalApps > 0) {
+    const pct = Math.round((topSource.value / totalApps) * 100)
+    insights.push({
+      icon: Flag,
+      title: `${topSource.name} is your top candidate source`,
+      description: `${topSource.value} of ${totalApps} applications (${pct}%) came from ${topSource.name} this period. Maintaining visibility there is key to sustaining pipeline volume.`,
+      type: "success",
+    })
+  }
+
+  // Selection rate observation
+  if (overview?.selectionRate != null) {
+    const rate = overview.selectionRate
+    if (rate > 0) {
+      const quality = rate >= 30 ? "high" : rate >= 15 ? "moderate" : "low"
+      insights.push({
+        icon: MagicStar,
+        title: `Selection rate is ${rate}% this period`,
+        description: `${rate}% of reviewed candidates received an offer or hire decision — a ${quality} conversion rate. ${rate < 15 ? "Running AI screenings earlier in the pipeline can help surface stronger candidates." : "AI screening is helping surface well-matched candidates efficiently."}`,
+        type: rate >= 15 ? "info" : "warning",
+      })
+    }
+  }
+
+  return insights
+}
 
 interface CustomTooltipProps {
   active?: boolean
@@ -147,6 +183,11 @@ export default function AnalyticsPage() {
 
   const overview = analyticsOverview
 
+  const aiInsights = useMemo(
+    () => deriveInsights(analyticsDepartments, analyticsSources, analyticsOverview),
+    [analyticsDepartments, analyticsSources, analyticsOverview],
+  )
+
   const keyMetrics = useMemo(
     () => [
       {
@@ -181,7 +222,7 @@ export default function AnalyticsPage() {
       },
       {
         label: "AI Screening Accuracy",
-        value: "—",
+        value: overview?.aiScreeningAccuracy != null ? `${overview.aiScreeningAccuracy}%` : "—",
         trend: "—",
         trendLabel: "this quarter",
         up: true,
@@ -611,36 +652,44 @@ export default function AnalyticsPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              {aiInsights.map((insight) => (
-                <div
-                  key={insight.title}
-                  className={cn(
-                    "rounded-lg border p-4 transition-all duration-200 hover:border-border/80",
-                    insight.type === "warning" && "border-warning-muted/30",
-                    insight.type === "success" && "border-success-muted/30",
-                    insight.type === "info" && "border-info-muted/30"
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className={cn(
-                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                        insight.type === "warning" && "bg-warning-muted text-warning",
-                        insight.type === "success" && "bg-success-muted text-success",
-                        insight.type === "info" && "bg-info-muted text-info"
-                      )}
-                    >
-                      <insight.icon className="h-4.5 w-4.5" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <h4 className="text-sm font-semibold text-foreground leading-snug">{insight.title}</h4>
-                      <p className="text-xs text-muted leading-relaxed">{insight.description}</p>
+            {aiInsights.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center gap-2">
+                <MagicStar className="h-8 w-8 text-muted/30" />
+                <p className="text-sm text-muted">No insights yet</p>
+                <p className="text-xs text-muted">Insights will appear once you have applications and hiring activity in the selected period.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {aiInsights.map((insight) => (
+                  <div
+                    key={insight.title}
+                    className={cn(
+                      "rounded-lg border p-4 transition-all duration-200 hover:border-border/80",
+                      insight.type === "warning" && "border-warning-muted/30",
+                      insight.type === "success" && "border-success-muted/30",
+                      insight.type === "info" && "border-info-muted/30"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                          insight.type === "warning" && "bg-warning-muted text-warning",
+                          insight.type === "success" && "bg-success-muted text-success",
+                          insight.type === "info" && "bg-info-muted text-info"
+                        )}
+                      >
+                        <insight.icon className="h-4.5 w-4.5" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <h4 className="text-sm font-semibold text-foreground leading-snug">{insight.title}</h4>
+                        <p className="text-xs text-muted leading-relaxed">{insight.description}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

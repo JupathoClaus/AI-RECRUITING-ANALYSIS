@@ -23,11 +23,12 @@ import {
   Calendar2,
   Cpu,
   Chart2,
-  DocumentText,
   Routing,
   Notification,
 } from "iconsax-react";
 import {
+  AreaChart,
+  Area,
   BarChart,
   Bar,
   XAxis,
@@ -154,12 +155,14 @@ function getInterviewTypeLabel(type: string): string {
 }
 
 export default function DashboardPage() {
-  const { jobs, candidates, candidatesScoreSummary, interviews, activities, candidatesLoading, candidatesError, interviewsLoading, interviewsError, fetchCandidates, fetchInterviews } = useStore();
+  const { jobs, candidates, candidatesScoreSummary, interviews, activities, activitiesLoading, candidatesLoading, candidatesError, interviewsLoading, interviewsError, analyticsApplicationsOverTime, fetchCandidates, fetchInterviews, fetchActivities, fetchAnalytics } = useStore();
   const { user } = useAuth();
 
   useEffect(() => {
     fetchCandidates()
     fetchInterviews()
+    fetchActivities()
+    fetchAnalytics()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -379,19 +382,73 @@ export default function DashboardPage() {
                     </p>
                   </div>
                 </div>
-                <Badge variant="secondary" className="text-xs">
-                  <TrendUp className="h-3 w-3 mr-1" />
-                  +23% trend
-                </Badge>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="h-[280px] w-full flex items-center justify-center">
-                <div className="text-center text-muted">
-                  <DocumentText className="h-12 w-12 mx-auto mb-3 text-muted/30" />
-                  <p className="text-sm">No application data available yet</p>
-                  <p className="text-xs mt-1">Create jobs and applications to see trends</p>
-                </div>
+              <div className="h-[280px] w-full">
+                {analyticsApplicationsOverTime.length === 0 ||
+                analyticsApplicationsOverTime.every((p) => p.count === 0) ? (
+                  <div className="flex h-full items-center justify-center">
+                    <div className="text-center text-muted">
+                      <Chart2 className="h-10 w-10 mx-auto mb-2 text-muted/30" />
+                      <p className="text-sm">No application activity yet</p>
+                      <p className="text-xs mt-1">Create jobs and add candidates to start tracking</p>
+                    </div>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={analyticsApplicationsOverTime.map((p) => ({
+                        date: p.date.slice(5), // "MM-DD"
+                        count: p.count,
+                      }))}
+                      margin={{ top: 5, right: 10, left: -20, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="appGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                      <XAxis
+                        dataKey="date"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#64748b", fontSize: 11 }}
+                        dy={8}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#64748b", fontSize: 12 }}
+                        dx={-4}
+                        allowDecimals={false}
+                      />
+                      <RechartsTooltip
+                        contentStyle={{
+                          backgroundColor: "#ffffff",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: "8px",
+                          fontSize: "12px",
+                        }}
+                        labelStyle={{ color: "#64748b" }}
+                        itemStyle={{ color: "#6366f1" }}
+                        formatter={(v) => [v as number, "Applications"]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="count"
+                        stroke="#6366f1"
+                        strokeWidth={2}
+                        fill="url(#appGrad)"
+                        dot={false}
+                        activeDot={{ fill: "#6366f1", stroke: "#ffffff", strokeWidth: 2, r: 5 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -476,12 +533,27 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-0">
-                {activities.map((activity, index) => {
-                  const candidate = candidates.find(
-                    (c) => c.displayName === activity.candidateName
-                  );
-                  return (
+              {activitiesLoading ? (
+                <div className="space-y-3 py-2">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-start gap-3 animate-pulse">
+                      <div className="h-8 w-8 rounded-full bg-surface-elevated shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 bg-surface-elevated rounded w-3/4" />
+                        <div className="h-2 bg-surface-elevated rounded w-1/3" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : activities.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                  <Notification className="h-8 w-8 text-muted/30" />
+                  <p className="text-sm text-muted">No recent activity</p>
+                  <p className="text-xs text-muted">Actions like adding candidates and scheduling interviews will appear here.</p>
+                </div>
+              ) : (
+                <div className="space-y-0">
+                  {activities.map((activity, index) => (
                     <div key={activity.id}>
                       <div className="flex items-start gap-3 py-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-elevated mt-0.5">
@@ -489,15 +561,8 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-foreground leading-relaxed">
-                            <span className="font-medium">
-                              {activity.candidateName}
-                            </span>{" "}
-                            <span className="text-muted">
-                              {activity.message}
-                            </span>{" "}
-                            <span className="font-medium text-foreground">
-                              {candidate?.applicationSummary?.current?.jobTitle || candidate?.currentJobTitle || "a position"}
-                            </span>
+                            <span className="font-medium">{activity.candidateName}</span>{" "}
+                            <span className="text-muted">{activity.message}</span>
                           </p>
                           <p className="text-xs text-muted mt-0.5">
                             {timeAgo(activity.timestamp)}
@@ -508,9 +573,9 @@ export default function DashboardPage() {
                         <Separator className="opacity-50" />
                       )}
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -535,59 +600,69 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-0">
-                {upcomingInterviews.map((interview, index) => (
-                  <div key={interview.id}>
-                    <div className="flex items-start gap-3 py-3">
-                      <Avatar className="h-9 w-9 mt-0.5">
-                        <span className="text-xs font-medium">
-                          {interview.candidateName
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")}
-                        </span>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-foreground truncate">
-                            {interview.candidateName}
+                {upcomingInterviews.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center gap-2">
+                    <Calendar className="h-7 w-7 text-muted/30" />
+                    <p className="text-sm text-muted">No upcoming interviews</p>
+                    <Link href="/interviews" className="text-xs text-primary hover:underline">
+                      Schedule one
+                    </Link>
+                  </div>
+                ) : (
+                  upcomingInterviews.map((interview, index) => (
+                    <div key={interview.id}>
+                      <div className="flex items-start gap-3 py-3">
+                        <Avatar className="h-9 w-9 mt-0.5">
+                          <span className="text-xs font-medium">
+                            {interview.candidateName
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")}
+                          </span>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-foreground truncate">
+                              {interview.candidateName}
+                            </p>
+                            <Badge
+                              variant={getInterviewTypeBadgeVariant(
+                                interview.type
+                              )}
+                              className="shrink-0 text-[10px] px-1.5 py-0"
+                            >
+                              {getInterviewTypeIcon(interview.type)}
+                              <span className="ml-0.5">
+                                {getInterviewTypeLabel(interview.type)}
+                              </span>
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted truncate mt-0.5">
+                            {interview.jobTitle}
                           </p>
-                          <Badge
-                            variant={getInterviewTypeBadgeVariant(
-                              interview.type
-                            )}
-                            className="shrink-0 text-[10px] px-1.5 py-0"
-                          >
-                            {getInterviewTypeIcon(interview.type)}
-                            <span className="ml-0.5">
-                              {getInterviewTypeLabel(interview.type)}
-                            </span>
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted truncate mt-0.5">
-                          {interview.jobTitle}
-                        </p>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <Calendar2 className="h-3 w-3 text-muted" />
-                          <p className="text-xs text-muted-foreground">
-                            {interview.scheduledAt.toLocaleDateString("en-US", {
-                              weekday: "short",
-                              month: "short",
-                              day: "numeric",
-                            })}{" "}
-                            at{" "}
-                            {interview.scheduledAt.toLocaleTimeString("en-US", {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </p>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <Calendar2 className="h-3 w-3 text-muted" />
+                            <p className="text-xs text-muted-foreground">
+                              {interview.scheduledAt.toLocaleDateString("en-US", {
+                                weekday: "short",
+                                month: "short",
+                                day: "numeric",
+                              })}{" "}
+                              at{" "}
+                              {interview.scheduledAt.toLocaleTimeString("en-US", {
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </p>
+                          </div>
                         </div>
                       </div>
+                      {index < upcomingInterviews.length - 1 && (
+                        <Separator className="opacity-50" />
+                      )}
                     </div>
-                    {index < upcomingInterviews.length - 1 && (
-                      <Separator className="opacity-50" />
-                    )}
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
@@ -616,98 +691,106 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Candidate</TableHead>
-                  <TableHead className="hidden sm:table-cell">
-                    Position
-                  </TableHead>
-                  <TableHead>AI Score</TableHead>
-                  <TableHead className="hidden md:table-cell">
-                    Status
-                  </TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topCandidates.map((candidate) => (
-                  <TableRow key={candidate.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
-                          <span className="text-[10px] font-medium">
-                            {candidate.displayName
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")}
-                          </span>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate">
-                            {candidate.displayName}
-                          </p>
-                          <p className="text-xs text-muted truncate sm:hidden">
-                            {candidate.applicationSummary?.current?.jobTitle || candidate.currentJobTitle || ""}
-                          </p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <p className="text-sm text-muted-foreground truncate max-w-[180px]">
-                        {candidate.applicationSummary?.current?.jobTitle || candidate.currentJobTitle || ""}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3 min-w-[120px]">
-                        <span
-                          className={cn(
-                            "text-sm font-semibold tabular-nums",
-                            candidate.aiScore === null || candidate.aiScore === undefined
-                              ? "text-muted-foreground"
-                              : getScoreColor(candidate.aiScore)
-                          )}
-                        >
-                          {candidate.aiScore === null || candidate.aiScore === undefined ? "—" : candidate.aiScore}
-                        </span>
-                        <Progress
-                          value={candidate.aiScore ?? 0}
-                          className="h-1.5 w-16"
-                          indicatorClassName={getScoreIndicatorColor(
-                            candidate.aiScore ?? 0
-                          )}
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell">
-                      <Badge variant={getStatusBadgeVariant(candidate.applicationSummary?.current?.displayStatus || "No Application")}>
-                        {getStatusLabel(candidate.applicationSummary?.current?.displayStatus || "No Application")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="View profile"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          title="More options"
-                        >
-                          <More className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            {topCandidates.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                <MagicStar className="h-8 w-8 text-muted/30" />
+                <p className="text-sm text-muted">No scored candidates yet</p>
+                <p className="text-xs text-muted">Run AI screenings from the AI Screener page to populate rankings.</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>Candidate</TableHead>
+                    <TableHead className="hidden sm:table-cell">
+                      Position
+                    </TableHead>
+                    <TableHead>AI Score</TableHead>
+                    <TableHead className="hidden md:table-cell">
+                      Status
+                    </TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {topCandidates.map((candidate) => (
+                    <TableRow key={candidate.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <span className="text-[10px] font-medium">
+                              {candidate.displayName
+                                .split(" ")
+                                .map((n) => n[0])
+                                .join("")}
+                            </span>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">
+                              {candidate.displayName}
+                            </p>
+                            <p className="text-xs text-muted truncate sm:hidden">
+                              {candidate.applicationSummary?.current?.jobTitle || candidate.currentJobTitle || ""}
+                            </p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <p className="text-sm text-muted-foreground truncate max-w-[180px]">
+                          {candidate.applicationSummary?.current?.jobTitle || candidate.currentJobTitle || ""}
+                        </p>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-3 min-w-[120px]">
+                          <span
+                            className={cn(
+                              "text-sm font-semibold tabular-nums",
+                              candidate.aiScore === null || candidate.aiScore === undefined
+                                ? "text-muted-foreground"
+                                : getScoreColor(candidate.aiScore)
+                            )}
+                          >
+                            {candidate.aiScore === null || candidate.aiScore === undefined ? "—" : candidate.aiScore}
+                          </span>
+                          <Progress
+                            value={candidate.aiScore ?? 0}
+                            className="h-1.5 w-16"
+                            indicatorClassName={getScoreIndicatorColor(
+                              candidate.aiScore ?? 0
+                            )}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <Badge variant={getStatusBadgeVariant(candidate.applicationSummary?.current?.displayStatus || "No Application")}>
+                          {getStatusLabel(candidate.applicationSummary?.current?.displayStatus || "No Application")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="View profile"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            title="More options"
+                          >
+                            <More className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
