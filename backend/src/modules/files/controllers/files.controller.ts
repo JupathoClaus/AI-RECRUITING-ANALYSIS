@@ -85,6 +85,45 @@ export class FilesController {
     return result;
   }
 
+  @Post('company/logo')
+  @RequirePermissions('company.update')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiOperation({ summary: 'Upload or replace the active company logo' })
+  @ApiConsumes('multipart/form-data')
+  async uploadCompanyLogo(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 })],
+        fileIsRequired: true,
+      }),
+    )
+    file: UploadedFile,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    return this.filesService.uploadCompanyLogo(
+      user.activeCompanyId!,
+      user.userId,
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+    );
+  }
+
+  @Get('company/logo')
+  @RequirePermissions('company.read')
+  @ApiOperation({ summary: 'Download the active company logo' })
+  async downloadCompanyLogo(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Res() res: Response,
+  ) {
+    const result = await this.filesService.downloadCompanyLogo(user.activeCompanyId!);
+    res.setHeader('Content-Type', result.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${result.originalName}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Length', result.sizeBytes);
+    result.stream.pipe(res);
+  }
+
   @Get('files/:fileId/download')
   @RequirePermissions('applications.read')
   @ApiOperation({ summary: 'Download a file by ID' })

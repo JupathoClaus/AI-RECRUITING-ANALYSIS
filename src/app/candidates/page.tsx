@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import { useStore } from "@/store/useStore"
 import type { Candidate, DisplayApplicationStatus } from "@/types"
 import { AppLayout } from "@/components/layout/app-layout"
@@ -235,7 +236,8 @@ function DetailScreeningSection({ applicationId }: { applicationId: string }) {
 }
 
 export default function CandidatesPage() {
-  const { candidates, jobs, rejectCandidateApplication, advanceCandidateApplication, fetchCandidates, candidatesLoading, candidatesError } = useStore()
+  const router = useRouter()
+  const { candidates, jobs, rejectCandidateApplication, advanceCandidateApplication, fetchCandidates, fetchJobs, candidatesLoading, candidatesError } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
   const [jobFilter, setJobFilter] = React.useState<string>("all")
@@ -249,8 +251,8 @@ export default function CandidatesPage() {
   const [bulkActionLoading, setBulkActionLoading] = React.useState(false)
 
   React.useEffect(() => {
-    fetchCandidates()
-  }, [fetchCandidates])
+    void Promise.all([fetchCandidates(), fetchJobs()])
+  }, [fetchCandidates, fetchJobs])
 
   const filteredCandidates = React.useMemo(() => {
     return candidates.filter((candidate) => {
@@ -503,7 +505,7 @@ export default function CandidatesPage() {
                     <TableHead className="hidden md:table-cell">Position</TableHead>
                     <TableHead className="hidden lg:table-cell">Experience</TableHead>
                     <TableHead>AI Score</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Pipeline Stage</TableHead>
                     <TableHead className="hidden sm:table-cell">Rating</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
@@ -820,10 +822,13 @@ export default function CandidatesPage() {
                           <Button
                             size="sm"
                             disabled={actionInProgress}
-                            onClick={async () => { await advanceCandidateApplication(detailsCandidate.id, "Screening"); setDetailsCandidate(null) }}
+                            onClick={() => {
+                              setDetailsCandidate(null)
+                              router.push(`/ai-screener?applicationId=${encodeURIComponent(detailApplicationId!)}`)
+                            }}
                           >
                             <SearchNormal className="h-4 w-4" />
-                            Start Screening
+                            Start AI Screening
                           </Button>
                         )}
                         {displayStatus === "Screening" && (

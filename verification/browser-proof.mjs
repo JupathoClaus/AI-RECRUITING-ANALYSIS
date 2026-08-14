@@ -132,6 +132,7 @@ async function main() {
     // ---------- item 1a: full browser registration ----------
     note('1a.start', 'registering a brand-new company from the browser UI');
     await page.goto(`${FE_URL}/register`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1500); // let SSR hydration settle before filling
     await fillFormWithRetry(page, [
       ['input[placeholder="Acme Corp"]', COMPANY],
       ['input[placeholder="you@company.com"]', EMAIL],
@@ -213,7 +214,7 @@ async function main() {
       .locator('xpath=ancestor::div[contains(@class,"group")][1]');
     await jobCard.locator('button').click();
     await page.getByRole('menuitem', { name: 'Publish' }).click();
-    await page.getByText('Active', { exact: true }).waitFor({ timeout: 15000 });
+    await jobCard.getByText('Active', { exact: true }).waitFor({ timeout: 15000 });
     note('1d.published', 'job published from the browser UI (status -> Active)');
 
     const job = await prisma.job.findFirst({ where: { title: JOB_TITLE } });

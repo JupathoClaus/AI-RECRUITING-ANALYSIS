@@ -106,6 +106,16 @@ export function useAiScreening() {
     })
   }, [cancelAll, setWorkflow])
 
+  const markResumeMissing = useCallback((applicationId: string) => {
+    if (applicationRef.current !== applicationId) return
+    setWorkflow({
+      workflowState: 'RESUME_MISSING',
+      uploadedFile: null,
+      error: null,
+      errorCode: null,
+    })
+  }, [setWorkflow])
+
   const handleUploadResume = useCallback(async (file: File): Promise<UploadResult> => {
     const appId = applicationRef.current
     if (!appId) return { ok: false, error: 'No application selected', errorCode: 'NO_APPLICATION' }
@@ -335,12 +345,13 @@ export function useAiScreening() {
     () => ({
       state,
       selectApplication,
+      markResumeMissing,
       handleUploadResume,
       cancelUpload,
       requestScreening,
       retryScreening,
       loadLatestScreening,
     }),
-    [state, selectApplication, handleUploadResume, cancelUpload, requestScreening, retryScreening, loadLatestScreening],
+    [state, selectApplication, markResumeMissing, handleUploadResume, cancelUpload, requestScreening, retryScreening, loadLatestScreening],
   )
 }

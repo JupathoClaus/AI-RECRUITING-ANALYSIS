@@ -46,3 +46,14 @@ export async function getApplicationResume(
     return null
   }
 }
+
+export async function uploadCompanyLogo(file: File): Promise<StoredFileResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiRequest<StoredFileResponse>('/company/logo', { method: 'POST', body: formData })
+}
+
+export async function getCompanyLogo(): Promise<Blob> {
+  const response = await apiRequest<{ blob: Blob }>('/company/logo', { responseType: 'blob' })
+  return response.blob
+}

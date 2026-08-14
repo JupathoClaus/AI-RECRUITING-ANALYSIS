@@ -173,6 +173,22 @@ describe('useAiScreening', () => {
       expect(result.current.state.screeningResult).toBeNull()
       expect(result.current.state.screeningId).toBeNull()
     })
+
+    it('marks the selected application as missing a resume', () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+      act(() => { result.current.markResumeMissing(APPLICATION_ID) })
+
+      expect(result.current.state.workflowState).toBe('RESUME_MISSING')
+    })
+
+    it('ignores a missing-resume response from a stale application', () => {
+      const { result } = renderHook(() => useAiScreening())
+      act(() => { result.current.selectApplication(APPLICATION_ID) })
+      act(() => { result.current.markResumeMissing('different-application') })
+
+      expect(result.current.state.workflowState).toBe('APPLICATION_SELECTED')
+    })
   })
 
   describe('handleUploadResume', () => {

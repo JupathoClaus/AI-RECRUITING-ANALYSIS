@@ -22,6 +22,10 @@ describe('FilesService', () => {
 
   beforeEach(async () => {
     prisma = {
+      company: {
+        findFirst: jest.fn(),
+        update: jest.fn(),
+      },
       application: {
         findFirst: jest.fn(),
       },
@@ -279,6 +283,42 @@ describe('FilesService', () => {
       expect(audit.record).toHaveBeenCalledWith(
         expect.objectContaining({ eventType: 'APPLICATION_RESUME_REPLACED' }),
       );
+    });
+  });
+
+  describe('company logo', () => {
+    const pngBuffer = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00]);
+
+    it('stores a validated logo and links it to the company', async () => {
+      prisma.company.findFirst.mockResolvedValue({ id: mockCompanyId });
+      storage.generateStoredName.mockReturnValue('logo.png');
+      storage.put.mockResolvedValue({
+        storageKey: `${mockCompanyId}/logo.png`,
+        checksumSha256: 'logo-checksum',
+        sizeBytes: pngBuffer.length,
+      });
+      prisma.storedFile.create.mockResolvedValue({ id: 'logo-file', mimeType: 'image/png' });
+
+      await expect(
+        service.uploadCompanyLogo(mockCompanyId, mockUserId, pngBuffer, 'brand.png', 'image/png'),
+      ).resolves.toMatchObject({ id: 'logo-file' });
+
+      expect(prisma.company.update).toHaveBeenCalledWith({
+        where: { id: mockCompanyId },
+        data: { logoFileId: 'logo-file', logoUrl: '/api/v1/company/logo' },
+      });
+    });
+
+    it('rejects a file whose bytes do not match its image type', async () => {
+      await expect(
+        service.uploadCompanyLogo(
+          mockCompanyId,
+          mockUserId,
+          Buffer.from('not an image'),
+          'brand.png',
+          'image/png',
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

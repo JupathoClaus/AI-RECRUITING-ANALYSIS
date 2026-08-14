@@ -55,7 +55,9 @@ vi.mock('@/components/ui/select', () => ({
   SelectTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   SelectValue: ({ placeholder }: { placeholder?: string }) => <>{placeholder}</>,
   SelectContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  SelectItem: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  SelectItem: ({ children, disabled }: { children: React.ReactNode; disabled?: boolean }) => (
+    <span aria-disabled={disabled}>{children}</span>
+  ),
 }))
 
 function hookState(overrides: Record<string, unknown> = {}) {
@@ -163,11 +165,16 @@ describe('AddCandidateDialog', () => {
       expect(btn().disabled).toBe(false)
     })
 
-    it('shows only active jobs', () => {
+    it('shows active jobs and labels unavailable jobs with their status', () => {
       renderDialog(true)
-      expect(screen.getByText('Engineer', { exact: false })).toBeDefined()
-      expect(screen.getByText('Engineering', { exact: false })).toBeDefined()
-      expect(screen.queryByText('Closed Role', { exact: false })).toBeNull()
+      expect(screen.getByText(/^Engineer — Engineering$/)).toBeDefined()
+      expect(screen.getByText(/Closed Role.*Closed/)).toHaveAttribute('aria-disabled', 'true')
+    })
+
+    it('explains how to make a position available when no jobs are published', () => {
+      renderDialog(true, [CLOSED_JOB])
+
+      expect(screen.getByText(/No published jobs are accepting applications/)).toBeDefined()
     })
   })
 

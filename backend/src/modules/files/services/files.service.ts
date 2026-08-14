@@ -24,6 +24,11 @@ const ALLOWED_MIME_TYPES = new Set([
 
 const PDF_HEADER = Buffer.from('%PDF');
 const DOCX_ZIP_MARKER = Buffer.from('PK');
+const MAX_LOGO_SIZE = 5 * 1024 * 1024;
+const LOGO_TYPES: Record<string, { extension: string; signature: number[] }> = {
+  'image/png': { extension: 'png', signature: [0x89, 0x50, 0x4e, 0x47] },
+  'image/jpeg': { extension: 'jpg', signature: [0xff, 0xd8, 0xff] },
+};
 
 @Injectable()
 export class FilesService {
@@ -127,6 +132,92 @@ export class FilesService {
     });
 
     return file;
+  }
+
+  async uploadCompanyLogo(
+    companyId: string,
+    userId: string,
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+  ) {
+    if (!buffer?.length) throw new BadRequestException('FILE_EMPTY');
+    if (buffer.length > MAX_LOGO_SIZE) throw new BadRequestException('FILE_TOO_LARGE');
+
+    const type = LOGO_TYPES[mimeType];
+    if (!type) throw new BadRequestException('FILE_TYPE_NOT_ALLOWED');
+    if (!type.signature.every((byte, index) => buffer[index] === byte)) {
+      throw new BadRequestException('FILE_SIGNATURE_MISMATCH');
+    }
+
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!company) throw new NotFoundException('COMPANY_NOT_FOUND');
+
+    const storedName = this.storage.generateStoredName(type.extension);
+    const { storageKey, checksumSha256, sizeBytes } = await this.storage.put(
+      companyId,
+      storedName,
+      buffer,
+      mimeType,
+    );
+
+    try {
+      const file = await this.prisma.$transaction(async (tx) => {
+        await tx.storedFile.updateMany({
+          where: { companyId, category: FileCategory.COMPANY_LOGO, status: FileStatus.ACTIVE },
+          data: { status: FileStatus.SUPERSEDED },
+        });
+        const created = await tx.storedFile.create({
+          data: {
+            companyId,
+            uploadedByUserId: userId,
+            storageKey,
+            originalName: this.sanitizeFilename(originalName),
+            storedName,
+            extension: type.extension,
+            mimeType,
+            sizeBytes,
+            checksumSha256,
+            category: FileCategory.COMPANY_LOGO,
+            status: FileStatus.ACTIVE,
+          },
+        });
+        await tx.company.update({
+          where: { id: companyId },
+          data: { logoFileId: created.id, logoUrl: `/api/v1/company/logo` },
+        });
+        return created;
+      });
+      return file;
+    } catch (error) {
+      await this.storage.delete(storageKey).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async downloadCompanyLogo(companyId: string) {
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+      select: { logoFileId: true },
+    });
+    if (!company?.logoFileId) throw new NotFoundException('COMPANY_LOGO_NOT_FOUND');
+
+    const file = await this.prisma.storedFile.findFirst({
+      where: {
+        id: company.logoFileId,
+        companyId,
+        category: FileCategory.COMPANY_LOGO,
+        status: FileStatus.ACTIVE,
+        deletedAt: null,
+      },
+    });
+    if (!file) throw new NotFoundException('COMPANY_LOGO_NOT_FOUND');
+
+    const stored = await this.storage.get(file.storageKey);
+    return { ...stored, mimeType: file.mimeType, originalName: file.originalName };
   }
 
   async uploadPublicResume(

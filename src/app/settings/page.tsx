@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useReducer } from "react"
+import { useState, useEffect, useCallback, useReducer, useRef } from "react"
 import {
   User,
   Buildings,
@@ -32,7 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Avatar } from "@/components/ui/avatar"
+import { Avatar, AvatarImage } from "@/components/ui/avatar"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
@@ -42,7 +42,9 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { cn, getErrorMessage } from "@/lib/utils"
 import * as authApi from "@/lib/api/auth.api"
 import * as companyApi from "@/lib/api/company.api"
+import * as filesApi from "@/lib/api/files.api"
 import type { CompanySettingsResponse } from "@/lib/api/company.api"
+import { formatRoleLabel } from "./settings-utils"
 
 interface Integration {
   id: string
@@ -71,7 +73,7 @@ const integrationIcons: Record<string, React.ReactNode> = {
 export default function SettingsPage() {
   const { user, refreshUser } = useAuth();
   const userEmail = user?.email || "";
-  const userRole = user?.role?.toLowerCase() || "viewer";
+  const userRole = formatRoleLabel(user?.role);
 
   const [activeTab, setActiveTab] = useState("profile")
   const [showPassword, setShowPassword] = useState(false)
@@ -97,7 +99,6 @@ export default function SettingsPage() {
     { loading: false, error: null }
   )
   const [pageLoading, setPageLoading] = useState(true)
-  const [pageLoadError, setPageLoadError] = useState<string | null>(null)
   const [profileSaving, setProfileSaving] = useState(false)
   const [companySaving, setCompanySaving] = useState(false)
   const [passwordSaving, setPasswordSaving] = useState(false)
@@ -109,6 +110,10 @@ export default function SettingsPage() {
   const [companySuccess, setCompanySuccess] = useState<string | null>(null)
   const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoError, setLogoError] = useState<string | null>(null)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const initialFirstName = user?.name?.split(" ")[0] || ""
   const initialLastName = user?.name?.split(" ").slice(1).join(" ") || ""
@@ -129,27 +134,76 @@ export default function SettingsPage() {
     let cancelled = false
     async function load() {
       try {
-        const [profile, settings] = await Promise.all([
+        const [profileResult, settingsResult] = await Promise.allSettled([
           companyApi.getCompanyProfile(),
           companyApi.getCompanySettings(),
         ])
         if (cancelled) return
-        setCompanySettings(settings)
-        setCompanyName(profile.name || "")
-        setCompanyIndustry(profile.industry || "")
-        setCompanySize(profile.companySize || "")
-        setCompanyWebsite(profile.website || "")
-        setCompanyCity(profile.city || "")
-        setLanguage(settings.defaultInterviewLanguage || "en")
-        setApplicationAlertsEnabled(settings.notifyRecruiterOnNewApplication)
-      } catch (err: unknown) {
-        if (!cancelled) setPageLoadError(getErrorMessage(err, "Failed to load settings"))
+
+        if (profileResult.status === "fulfilled") {
+          const profile = profileResult.value
+          setCompanyName(profile.name || "")
+          setCompanyIndustry(profile.industry || "")
+          setCompanySize(profile.companySize || "")
+          setCompanyWebsite(profile.website || "")
+          setCompanyCity(profile.city || "")
+        } else {
+          setCompanyError(getErrorMessage(profileResult.reason, "Failed to load company details"))
+        }
+
+        if (settingsResult.status === "fulfilled") {
+          const settings = settingsResult.value
+          setCompanySettings(settings)
+          setLanguage(settings.defaultInterviewLanguage || "en")
+          setApplicationAlertsEnabled(settings.notifyRecruiterOnNewApplication)
+        } else {
+          setSettingsError(getErrorMessage(settingsResult.reason, "Failed to load company settings"))
+        }
       } finally {
         if (!cancelled) setPageLoading(false)
       }
     }
     load()
     return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let objectUrl: string | null = null
+    filesApi.getCompanyLogo()
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob)
+        setLogoUrl(objectUrl)
+      })
+      .catch(() => undefined)
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [])
+
+  const uploadLogo = useCallback(async (file?: File) => {
+    if (!file) return
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      setLogoError('Choose a PNG or JPG image')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setLogoError('Logo must be 5 MB or smaller')
+      return
+    }
+
+    setLogoUploading(true)
+    setLogoError(null)
+    try {
+      await filesApi.uploadCompanyLogo(file)
+      const blob = await filesApi.getCompanyLogo()
+      setLogoUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous)
+        return URL.createObjectURL(blob)
+      })
+    } catch (error: unknown) {
+      setLogoError(getErrorMessage(error, 'Failed to upload company logo'))
+    } finally {
+      setLogoUploading(false)
+      if (logoInputRef.current) logoInputRef.current.value = ''
+    }
   }, [])
 
   useEffect(() => {
@@ -251,26 +305,6 @@ export default function SettingsPage() {
     )
   }
 
-  if (pageLoadError) {
-    return (
-      <AppLayout title="Settings" description="Manage your account, company, and application preferences.">
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="rounded-lg border border-error/20 bg-error/5 px-6 py-4 text-center">
-            <p className="text-sm font-medium text-error">{pageLoadError}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-3"
-              onClick={() => window.location.reload()}
-            >
-              Retry
-            </Button>
-          </div>
-        </div>
-      </AppLayout>
-    )
-  }
-
   return (
     <AppLayout
       title="Settings"
@@ -329,17 +363,8 @@ export default function SettingsPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Role</label>
-                  <Select defaultValue={userRole} disabled>
-                    <SelectTrigger className="opacity-60">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">Administrator</SelectItem>
-                      <SelectItem value="recruiter">Recruiter</SelectItem>
-                      <SelectItem value="hiring-manager">Hiring Manager</SelectItem>
-                      <SelectItem value="viewer">Viewer</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Input value={userRole} disabled className="opacity-60" />
+                  <p className="text-xs text-muted">Roles are managed by company administrators under Company Members.</p>
                 </div>
                 <Separator className="opacity-50" />
                 <div className="flex justify-end">
@@ -356,9 +381,10 @@ export default function SettingsPage() {
                 <CardDescription>Upload a profile avatar.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-4">
-                <Avatar className="h-24 w-24 text-lg">
-                  {user?.name?.split(" ").map((n) => n[0]).join("") || "U"}
-                </Avatar>
+                <Avatar
+                  className="h-24 w-24 text-lg"
+                  fallback={user?.name?.split(" ").map((n) => n[0]).join("") || "U"}
+                />
                 <div className="flex flex-col items-center gap-2">
                   <Button variant="outline" size="sm" disabled title="Photo upload coming soon">
                     <DocumentUpload className="h-4 w-4" /> Upload Photo
@@ -445,14 +471,23 @@ export default function SettingsPage() {
                 <CardDescription>Upload your company logo.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col items-center gap-4">
-                <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-surface-elevated">
-                  <Buildings className="h-10 w-10 text-muted" />
-                </div>
+                <Avatar className="h-24 w-24 rounded-xl" fallback={companyName?.slice(0, 2).toUpperCase() || "CO"}>
+                  {logoUrl && <AvatarImage src={logoUrl} alt={`${companyName || "Company"} logo`} className="object-contain" />}
+                </Avatar>
                 <div className="flex flex-col items-center gap-2">
-                  <Button variant="outline" size="sm" disabled title="Logo upload coming soon">
-                    <DocumentUpload className="h-4 w-4" /> Upload Logo
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    className="sr-only"
+                    onChange={(event) => uploadLogo(event.target.files?.[0])}
+                    aria-label="Choose company logo"
+                  />
+                  <Button variant="outline" size="sm" disabled={logoUploading} onClick={() => logoInputRef.current?.click()}>
+                    <DocumentUpload className="h-4 w-4" /> {logoUploading ? "Uploading..." : "Upload Logo"}
                   </Button>
                   <p className="text-xs text-muted">PNG, JPG. Max 5MB.</p>
+                  {logoError && <p className="text-xs text-error">{logoError}</p>}
                 </div>
               </CardContent>
             </Card>

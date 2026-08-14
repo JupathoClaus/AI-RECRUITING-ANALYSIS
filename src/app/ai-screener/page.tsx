@@ -19,6 +19,7 @@ export default function AiScreenerPage() {
   const {
     state,
     selectApplication,
+    markResumeMissing,
     handleUploadResume,
     cancelUpload,
     requestScreening,
@@ -27,6 +28,14 @@ export default function AiScreenerPage() {
   } = useAiScreening()
   const fetchCandidates = useStore((s) => s.fetchCandidates)
   const refreshedRef = useRef(false)
+  const initialApplicationHandledRef = useRef(false)
+
+  useEffect(() => {
+    if (initialApplicationHandledRef.current) return
+    initialApplicationHandledRef.current = true
+    const applicationId = new URLSearchParams(window.location.search).get('applicationId')
+    if (applicationId) selectApplication(applicationId)
+  }, [selectApplication])
 
   // A completed screening produces a real score; refresh the candidate store
   // so the candidates table, pipeline and dashboard show it immediately.
@@ -54,6 +63,8 @@ export default function AiScreenerPage() {
         if (controller.signal.aborted) return
         if (file) {
           loadLatestScreening(appId)
+        } else {
+          markResumeMissing(appId)
         }
       })
       .catch(() => {})
@@ -62,7 +73,7 @@ export default function AiScreenerPage() {
         if (checkControllerRef.current === controller) checkControllerRef.current = null
       })
     return () => { controller.abort() }
-  }, [state.selectedApplicationId, loadLatestScreening])
+  }, [state.selectedApplicationId, loadLatestScreening, markResumeMissing])
 
   const handleSelect = (applicationId: string) => {
     selectApplication(applicationId)

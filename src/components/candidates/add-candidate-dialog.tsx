@@ -73,6 +73,7 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
   }, [])
 
   const job = jobs.find((j) => j.id === selectedJobId)
+  const activeJobs = React.useMemo(() => jobs.filter((item) => item.status === 'Active'), [jobs])
 
   const fullReset = useCallback(() => {
     setName('')
@@ -466,13 +467,24 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
                   <SelectValue placeholder="Select a position" />
                 </SelectTrigger>
                 <SelectContent>
-                  {jobs.filter((j) => j.status === 'Active').map((j) => (
+                  {activeJobs.map((j) => (
                     <SelectItem key={j.id} value={j.id}>
                       {j.title}{j.department ? ` — ${j.department}` : ''}
                     </SelectItem>
                   ))}
+                  {jobs.filter((item) => item.status !== 'Active').map((j) => (
+                    <SelectItem key={j.id} value={j.id} disabled>
+                      {j.title}{j.department ? ` — ${j.department}` : ''} ({j.status})
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {activeJobs.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No published jobs are accepting applications. Unavailable jobs are listed above with their status;
+                  publish a job in the Jobs section to make it selectable.
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
