@@ -49,6 +49,7 @@ next-env.d.ts
 
 # frontend runtime logs
 frontend-output.log
+frontend-error.log
 smoke-*.png
 
 # verification log files (held open by running processes)
