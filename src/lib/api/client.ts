@@ -3,11 +3,14 @@ const REFRESH_KEY = "ai-recruiter-refresh-token"
 const REQUEST_TIMEOUT_MS = 15000
 
 function getBaseUrl(): string {
+  // Explicit env override (e.g. in Docker / production where the API lives on
+  // a different origin).  When unset the frontend relies on the Next.js rewrite
+  // proxy defined in next.config.ts which forwards /api/v1/* → backend:3000.
   const envUrl = process.env.NEXT_PUBLIC_API_URL
   if (envUrl) return envUrl
-  if (typeof window !== "undefined") {
-    return `${window.location.protocol}//${window.location.hostname}:3000/api/v1`
-  }
+  // Relative path works in the browser (goes through the rewrite proxy) and
+  // on the server during SSR (Node fetch resolves it against localhost).
+  if (typeof window !== "undefined") return "/api/v1"
   return "http://localhost:3000/api/v1"
 }
 
