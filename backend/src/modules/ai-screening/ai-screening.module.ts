@@ -12,6 +12,10 @@ import {
   OpenAiScreeningConfig,
 } from './providers/openai-screening.provider';
 import {
+  DeepSeekScreeningProvider,
+  DeepSeekScreeningConfig,
+} from './providers/deepseek-screening.provider';
+import {
   MockScreeningProvider,
   MockScreeningProviderOptions,
 } from './providers/mock-screening.provider';
@@ -41,14 +45,33 @@ function createAiScreeningProvider(
     }
     const config: OpenAiScreeningConfig = {
       model: configService.get<string>('aiScreening.openAiModel') || 'gpt-4o-mini',
-      timeoutMs: configService.get<number>('aiScreening.timeoutMs') || 30000,
+      timeoutMs: configService.get<number>('aiScreening.timeoutMs') || 60000,
       maxResumeChars: configService.get<number>('aiScreening.maxResumeChars') || 15000,
       promptVersion: configService.get<string>('aiScreening.promptVersion') || 'v1',
     };
     return new OpenAiScreeningProvider(openAiClient, config);
   }
 
-  throw new Error(`Unsupported AI_SCREENING_PROVIDER: ${providerName}. Use 'mock' or 'openai'.`);
+  if (providerName === 'deepseek') {
+    const apiKey = configService.get<string>('aiScreening.deepSeekApiKey');
+    if (!apiKey) {
+      throw new Error('DEEPSEEK_API_KEY is required when AI_SCREENING_PROVIDER=deepseek');
+    }
+    // DeepSeek uses the OpenAI-compatible SDK pointed at a different base URL
+    const baseURL = configService.get<string>('aiScreening.deepSeekBaseUrl') || 'https://api.deepseek.com';
+    const deepSeekClient = new OpenAI({ apiKey, baseURL });
+    const config: DeepSeekScreeningConfig = {
+      model: configService.get<string>('aiScreening.deepSeekModel') || 'deepseek-chat',
+      timeoutMs: configService.get<number>('aiScreening.timeoutMs') || 60000,
+      maxResumeChars: configService.get<number>('aiScreening.maxResumeChars') || 15000,
+      promptVersion: configService.get<string>('aiScreening.promptVersion') || 'v1',
+    };
+    return new DeepSeekScreeningProvider(deepSeekClient, config);
+  }
+
+  throw new Error(
+    `Unsupported AI_SCREENING_PROVIDER: "${providerName}". Valid values: mock, openai, deepseek`,
+  );
 }
 
 @Module({
@@ -98,6 +121,12 @@ export class AiScreeningModule implements OnModuleInit {
 
   onModuleInit(): void {
     const provider = this.configService.get<string>('aiScreening.provider') || 'mock';
-    this.logger.log(`AiScreeningModule initialized with provider: ${provider}`);
+    const model =
+      provider === 'deepseek'
+        ? this.configService.get<string>('aiScreening.deepSeekModel') || 'deepseek-chat'
+        : provider === 'openai'
+          ? this.configService.get<string>('aiScreening.openAiModel') || 'gpt-4o-mini'
+          : 'mock';
+    this.logger.log(`AiScreeningModule initialized with provider: ${provider} (model: ${model})`);
   }
 }
