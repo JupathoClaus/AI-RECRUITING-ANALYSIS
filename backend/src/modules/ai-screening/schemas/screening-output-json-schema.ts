@@ -1,3 +1,7 @@
+// OpenAI structured output (strict: true) requires that every property defined
+// in an object's "properties" also appears in "required". Truly optional fields
+// must use a nullable type union (["string", "null"]) rather than being omitted
+// from the required array.
 export const SCREENING_OUTPUT_SCHEMA_NAME = 'screening_result';
 
 export const SCREENING_OUTPUT_SCHEMA_VERSION = 'v1';
@@ -17,12 +21,10 @@ export const SCREENING_OUTPUT_JSON_SCHEMA = {
     matchedQualifications: {
       type: 'array',
       items: { type: 'string' },
-      maxItems: 50,
     },
     missingQualifications: {
       type: 'array',
       items: { type: 'string' },
-      maxItems: 50,
     },
     evidence: {
       type: 'array',
@@ -34,28 +36,30 @@ export const SCREENING_OUTPUT_JSON_SCHEMA = {
             type: 'string',
             enum: ['RESUME', 'APPLICATION', 'JOB_REQUIREMENT', 'SCREENING_ANSWER', 'UNKNOWN'],
           },
-          sourceText: { type: 'string', maxLength: 5000 },
+          // Nullable so OpenAI can omit the actual text when not relevant
+          sourceText: { type: ['string', 'null'] },
           assessment: { type: 'string' },
-          score: { type: 'integer', minimum: 0, maximum: 100 },
-          weight: { type: 'number', minimum: 0, maximum: 1 },
-          isRequired: { type: 'boolean' },
+          // Nullable — score is optional per evidence item
+          score: { type: ['integer', 'null'], minimum: 0, maximum: 100 },
+          // Nullable — weight is optional
+          weight: { type: ['number', 'null'], minimum: 0, maximum: 1 },
+          // Nullable — isRequired is optional
+          isRequired: { type: ['boolean', 'null'] },
         },
-        required: ['criterion', 'sourceCategory', 'assessment'],
+        // All declared properties must be in required for strict mode
+        required: ['criterion', 'sourceCategory', 'sourceText', 'assessment', 'score', 'weight', 'isRequired'],
         additionalProperties: false,
       },
-      maxItems: 100,
     },
     uncertainties: {
       type: 'array',
       items: { type: 'string' },
-      maxItems: 20,
     },
     riskFlags: {
       type: 'array',
       items: { type: 'string' },
-      maxItems: 20,
     },
-    explanation: { type: 'string', maxLength: 5000 },
+    explanation: { type: 'string' },
     criteriaScores: {
       type: 'array',
       items: {
@@ -65,12 +69,13 @@ export const SCREENING_OUTPUT_JSON_SCHEMA = {
           score: { type: 'integer', minimum: 0, maximum: 100 },
           maximumScore: { type: 'integer', minimum: 1, maximum: 100 },
           weight: { type: 'number', minimum: 0, maximum: 1 },
-          explanation: { type: 'string' },
+          // Nullable — explanation is informational only
+          explanation: { type: ['string', 'null'] },
         },
-        required: ['criterion', 'score', 'maximumScore', 'weight'],
+        // All declared properties must be in required for strict mode
+        required: ['criterion', 'score', 'maximumScore', 'weight', 'explanation'],
         additionalProperties: false,
       },
-      maxItems: 20,
     },
     prohibitedReasoningDetected: { type: 'boolean' },
   },
