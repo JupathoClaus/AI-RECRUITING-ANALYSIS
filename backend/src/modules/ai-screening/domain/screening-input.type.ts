@@ -10,11 +10,20 @@ export interface ScreeningInput {
   jobId: string;
   companyId: string;
   jobTitle: string;
+  /** Full job description text */
   jobDescription: string;
+  /** Responsibilities section from the job posting */
+  jobResponsibilities: string;
+  /** Qualifications / requirements section */
+  jobQualifications: string;
+  /** Enum label for the seniority level expected (e.g. "Senior", "Mid-level") */
+  experienceLevel: string;
   requiredSkills: string[];
   preferredSkills: string[];
+  /** Human-readable experience requirements, e.g. "Minimum 5 years in backend engineering" */
   requiredExperience: string;
   preferredExperience: string;
+  /** Human-readable education requirements, e.g. "Bachelor's in Computer Science or equivalent" */
   requiredEducation: string;
   preferredEducation: string;
   requiredCertifications: string[];

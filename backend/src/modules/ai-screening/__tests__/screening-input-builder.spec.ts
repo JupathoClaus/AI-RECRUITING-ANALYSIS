@@ -21,7 +21,9 @@ function createMockApplication(overrides?: Partial<ApplicationData>): Applicatio
       id: 'job-1',
       title: 'Software Engineer',
       description: 'Build software.',
+      responsibilities: 'Design and implement features.',
       qualifications: null,
+      experienceLevel: 'SENIOR',
       updatedAt: new Date(),
       skills: [
         { skill: { displayName: 'TypeScript' }, importance: 'REQUIRED' },
@@ -29,6 +31,12 @@ function createMockApplication(overrides?: Partial<ApplicationData>): Applicatio
         { skill: { displayName: 'GraphQL' }, importance: 'PREFERRED' },
       ],
       screeningQuestions: [{ id: 'q1', question: 'Years of experience?', required: true }],
+      educationRequirements: [
+        { level: 'BACHELORS', fieldOfStudy: 'Computer Science', importance: 'REQUIRED', notes: null },
+      ],
+      experienceRequirements: [
+        { title: 'Software Engineer', domain: 'Backend', minimumYears: 5, maximumYears: null, importance: 'REQUIRED', description: null },
+      ],
     },
     candidate: { id: 'cand-1' },
     screeningAnswers: [
@@ -131,16 +139,34 @@ describe('ScreeningInputBuilderService', () => {
     expect(Object.isFrozen(input)).toBe(true);
   });
 
-  it('uses job qualifications when description is missing', () => {
+  it('includes responsibilities in jobResponsibilities field', () => {
+    const input = builder.build(createMockApplication(), MOCK_RESUME_TEXT);
+    expect(input.jobResponsibilities).toBe('Design and implement features.');
+  });
+
+  it('includes experienceLevel label', () => {
+    const input = builder.build(createMockApplication(), MOCK_RESUME_TEXT);
+    expect(input.experienceLevel).toContain('Senior');
+  });
+
+  it('formats experience requirements into requiredExperience string', () => {
+    const input = builder.build(createMockApplication(), MOCK_RESUME_TEXT);
+    expect(input.requiredExperience).toContain('5+');
+    expect(input.requiredExperience).toContain('Backend');
+  });
+
+  it('formats education requirements into requiredEducation string', () => {
+    const input = builder.build(createMockApplication(), MOCK_RESUME_TEXT);
+    expect(input.requiredEducation).toContain("Bachelor");
+    expect(input.requiredEducation).toContain("Computer Science");
+  });
+
+  it('falls back to experienceLevel label when no experience requirements', () => {
     const app = createMockApplication({
-      job: {
-        ...createMockApplication().job,
-        description: '',
-        qualifications: 'Qual: Must know TypeScript',
-      },
+      job: { ...createMockApplication().job, experienceRequirements: [] },
     });
     const input = builder.build(app, MOCK_RESUME_TEXT);
-    expect(input.jobDescription).toBe('Qual: Must know TypeScript');
+    expect(input.requiredExperience).toContain('Senior');
   });
 
   it('returns empty screening answers when none exist', () => {

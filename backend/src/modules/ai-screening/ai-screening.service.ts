@@ -64,6 +64,8 @@ export class AiScreeningService {
           include: {
             skills: { include: { skill: true } },
             screeningQuestions: { where: { deletedAt: null } },
+            educationRequirements: true,
+            experienceRequirements: true,
           },
         },
         candidate: { select: { id: true } },

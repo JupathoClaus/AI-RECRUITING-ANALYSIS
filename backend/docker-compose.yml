@@ -17,6 +17,9 @@ services:
       - SMTP_HOST=host.docker.internal
       - SMTP_PORT=1025
       - UPLOAD_DIR=/app/uploads
+      - AI_SCREENING_PROVIDER=openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY:?Set OPENAI_API_KEY in backend/.env or environment}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
     volumes:
       - uploads_data:/app/uploads
     depends_on:
