@@ -36,28 +36,123 @@ export function redactResumeText(raw: string): string {
 /**
  * Redact the candidate's name from resume text before passing to the AI model.
  *
- * Strategy: build word-boundary regexes from first name and last name separately
- * and replace each occurrence with [REDACTED - name].
+ * Strategy:
+ * 1. Redact exact full-name occurrences first ("First Last", "Last, First") —
+ *    these are unambiguous regardless of the words involved.
+ * 2. Redact individual first/last name parts only when they are NOT common
+ *    English words (e.g. "Will", "May", "Mark", "Rose", "Hope", "Grace"),
+ *    otherwise the redaction destroys unrelated resume sentences
+ *    ("I will...", "May 2021 – Present", "trademark").
  *
- * Only names longer than 1 character are redacted to avoid single-letter false
- * positives (e.g. "A" or "I"). Case-insensitive.
+ * Boundaries are unicode-safe lookarounds (word chars = ASCII letters/digits)
+ * rather than \b, so non-Latin names (e.g. Cyrillic) are still redacted.
+ * Case-insensitive. Parts shorter than 2 characters are never redacted.
  *
  * This is applied in addition to redactResumeText(), not instead of it.
  */
-export function redactCandidateName(
-  text: string,
-  firstName: string,
-  lastName: string,
-): string {
+
+// Names that collide with ordinary English words are only redacted as part of
+// the full name. Keeping this list small avoids both over-redaction and
+// leaking the candidate's name.
+const COMMON_WORDS = new Set([
+  'a',
+  'an',
+  'am',
+  'as',
+  'at',
+  'be',
+  'by',
+  'can',
+  'do',
+  'for',
+  'from',
+  'he',
+  'her',
+  'him',
+  'his',
+  'i',
+  'in',
+  'is',
+  'it',
+  'its',
+  'may',
+  'me',
+  'my',
+  'no',
+  'of',
+  'on',
+  'or',
+  'out',
+  'she',
+  'so',
+  'the',
+  'this',
+  'to',
+  'up',
+  'us',
+  'was',
+  'we',
+  'will',
+  'you',
+  'your',
+  'mark',
+  'marks',
+  'rose',
+  'hope',
+  'grace',
+  'summer',
+  'winter',
+  'cloud',
+  'light',
+  'short',
+  'long',
+  'rich',
+  'wise',
+  'faith',
+  'joy',
+  'heaven',
+  'blessing',
+]);
+
+const REDACTED = '[REDACTED - name]';
+
+/** Unicode-safe word boundaries for a pattern: `(?<![a-z0-9])P(?![a-z0-9])`. */
+function bounded(pattern: string): string {
+  return `(?<![a-z0-9])${pattern}(?![a-z0-9])`;
+}
+
+function escapeRegex(part: string): string {
+  return part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeSpacing(s: string): string {
+  return s.trim().replace(/\s+/g, ' ');
+}
+
+export function redactCandidateName(text: string, firstName: string, lastName: string): string {
   let result = text;
 
-  const parts = [firstName.trim(), lastName.trim()].filter((p) => p.length > 1);
+  const first = normalizeSpacing(firstName);
+  const last = normalizeSpacing(lastName);
 
+  const fullParts: string[] = [];
+  if (first.length > 1 && last.length > 1) {
+    const escFirst = escapeRegex(first);
+    const escLast = escapeRegex(last);
+    // "First Last" and "Last, First"
+    fullParts.push(`${escFirst}[\\s\\-]+${escLast}`);
+    fullParts.push(`${escLast}[\\s]*,[\\s]*${escFirst}`);
+  }
+
+  // 1. Full-name redaction — unambiguous, always safe
+  for (const pattern of fullParts) {
+    result = result.replace(new RegExp(bounded(pattern), 'gi'), REDACTED);
+  }
+
+  // 2. Individual parts — skip ordinary English words
+  const parts = [first, last].filter((p) => p.length > 1 && !COMMON_WORDS.has(p.toLowerCase()));
   for (const part of parts) {
-    // Escape special regex characters in the name part
-    const escaped = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`\\b${escaped}\\b`, 'gi');
-    result = result.replace(pattern, '[REDACTED - name]');
+    result = result.replace(new RegExp(bounded(escapeRegex(part)), 'gi'), REDACTED);
   }
 
   return result;
