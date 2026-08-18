@@ -1,0 +1,84 @@
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Body,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../auth/guards/roles.guard';
+import { TenantMembershipGuard } from '../../auth/guards/tenant-membership.guard';
+import { Roles } from '../../../common/decorators/roles.decorator';
+import { RequireTenantAccess } from '../../auth/decorators/tenant-access.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuthenticatedPrincipal } from '../../auth/interfaces/auth.interface';
+import { BulkScreeningService } from '../services/bulk-screening.service';
+
+export class BulkScreeningRequestDto {
+  mode!: 'SELECTED' | 'ALL_FOR_JOB' | 'UNSCREENED_FOR_JOB' | 'ALL_UNSCREENED_OPEN_JOBS';
+  applicationIds?: string[];
+  jobId?: string;
+}
+
+@ApiTags('AI Screening')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard, TenantMembershipGuard)
+@Controller('ai-screenings')
+export class BulkScreeningController {
+  constructor(private readonly bulkService: BulkScreeningService) {}
+
+  /**
+   * POST /ai-screenings/bulk
+   *
+   * Starts a bulk screening operation. Returns immediately with a batchId.
+   * Each application is queued individually via BullMQ — no synchronous model calls.
+   *
+   * Every application is evaluated against its own job.
+   * No cross-application or cross-job state is shared.
+   */
+  @Post('bulk')
+  @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')
+  @RequireTenantAccess()
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Start bulk AI screening',
+    description:
+      'Queues AI screening for multiple applications. Each is evaluated against its own job. Returns immediately with batchId.',
+  })
+  async startBulkScreening(
+    @Body() dto: BulkScreeningRequestDto,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    return this.bulkService.startBulk(
+      {
+        mode: dto.mode,
+        applicationIds: dto.applicationIds,
+        jobId: dto.jobId,
+      },
+      user.activeCompanyId!,
+      user.userId,
+    );
+  }
+
+  /**
+   * GET /ai-screenings/batches/:batchId
+   *
+   * Returns live progress for a bulk screening batch.
+   * Counts are derived from individual AiScreeningResult records — always authoritative.
+   */
+  @Get('batches/:batchId')
+  @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')
+  @RequireTenantAccess()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get bulk screening batch progress' })
+  async getBatchProgress(
+    @Param('batchId') batchId: string,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    return this.bulkService.getBatchProgress(batchId, user.activeCompanyId!);
+  }
+}
