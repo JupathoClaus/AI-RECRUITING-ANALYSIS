@@ -1938,6 +1938,9 @@ model Application {
   // Phase 5 — AI Interviews
   aiInterviews AiInterview[]
 
+  // Phase 5.2 — Bulk screening membership
+  screeningBatchItems AiScreeningBatchItem[]
+
   @@unique([companyId, applicationNumber])
   @@index([companyId])
   @@index([jobId])
@@ -2226,6 +2229,7 @@ model AiScreeningResult {
 
   application Application          @relation(fields: [applicationId], references: [id])
   batch       AiScreeningBatch?    @relation(fields: [batchId], references: [id])
+  batchItems  AiScreeningBatchItem[]
 
   @@index([applicationId])
   @@index([companyId])
@@ -2281,11 +2285,58 @@ model AiScreeningBatch {
   completedAt       DateTime?
 
   screeningResults AiScreeningResult[]
+  batchItems       AiScreeningBatchItem[]
 
   @@index([companyId])
   @@index([status])
   @@index([createdAt])
   @@index([jobId])
+}
+
+// ─── AiScreeningBatchItem ────────────────────────────────────────────────────
+// Membership of one application in one batch. A single AiScreeningResult may
+// be reused across multiple batches (multi-membership), so progress is tracked
+// per item instead of via AiScreeningResult.batchId (which can only point to a
+// single batch). Items also record skipped/error applications that never
+// produced a screening result, keeping the batch invariant exact:
+//   total = completed + failed + skipped + pending
+
+enum AiScreeningBatchItemStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum AiScreeningBatchItemAction {
+  QUEUED
+  REUSED
+  SKIPPED
+  ERROR
+}
+
+model AiScreeningBatchItem {
+  id            String                    @id @default(uuid())
+  batchId       String
+  applicationId String
+  /// Linked screening result. Null when the item never reached a screening
+  /// (skipped due to missing resume, or failed before a result existed).
+  screeningId   String?
+  status        AiScreeningBatchItemStatus @default(PENDING)
+  action        AiScreeningBatchItemAction @default(QUEUED)
+  errorMessage  String?
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  batch       AiScreeningBatch?   @relation(fields: [batchId], references: [id])
+  application Application?        @relation(fields: [applicationId], references: [id])
+  screening   AiScreeningResult?  @relation(fields: [screeningId], references: [id])
+
+  @@index([batchId, status])
+  @@index([batchId, applicationId])
+  @@index([applicationId])
+  @@index([screeningId])
 }
 
 enum ExtractionDispatchStatus {

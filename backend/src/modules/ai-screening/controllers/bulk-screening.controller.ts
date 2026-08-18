@@ -65,10 +65,30 @@ export class BulkScreeningController {
   }
 
   /**
+   * GET /ai-screenings/batches/recent
+   *
+   * Returns the most recent non-terminal batch for the requesting company
+   * (scoped to the initiating user when available). Lets the frontend
+   * rediscover an active batch after navigation or a browser reload.
+   *
+   * NOTE: must be declared BEFORE batches/:batchId so 'recent' is not captured
+   * by the UUID parameter route.
+   */
+  @Get('batches/recent')
+  @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')
+  @RequireTenantAccess()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get most recent active bulk screening batch' })
+  async getRecentBatch(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.bulkService.getRecentBatch(user.activeCompanyId!, user.userId);
+  }
+
+  /**
    * GET /ai-screenings/batches/:batchId
    *
    * Returns live progress for a bulk screening batch.
-   * Counts are derived from individual AiScreeningResult records — always authoritative.
+   * Counts are derived from individual AiScreeningBatchItem records and their
+   * linked screening results — always authoritative.
    */
   @Get('batches/:batchId')
   @Roles('COMPANY_ADMIN', 'RECRUITER', 'HR_MANAGER')

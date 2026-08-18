@@ -9,10 +9,7 @@ import { PrismaService } from '../../../database/prisma/prisma.service';
 import { AiScreeningService } from '../ai-screening.service';
 
 export type BulkScreeningMode =
-  | 'SELECTED'
-  | 'ALL_FOR_JOB'
-  | 'UNSCREENED_FOR_JOB'
-  | 'ALL_UNSCREENED_OPEN_JOBS';
+  'SELECTED' | 'ALL_FOR_JOB' | 'UNSCREENED_FOR_JOB' | 'ALL_UNSCREENED_OPEN_JOBS';
 
 export interface BulkScreeningRequest {
   mode: BulkScreeningMode;
@@ -39,6 +36,7 @@ export interface BulkBatchProgress {
   total: number;
   completed: number;
   failed: number;
+  skipped: number;
   pending: number;
   recommended: number;
   humanReview: number;
@@ -49,6 +47,75 @@ export interface BulkBatchProgress {
 }
 
 const MAX_BATCH_SIZE = 1000;
+
+/**
+ * Progress-relevant snapshot of a single batch item (pure input for
+ * computeItemProgress — unit-testable without a database).
+ */
+export interface ItemProgressInput {
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+  action: 'QUEUED' | 'REUSED' | 'SKIPPED' | 'ERROR';
+  screeningStatus?: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  screeningRecommendation?: string | null;
+}
+
+export interface ItemProgressTotals {
+  completed: number;
+  failed: number;
+  skipped: number;
+  pending: number;
+  recommended: number;
+  humanReview: number;
+  notRecommended: number;
+}
+
+/**
+ * Derive batch totals from item snapshots.
+ *
+ * Invariant: total = completed + failed + skipped + pending.
+ *
+ * - skipped:   item marked SKIPPED (e.g. no resume) — terminal, never queued
+ * - failed:    item with action=ERROR (never reached a screening) OR its
+ *              linked screening reached FAILED — terminal
+ * - completed: linked screening reached COMPLETED — terminal
+ * - pending:   everything else (queued/reused items whose screening is
+ *              still PENDING/RUNNING)
+ */
+export function computeItemProgress(items: ItemProgressInput[]): ItemProgressTotals {
+  let completed = 0;
+  let failed = 0;
+  let skipped = 0;
+  let pending = 0;
+  let recommended = 0;
+  let humanReview = 0;
+  let notRecommended = 0;
+
+  for (const item of items) {
+    if (item.status === 'SKIPPED') {
+      skipped++;
+      continue;
+    }
+    if (item.action === 'ERROR') {
+      failed++;
+      continue;
+    }
+    switch (item.screeningStatus) {
+      case 'COMPLETED':
+        completed++;
+        if (item.screeningRecommendation === 'SHORTLIST') recommended++;
+        else if (item.screeningRecommendation === 'HUMAN_REVIEW') humanReview++;
+        else if (item.screeningRecommendation === 'NOT_SHORTLIST') notRecommended++;
+        break;
+      case 'FAILED':
+        failed++;
+        break;
+      default:
+        pending++;
+    }
+  }
+
+  return { completed, failed, skipped, pending, recommended, humanReview, notRecommended };
+}
 
 @Injectable()
 export class BulkScreeningService {
@@ -62,12 +129,21 @@ export class BulkScreeningService {
   /**
    * Initiate a bulk screening operation.
    *
-   * Resolves the application IDs based on mode, verifies ownership,
-   * creates an AiScreeningBatch record, then calls requestScreening()
-   * once per application — reusing the existing BullMQ pipeline.
+   * Resolves the application IDs based on mode, verifies ownership, creates an
+   * AiScreeningBatch record with one AiScreeningBatchItem per application, then
+   * calls requestScreening() once per application — reusing the existing BullMQ
+   * pipeline.
    *
    * Each application is evaluated against its own job (never a shared one).
    * No cross-application or cross-job state is shared.
+   *
+   * Membership rules:
+   * - A NEW screening result created for this batch is linked to the batch
+   *   (batchId + item.screeningId).
+   * - A REUSED existing result is linked via the item only — its batchId is
+   *   NEVER overwritten, so earlier batches keep their association.
+   * - Skipped/error applications are recorded on their item so the batch
+   *   always reaches a terminal state.
    */
   async startBulk(
     request: BulkScreeningRequest,
@@ -87,7 +163,7 @@ export class BulkScreeningService {
       );
     }
 
-    // ── Create batch record ──────────────────────────────────────────────────
+    // ── Create batch record + membership items ──────────────────────────────
     const batch = await this.prisma.aiScreeningBatch.create({
       data: {
         companyId,
@@ -100,12 +176,20 @@ export class BulkScreeningService {
       },
     });
 
+    await this.prisma.aiScreeningBatchItem.createMany({
+      data: applicationIds.map((applicationId) => ({
+        batchId: batch.id,
+        applicationId,
+        status: 'PENDING' as never,
+        action: 'QUEUED' as never,
+      })),
+    });
+
     this.logger.log(
       `Bulk screening batch ${batch.id} created: ${applicationIds.length} applications, mode=${request.mode}`,
     );
 
     // ── Queue each application individually ──────────────────────────────────
-    // We do NOT loop synchronously and await all model calls.
     // requestScreening() enqueues a BullMQ job and returns immediately.
     // The existing worker handles concurrency, retry, and idempotency.
 
@@ -123,15 +207,31 @@ export class BulkScreeningService {
           false, // forceRerun=false — reuse existing valid results
         );
 
-        // Attach batchId to the screening record
         const screeningId = result.data.id;
-        await this.prisma.aiScreeningResult.update({
-          where: { id: screeningId },
-          data: { batchId: batch.id },
-        });
-
+        const action = result.action === 'CREATED' ? 'QUEUED' : 'REUSED';
         if (result.action === 'CREATED') queued++;
         else reused++;
+
+        // Link the item to the screening. Only CREATED results get the
+        // result.batchId pointer; REUSED results keep their original batch.
+        await this.prisma.$transaction([
+          this.prisma.aiScreeningBatchItem.updateMany({
+            where: { batchId: batch.id, applicationId: appId, status: 'PENDING' },
+            data: {
+              screeningId,
+              action: action as never,
+              status: 'PENDING' as never,
+            },
+          }),
+          ...(result.action === 'CREATED'
+            ? [
+                this.prisma.aiScreeningResult.update({
+                  where: { id: screeningId },
+                  data: { batchId: batch.id },
+                }),
+              ]
+            : []),
+        ]);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
 
@@ -139,19 +239,47 @@ export class BulkScreeningService {
         if (errMsg.includes('RESUME_EXTRACTION') || errMsg.includes('No resume')) {
           skipped++;
           this.logger.warn(`Skipped application ${appId}: ${errMsg}`);
+          await this.prisma.aiScreeningBatchItem.updateMany({
+            where: { batchId: batch.id, applicationId: appId, status: 'PENDING' },
+            data: {
+              status: 'SKIPPED' as never,
+              action: 'SKIPPED' as never,
+              errorMessage: errMsg.slice(0, 500),
+            },
+          });
         } else {
           errors++;
           this.logger.error(`Failed to queue application ${appId}: ${errMsg}`);
+          await this.prisma.aiScreeningBatchItem.updateMany({
+            where: { batchId: batch.id, applicationId: appId, status: 'PENDING' },
+            data: {
+              status: 'FAILED' as never,
+              action: 'ERROR' as never,
+              errorMessage: errMsg.slice(0, 500),
+            },
+          });
         }
       }
     }
 
-    // Update batch status
+    // ── Update batch status ──────────────────────────────────────────────────
+    // Terminal immediately only when NOTHING was queued or reused:
+    //   - all errors                 -> FAILED
+    //   - anything skipped/error     -> PARTIALLY_COMPLETED (nothing screened)
+    const terminal = queued + reused === 0;
+    const initialStatus =
+      errors > 0 && skipped === 0
+        ? 'FAILED'
+        : skipped > 0 || errors > 0
+          ? 'PARTIALLY_COMPLETED'
+          : 'RUNNING';
+
     await this.prisma.aiScreeningBatch.update({
       where: { id: batch.id },
       data: {
-        status: errors === applicationIds.length ? 'FAILED' : ('RUNNING' as never),
+        status: initialStatus as never,
         totalCount: applicationIds.length,
+        ...(terminal ? { completedAt: new Date() } : {}),
       },
     });
 
@@ -161,7 +289,7 @@ export class BulkScreeningService {
 
     return {
       batchId: batch.id,
-      status: 'QUEUED',
+      status: terminal ? initialStatus : 'QUEUED',
       total: applicationIds.length,
       queued,
       reused,
@@ -171,8 +299,10 @@ export class BulkScreeningService {
   }
 
   /**
-   * Get batch progress by deriving counts from individual AiScreeningResult records.
-   * The individual records are always authoritative.
+   * Get batch progress by deriving counts from the batch's membership items
+   * and their linked screening results. The individual screening records are
+   * always authoritative for screening outcomes; items are authoritative for
+   * membership, reuse, skip, and queue-error accounting.
    */
   async getBatchProgress(batchId: string, companyId: string): Promise<BulkBatchProgress> {
     const batch = await this.prisma.aiScreeningBatch.findFirst({
@@ -183,41 +313,56 @@ export class BulkScreeningService {
       throw new NotFoundException(`Batch ${batchId} not found`);
     }
 
-    // Derive live counts from the individual screening records
-    const results = await this.prisma.aiScreeningResult.groupBy({
-      by: ['status', 'recommendation'],
-      where: { batchId, companyId },
-      _count: { id: true },
+    const items = await this.prisma.aiScreeningBatchItem.findMany({
+      where: { batchId },
     });
 
-    let completed = 0;
-    let failed = 0;
-    let pending = 0;
-    let recommended = 0;
-    let humanReview = 0;
-    let notRecommended = 0;
+    const screeningIds = items.map((i) => i.screeningId).filter((id): id is string => id !== null);
 
-    for (const row of results) {
-      const count = row._count.id;
-      if (row.status === 'COMPLETED') {
-        completed += count;
-        if (row.recommendation === 'SHORTLIST') recommended += count;
-        else if (row.recommendation === 'HUMAN_REVIEW') humanReview += count;
-        else if (row.recommendation === 'NOT_SHORTLIST') notRecommended += count;
-      } else if (row.status === 'FAILED') {
-        failed += count;
-      } else {
-        pending += count;
-      }
-    }
+    const screenings =
+      screeningIds.length > 0
+        ? await this.prisma.aiScreeningResult.findMany({
+            where: { id: { in: screeningIds } },
+            select: { id: true, status: true, recommendation: true },
+          })
+        : [];
 
-    // Auto-complete the batch when all screened
+    const screeningMap = new Map(
+      screenings.map((s) => [
+        s.id,
+        {
+          status: s.status as ItemProgressInput['screeningStatus'],
+          recommendation: s.recommendation,
+        },
+      ]),
+    );
+
+    const totals = computeItemProgress(
+      items.map((item) => ({
+        status: item.status as ItemProgressInput['status'],
+        action: item.action as ItemProgressInput['action'],
+        screeningStatus: item.screeningId ? screeningMap.get(item.screeningId)?.status : undefined,
+        screeningRecommendation: item.screeningId
+          ? screeningMap.get(item.screeningId)?.recommendation
+          : undefined,
+      })),
+    );
+
+    // ── Auto-complete the batch when nothing remains pending ────────────────
     const total = batch.totalCount;
-    const done = completed + failed;
+    const terminal = totals.pending === 0 && total > 0;
     let batchStatus = batch.status as string;
 
-    if (done >= total && total > 0 && batchStatus === 'RUNNING') {
-      const newStatus = failed === 0 ? 'COMPLETED' : failed === total ? 'FAILED' : 'PARTIALLY_COMPLETED';
+    if (
+      terminal &&
+      (batchStatus === 'RUNNING' || batchStatus === 'QUEUED' || batchStatus === 'PENDING')
+    ) {
+      const newStatus =
+        totals.failed === 0
+          ? 'COMPLETED'
+          : totals.failed === total
+            ? 'FAILED'
+            : 'PARTIALLY_COMPLETED';
       await this.prisma.aiScreeningBatch.update({
         where: { id: batchId },
         data: { status: newStatus as never, completedAt: new Date() },
@@ -230,16 +375,37 @@ export class BulkScreeningService {
       status: batchStatus,
       mode: batch.mode,
       total,
-      completed,
-      failed,
-      pending,
-      recommended,
-      humanReview,
-      notRecommended,
+      completed: totals.completed,
+      failed: totals.failed,
+      skipped: totals.skipped,
+      pending: totals.pending,
+      recommended: totals.recommended,
+      humanReview: totals.humanReview,
+      notRecommended: totals.notRecommended,
       createdAt: batch.createdAt.toISOString(),
       startedAt: batch.startedAt?.toISOString() ?? null,
       completedAt: batch.completedAt?.toISOString() ?? null,
     };
+  }
+
+  /**
+   * Latest non-terminal batch for the requesting company (and user, when the
+   * caller is known) — lets the frontend rediscover an active batch after
+   * navigation or a page reload.
+   */
+  async getRecentBatch(companyId: string, userId?: string): Promise<BulkBatchProgress | null> {
+    const batch = await this.prisma.aiScreeningBatch.findFirst({
+      where: {
+        companyId,
+        ...(userId ? { initiatedByUserId: userId } : {}),
+        status: { in: ['QUEUED', 'RUNNING'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!batch) return null;
+
+    return this.getBatchProgress(batch.id, companyId);
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
@@ -337,7 +503,9 @@ export class BulkScreeningService {
       }
 
       default:
-        throw new BadRequestException(`Unsupported bulk screening mode: ${(request as never)['mode']}`);
+        throw new BadRequestException(
+          `Unsupported bulk screening mode: ${(request as never)['mode']}`,
+        );
     }
   }
 
