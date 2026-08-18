@@ -67,3 +67,5 @@ verification/*.err.log
 verification/product-proof-run.log
 verification/runtime-*.log
 verification/dev-*.log
+# verification helper scripts (local, not committed)
+verification/test-*.ps1
