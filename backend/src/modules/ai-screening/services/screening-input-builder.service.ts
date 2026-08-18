@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ScreeningInput, ScreeningQuestionAnswer } from '../domain/screening-input.type';
-import { redactResumeText } from '../utils/resume-redaction';
+import { ScreeningCriterion } from '../domain/screening-criterion.type';
+import { redactResumeText, redactCandidateName } from '../utils/resume-redaction';
 import { CompletedExtraction } from './resume-text-loader.service';
 
 export interface ApplicationData {
@@ -41,6 +42,8 @@ export interface ApplicationData {
   };
   candidate: {
     id: string;
+    firstName?: string;
+    lastName?: string;
   };
   screeningAnswers: Array<{
     questionId: string;
@@ -121,6 +124,7 @@ export class ScreeningInputBuilderService {
     application: ApplicationData,
     resumeTextData: CompletedExtraction,
     promptVersion: string = 'v1',
+    criteria?: ScreeningCriterion[],
   ): ScreeningInput {
     const job = application.job;
 
@@ -163,10 +167,18 @@ export class ScreeningInputBuilderService {
 
     // ── Resume text ─────────────────────────────────────────────────────────
     const redacted = redactResumeText(resumeTextData.parsedText);
+
+    // Strip candidate name from the text that will be sent to the AI model.
+    // The name is kept in the DB and recruiter UI — only the model input is masked.
+    const firstName = application.candidate.firstName ?? '';
+    const lastName = application.candidate.lastName ?? '';
+    const nameRedacted =
+      firstName || lastName ? redactCandidateName(redacted, firstName, lastName) : redacted;
+
     const truncatedResume =
-      redacted.length > this.maxResumeChars
-        ? redacted.slice(0, this.maxResumeChars) + '\n... [resume truncated]'
-        : redacted;
+      nameRedacted.length > this.maxResumeChars
+        ? nameRedacted.slice(0, this.maxResumeChars) + '\n... [resume truncated]'
+        : nameRedacted;
 
     return Object.freeze({
       applicationId: application.id,
@@ -189,6 +201,7 @@ export class ScreeningInputBuilderService {
       resumeText: truncatedResume,
       screeningQuestions,
       promptVersion,
+      ...(criteria && criteria.length > 0 ? { criteria } : {}),
     });
   }
 }

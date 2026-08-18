@@ -1,3 +1,5 @@
+import { ScreeningCriterion } from './screening-criterion.type';
+
 export interface ScreeningQuestionAnswer {
   question: string;
   answer: string;
@@ -31,4 +33,11 @@ export interface ScreeningInput {
   resumeText: string;
   screeningQuestions: ScreeningQuestionAnswer[];
   promptVersion?: string;
+
+  /**
+   * Structured job criteria built by CriterionBuilderService.
+   * Present when using the Qwen provider for criterion-level reasoning.
+   * Legacy providers (mock, openai, deepseek) ignore this field.
+   */
+  criteria?: ScreeningCriterion[];
 }
