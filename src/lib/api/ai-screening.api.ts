@@ -144,3 +144,58 @@ export async function getAiScreeningById(
     { signal },
   )
 }
+
+// ─── Bulk Screening ──────────────────────────────────────────────────────────
+
+export type BulkScreeningMode =
+  | 'SELECTED'
+  | 'ALL_FOR_JOB'
+  | 'UNSCREENED_FOR_JOB'
+  | 'ALL_UNSCREENED_OPEN_JOBS'
+
+export interface BulkScreeningRequest {
+  mode: BulkScreeningMode
+  applicationIds?: string[]
+  jobId?: string
+}
+
+export interface BulkScreeningResponse {
+  batchId: string
+  status: string
+  total: number
+  queued: number
+  reused: number
+  skipped: number
+  errors: number
+}
+
+export interface BulkBatchProgress {
+  batchId: string
+  status: string
+  mode: string
+  total: number
+  completed: number
+  failed: number
+  pending: number
+  recommended: number
+  humanReview: number
+  notRecommended: number
+  createdAt: string
+  startedAt: string | null
+  completedAt: string | null
+}
+
+export async function startBulkScreening(
+  request: BulkScreeningRequest,
+): Promise<BulkScreeningResponse> {
+  return apiRequest<BulkScreeningResponse>('/ai-screenings/bulk', {
+    method: 'POST',
+    body: request,
+  })
+}
+
+export async function getBulkScreeningProgress(
+  batchId: string,
+): Promise<BulkBatchProgress> {
+  return apiRequest<BulkBatchProgress>(`/ai-screenings/batches/${batchId}`)
+}

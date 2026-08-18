@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
 import { buildBulkActionFeedback } from "@/lib/candidates-bulk-actions"
+import { startBulkScreening, getBulkScreeningProgress, BulkBatchProgress } from "@/lib/api/ai-screening.api"
 import { SendAiInterviewModal } from "@/components/ai-interview/send-ai-interview-modal"
 import { AddCandidateDialog } from "@/components/candidates/add-candidate-dialog"
 import { ScreeningProgress } from "@/components/ai-screening/screening-progress"
@@ -249,6 +250,12 @@ export default function CandidatesPage() {
   const [pageFeedback, setPageFeedback] = React.useState<{ type: "success" | "warning"; message: string } | null>(null)
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [bulkActionLoading, setBulkActionLoading] = React.useState(false)
+  // Bulk AI Screening state
+  const [bulkScreenConfirmOpen, setBulkScreenConfirmOpen] = React.useState(false)
+  const [bulkScreening, setBulkScreening] = React.useState(false)
+  const [bulkBatch, setBulkBatch] = React.useState<BulkBatchProgress | null>(null)
+  const [bulkBatchError, setBulkBatchError] = React.useState<string | null>(null)
+  const bulkPollRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
   React.useEffect(() => {
     void Promise.all([fetchCandidates(), fetchJobs()])
@@ -331,6 +338,51 @@ export default function CandidatesPage() {
       setBulkActionLoading(false)
     }
   }, [selectedIds, candidates, rejectCandidateApplication, advanceCandidateApplication])
+
+  // ── Bulk AI Screening ─────────────────────────────────────────────────────
+  const handleBulkScreenSelected = React.useCallback(async () => {
+    setBulkScreenConfirmOpen(false)
+    setBulkScreening(true)
+    setBulkBatch(null)
+    setBulkBatchError(null)
+    if (bulkPollRef.current) clearTimeout(bulkPollRef.current)
+
+    // Collect the applicationIds for the selected candidates
+    const appIds: string[] = []
+    for (const candidateId of selectedIds) {
+      const candidate = candidates.find((c) => c.id === candidateId)
+      const appId = candidate?.applicationSummary?.current?.id
+      if (appId) appIds.push(appId)
+    }
+
+    if (appIds.length === 0) {
+      setBulkBatchError("No applications found for selected candidates. Upload a resume first.")
+      setBulkScreening(false)
+      return
+    }
+
+    try {
+      const response = await startBulkScreening({ mode: "SELECTED", applicationIds: appIds })
+      // Start polling progress
+      const pollProgress = async () => {
+        try {
+          const progress = await getBulkScreeningProgress(response.batchId)
+          setBulkBatch(progress)
+          if (progress.status !== "COMPLETED" && progress.status !== "FAILED" && progress.status !== "PARTIALLY_COMPLETED") {
+            bulkPollRef.current = setTimeout(pollProgress, 4000)
+          } else {
+            setBulkScreening(false)
+          }
+        } catch {
+          setBulkScreening(false)
+        }
+      }
+      bulkPollRef.current = setTimeout(pollProgress, 2000)
+    } catch (err) {
+      setBulkBatchError(err instanceof Error ? err.message : "Bulk screening failed to start")
+      setBulkScreening(false)
+    }
+  }, [selectedIds, candidates])
 
   const newCount = candidates.filter((c) => getDisplayStatus(c) === "Applied").length
   const pipelineCount = candidates.filter((c) => getDisplayStatus(c) === "Interview").length
@@ -420,6 +472,79 @@ export default function CandidatesPage() {
 
       {/* Candidates Table */}
       <div className="animate-fade-in">
+        {/* Bulk AI Screening — confirmation dialog */}
+        <Dialog open={bulkScreenConfirmOpen} onOpenChange={setBulkScreenConfirmOpen}>
+          <DialogContent className="sm:max-w-[440px]">
+            <ModalHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MagicStar className="h-5 w-5 text-primary" />
+                Screen Selected Candidates
+              </DialogTitle>
+              <DialogDescription>
+                {selectedIds.size} candidate{selectedIds.size !== 1 ? "s" : ""} will be queued for AI screening.
+                Each candidate is evaluated only against the job they applied for.
+              </DialogDescription>
+            </ModalHeader>
+            <div className="py-2 text-sm text-muted-foreground">
+              <ul className="list-disc list-inside space-y-1">
+                <li>Screening runs in the background — you can navigate away</li>
+                <li>Candidates without an uploaded resume will be skipped</li>
+                <li>Existing valid screening results will be reused</li>
+              </ul>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkScreenConfirmOpen(false)}>Cancel</Button>
+              <Button onClick={handleBulkScreenSelected}>
+                <MagicStar className="h-4 w-4 mr-2" />
+                Start Screening
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Bulk AI Screening — batch progress banner */}
+        {(bulkBatch || bulkScreening || bulkBatchError) && (
+          <div className={cn(
+            "rounded-lg border px-4 py-3 mb-4 text-sm animate-fade-in",
+            bulkBatchError
+              ? "border-destructive/30 bg-destructive/5 text-destructive"
+              : bulkBatch?.status === "COMPLETED"
+                ? "border-success/30 bg-success/5"
+                : "border-primary/20 bg-primary/5"
+          )}>
+            {bulkBatchError ? (
+              <p>{bulkBatchError}</p>
+            ) : bulkBatch ? (
+              <div className="space-y-1">
+                <p className="font-medium">
+                  {bulkBatch.status === "COMPLETED" ? "AI screening complete" :
+                   bulkBatch.status === "PARTIALLY_COMPLETED" ? "AI screening partially complete" :
+                   bulkBatch.status === "FAILED" ? "AI screening failed" :
+                   `Screening ${bulkBatch.completed} of ${bulkBatch.total} applications...`}
+                </p>
+                {(bulkBatch.status === "COMPLETED" || bulkBatch.status === "PARTIALLY_COMPLETED") && (
+                  <p className="text-muted-foreground">
+                    Recommended: <span className="font-semibold text-green-600">{bulkBatch.recommended}</span>
+                    {" · "}Human Review: <span className="font-semibold text-yellow-600">{bulkBatch.humanReview}</span>
+                    {" · "}Not Recommended: <span className="font-semibold text-red-600">{bulkBatch.notRecommended}</span>
+                    {bulkBatch.failed > 0 && <span className="text-red-600"> · Failed: {bulkBatch.failed}</span>}
+                  </p>
+                )}
+                {bulkBatch.status === "RUNNING" && (
+                  <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                    <div
+                      className="bg-primary h-1.5 rounded-full transition-all duration-500"
+                      style={{ width: `${bulkBatch.total > 0 ? Math.round((bulkBatch.completed / bulkBatch.total) * 100) : 0}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p>Queuing applications for screening...</p>
+            )}
+          </div>
+        )}
+
         {candidatesLoading ? (
           <Card>
             <TableSkeleton />
@@ -474,12 +599,11 @@ export default function CandidatesPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled
-                    title="Run AI Screening is not available yet — screening runs per candidate from the AI Screener page"
+                    disabled={bulkActionLoading || bulkScreening}
+                    onClick={() => setBulkScreenConfirmOpen(true)}
                   >
-                    <MagicStar className="h-4 w-4 mr-1 opacity-50" />
-                    Run AI Screening
-                    <span className="ml-1 text-[10px] text-muted-foreground">coming next</span>
+                    <MagicStar className="h-4 w-4 mr-1" />
+                    {bulkScreening ? "Screening..." : "Run AI Screening"}
                   </Button>
                 </div>
                 <div className="flex-1" />
