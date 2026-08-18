@@ -20,7 +20,7 @@ services:
       # AI Screening — switch provider via AI_SCREENING_PROVIDER in .env
       - AI_SCREENING_PROVIDER=${AI_SCREENING_PROVIDER:-mock}
       - QWEN_BASE_URL=${QWEN_BASE_URL:-http://host.docker.internal:11434/v1}
-      - QWEN_MODEL=${QWEN_MODEL:-qwen2.5:latest}
+      - QWEN_MODEL=${QWEN_MODEL:-qwen3.5:9b}
       - QWEN_API_KEY=${QWEN_API_KEY:-ollama}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
       - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-deepseek-chat}

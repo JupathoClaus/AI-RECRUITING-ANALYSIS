@@ -15,10 +15,7 @@ import {
   DeepSeekScreeningProvider,
   DeepSeekScreeningConfig,
 } from './providers/deepseek-screening.provider';
-import {
-  QwenScreeningProvider,
-  QwenScreeningConfig,
-} from './providers/qwen-screening.provider';
+import { QwenScreeningProvider, QwenScreeningConfig } from './providers/qwen-screening.provider';
 import {
   MockScreeningProvider,
   MockScreeningProviderOptions,
@@ -90,7 +87,7 @@ function createAiScreeningProvider(
     }
     const qwenClient = new OpenAI({ apiKey, baseURL });
     const config: QwenScreeningConfig = {
-      model: configService.get<string>('aiScreening.qwenModel') || 'qwen2.5:latest',
+      model: configService.get<string>('aiScreening.qwenModel') || 'qwen3.5:9b',
       baseUrl: baseURL,
       timeoutMs: configService.get<number>('aiScreening.timeoutMs') || 60000,
       maxResumeChars: configService.get<number>('aiScreening.maxResumeChars') || 15000,
@@ -175,7 +172,7 @@ export class AiScreeningModule implements OnModuleInit {
         model = this.configService.get<string>('aiScreening.deepSeekModel') || 'deepseek-chat';
         break;
       case 'qwen':
-        model = this.configService.get<string>('aiScreening.qwenModel') || 'qwen2.5:latest';
+        model = this.configService.get<string>('aiScreening.qwenModel') || 'qwen3.5:9b';
         break;
       default:
         model = 'mock';

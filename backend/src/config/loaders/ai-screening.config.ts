@@ -44,8 +44,10 @@ export default registerAs('aiScreening', (): AiScreeningConfig => {
     deepSeekModel: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     deepSeekBaseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
     // Qwen / Ollama / vLLM — OpenAI-compatible endpoint
+    // Default model is the Qwen3.5-9B tag on Ollama (verified against the
+    // official Ollama library: https://ollama.com/library/qwen3.5).
     qwenApiKey: process.env.QWEN_API_KEY || 'ollama',
-    qwenModel: process.env.QWEN_MODEL || 'qwen2.5:latest',
+    qwenModel: process.env.QWEN_MODEL || 'qwen3.5:9b',
     qwenBaseUrl: process.env.QWEN_BASE_URL || 'http://localhost:11434/v1',
     timeoutMs,
     maxResumeChars,
