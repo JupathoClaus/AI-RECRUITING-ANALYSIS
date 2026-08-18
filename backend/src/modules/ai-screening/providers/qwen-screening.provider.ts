@@ -81,7 +81,7 @@ export class QwenScreeningProvider implements AiScreeningProvider {
     let responseId: string;
 
     try {
-      const response = await (this.client.chat.completions as any).create(
+      const response = await this.client.chat.completions.create(
         {
           model: this.config.model,
           messages: [

@@ -89,7 +89,7 @@ export class DeepSeekScreeningProvider implements AiScreeningProvider {
     const startTime = Date.now();
 
     try {
-      const response = await (this.client.chat.completions as any).create(
+      const response = await this.client.chat.completions.create(
         {
           model: this.config.model,
           messages: [

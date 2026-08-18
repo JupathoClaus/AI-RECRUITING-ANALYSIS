@@ -1,9 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  ScreeningCriterion,
-  CriterionCategory,
-  CriterionRequirementType,
-} from '../domain/screening-criterion.type';
+import { ScreeningCriterion, CriterionRequirementType } from '../domain/screening-criterion.type';
 import { ApplicationData } from './screening-input-builder.service';
 
 // Weight budgets — must sum to 1.0 across a well-formed job.

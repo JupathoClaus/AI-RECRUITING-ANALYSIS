@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@database/prisma/prisma.service';
-import { ApplicationStatus, Prisma } from '@prisma/client';
+import { ApplicationStatus, ApplicationAuditEventType, Prisma } from '@prisma/client';
 
 const funnelStageOrder = ['Applied', 'Screened', 'Interviewed', 'Offered', 'Hired'] as const;
 
@@ -335,7 +335,7 @@ export class AnalyticsService {
             'APPLICATION_HIRED',
             'APPLICATION_RESUME_UPLOADED',
             'COMPANY_CANDIDATE_CREATED',
-          ] as any,
+          ] as ApplicationAuditEventType[],
         },
       },
       orderBy: { occurredAt: 'desc' },

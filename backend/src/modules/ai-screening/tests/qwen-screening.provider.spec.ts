@@ -28,7 +28,6 @@ import {
 } from '../providers/ai-screening-provider.errors';
 import { ScreeningInput } from '../domain/screening-input.type';
 import { ScreeningRecommendation } from '../domain/screening-recommendation.enum';
-import { ScreeningConfidence } from '../domain/screening-confidence.enum';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
