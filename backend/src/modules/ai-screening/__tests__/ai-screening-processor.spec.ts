@@ -5,6 +5,7 @@ import { PrismaService } from '@database/prisma/prisma.service';
 import { AiScreeningProcessor } from '../queue/ai-screening.processor';
 import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
 import { CriterionBuilderService } from '../services/criterion-builder.service';
+import { ExperienceDurationService } from '../services/experience-duration.service';
 import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
 import { AI_SCREENING_PROVIDER } from '../providers/ai-screening-provider.token';
 import { MockScreeningProvider } from '../providers/mock-screening.provider';
@@ -170,6 +171,7 @@ describe('AiScreeningProcessor', () => {
         ScreeningInputBuilderService,
         ResumeTextLoaderService,
         CriterionBuilderService,
+        ExperienceDurationService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: AI_SCREENING_PROVIDER, useValue: mockProvider },

@@ -9,6 +9,7 @@ import { AI_SCREENING_PROVIDER } from '../providers/ai-screening-provider.token'
 import { AiScreeningProvider } from '../providers/ai-screening-provider.interface';
 import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
 import { CriterionBuilderService } from '../services/criterion-builder.service';
+import { ExperienceDurationService } from '../services/experience-duration.service';
 import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
 import { computeScreeningFingerprint } from '../utils/screening-input-fingerprint';
 import { AiScreeningProviderError } from '../providers/ai-screening-provider.errors';
@@ -26,6 +27,7 @@ export class AiScreeningProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly inputBuilder: ScreeningInputBuilderService,
     private readonly criterionBuilder: CriterionBuilderService,
+    private readonly durationService: ExperienceDurationService,
     private readonly resumeLoader: ResumeTextLoaderService,
     @Inject(AI_SCREENING_PROVIDER) private readonly provider: AiScreeningProvider,
     configService: ConfigService,
@@ -147,6 +149,15 @@ export class AiScreeningProcessor extends WorkerHost {
           : undefined,
       );
 
+      // Deterministic experience duration from resume dates — attached only for
+      // the Qwen provider (legacy providers ignore ScreeningInput extensions).
+      // Computed from the FULL extracted text so truncation cannot undercount.
+      if (this.provider.providerName === 'qwen') {
+        screeningInput.experienceDuration = this.durationService.calculateFromResumeText(
+          completedExtraction.parsedText,
+        );
+      }
+
       const currentFingerprint = computeScreeningFingerprint({
         applicationId,
         input: screeningInput,
@@ -239,6 +250,10 @@ export class AiScreeningProcessor extends WorkerHost {
           evidence: result.evidence.length > 0 ? (result.evidence as never) : undefined,
           criteriaScores:
             result.criteriaScores.length > 0 ? (result.criteriaScores as never) : undefined,
+          criterionEvaluations:
+            result.criterionEvaluations && result.criterionEvaluations.length > 0
+              ? (result.criterionEvaluations as never)
+              : undefined,
           uncertainties: result.uncertainties.length > 0 ? result.uncertainties : undefined,
           riskFlags: result.riskFlags.length > 0 ? result.riskFlags : undefined,
           explanation: result.explanation,

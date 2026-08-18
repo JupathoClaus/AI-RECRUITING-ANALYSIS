@@ -5,6 +5,8 @@ import { PrismaService } from '@database/prisma/prisma.service';
 import { AiScreeningController } from '../ai-screening.controller';
 import { AiScreeningService, ScreeningResultOrAction } from '../ai-screening.service';
 import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
+import { CriterionBuilderService } from '../services/criterion-builder.service';
+import { ExperienceDurationService } from '../services/experience-duration.service';
 import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
 import { AI_SCREENING_QUEUE } from '../queue/ai-screening-queue.constants';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -72,6 +74,8 @@ describe('AiScreeningController', () => {
       providers: [
         AiScreeningService,
         ScreeningInputBuilderService,
+        CriterionBuilderService,
+        ExperienceDurationService,
         ResumeTextLoaderService,
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: getQueueToken(AI_SCREENING_QUEUE), useValue: mockQueue },

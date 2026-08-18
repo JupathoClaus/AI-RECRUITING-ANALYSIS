@@ -13,6 +13,8 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../../database/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { ScreeningInputBuilderService } from './services/screening-input-builder.service';
+import { CriterionBuilderService } from './services/criterion-builder.service';
+import { ExperienceDurationService } from './services/experience-duration.service';
 import {
   ResumeTextLoaderService,
   CompletedExtraction,
@@ -40,15 +42,30 @@ export class AiScreeningService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inputBuilder: ScreeningInputBuilderService,
+    private readonly criterionBuilder: CriterionBuilderService,
+    private readonly durationService: ExperienceDurationService,
     private readonly resumeLoader: ResumeTextLoaderService,
     private readonly extractionService: ResumeExtractionService,
     @InjectQueue(AI_SCREENING_QUEUE) private readonly screeningQueue: Queue,
     configService: ConfigService,
   ) {
     this.provider = configService.get<string>('aiScreening.provider') || 'mock';
-    this.model = configService.get<string>('aiScreening.openAiModel') || 'gpt-4o-mini';
+    this.model = this.resolveModelName(configService);
     this.promptVersion = configService.get<string>('aiScreening.promptVersion') || 'v1';
     this.schemaVersion = configService.get<string>('aiScreening.schemaVersion') || 'v1';
+  }
+
+  private resolveModelName(configService: ConfigService): string {
+    switch (this.provider) {
+      case 'openai':
+        return configService.get<string>('aiScreening.openAiModel') || 'gpt-4o-mini';
+      case 'deepseek':
+        return configService.get<string>('aiScreening.deepSeekModel') || 'deepseek-chat';
+      case 'qwen':
+        return configService.get<string>('aiScreening.qwenModel') || 'qwen3.5:9b';
+      default:
+        return 'mock';
+    }
   }
 
   async requestScreening(
@@ -137,7 +154,16 @@ export class AiScreeningService {
       application as never,
       completedExtraction,
       this.promptVersion,
+      // MUST mirror the processor's qwen context: criteria + deterministic
+      // duration are part of the fingerprint, so both sides must compute the
+      // exact same input or every qwen screening dies with STALE_FINGERPRINT.
+      this.provider === 'qwen' ? this.criterionBuilder.build(application as never) : undefined,
     );
+    if (this.provider === 'qwen') {
+      screeningInput.experienceDuration = this.durationService.calculateFromResumeText(
+        completedExtraction.parsedText,
+      );
+    }
 
     const fingerprint = computeScreeningFingerprint({
       applicationId,
@@ -412,6 +438,7 @@ export class AiScreeningService {
       missingQualifications: unknown;
       evidence: unknown;
       criteriaScores: unknown;
+      criterionEvaluations: unknown;
       uncertainties: unknown;
       riskFlags: unknown;
       explanation: string | null;
@@ -439,6 +466,8 @@ export class AiScreeningService {
       dto.missingQualifications = s.missingQualifications as string[];
     if (Array.isArray(s.evidence)) dto.evidence = s.evidence as never[];
     if (Array.isArray(s.criteriaScores)) dto.criteriaScores = s.criteriaScores as never[];
+    if (Array.isArray(s.criterionEvaluations))
+      dto.criterionEvaluations = s.criterionEvaluations as never[];
     if (Array.isArray(s.uncertainties)) dto.uncertainties = s.uncertainties as string[];
     if (Array.isArray(s.riskFlags)) dto.riskFlags = s.riskFlags as string[];
     dto.explanation = s.explanation ?? undefined;

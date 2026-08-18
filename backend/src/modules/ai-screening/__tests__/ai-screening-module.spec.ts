@@ -9,6 +9,8 @@ import {
 } from '../providers/openai-screening.provider';
 import { AI_SCREENING_QUEUE } from '../queue/ai-screening-queue.constants';
 import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
+import { CriterionBuilderService } from '../services/criterion-builder.service';
+import { ExperienceDurationService } from '../services/experience-duration.service';
 import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
 import { ResumeExtractionService } from '../../resume-processing/services/resume-extraction.service';
 import { AiScreeningService } from '../ai-screening.service';
@@ -78,6 +80,8 @@ describe('AiScreeningModule', () => {
     it('AiScreeningService can be instantiated', () => {
       const prisma = {} as PrismaService;
       const builder = new ScreeningInputBuilderService(mockConfig());
+      const criterionBuilder = new CriterionBuilderService();
+      const durationService = new ExperienceDurationService();
       const loader = new ResumeTextLoaderService(prisma);
       const extractionService = {
         requestExtraction: jest.fn(),
@@ -86,6 +90,8 @@ describe('AiScreeningModule', () => {
       const service = new AiScreeningService(
         prisma,
         builder,
+        criterionBuilder,
+        durationService,
         loader,
         extractionService,
         queue,

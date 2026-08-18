@@ -32,10 +32,22 @@ function createMockApplication(overrides?: Partial<ApplicationData>): Applicatio
       ],
       screeningQuestions: [{ id: 'q1', question: 'Years of experience?', required: true }],
       educationRequirements: [
-        { level: 'BACHELORS', fieldOfStudy: 'Computer Science', importance: 'REQUIRED', notes: null },
+        {
+          level: 'BACHELORS',
+          fieldOfStudy: 'Computer Science',
+          importance: 'REQUIRED',
+          notes: null,
+        },
       ],
       experienceRequirements: [
-        { title: 'Software Engineer', domain: 'Backend', minimumYears: 5, maximumYears: null, importance: 'REQUIRED', description: null },
+        {
+          title: 'Software Engineer',
+          domain: 'Backend',
+          minimumYears: 5,
+          maximumYears: null,
+          importance: 'REQUIRED',
+          description: null,
+        },
       ],
     },
     candidate: { id: 'cand-1' },
@@ -134,9 +146,14 @@ describe('ScreeningInputBuilderService', () => {
     expect(input.resumeText.length).toBeLessThanOrEqual(15000 + 25); // 15000 + truncation suffix
   });
 
-  it('freezes the returned object (immutable)', () => {
+  it('returns an extensible object so the Qwen path can attach experienceDuration', () => {
+    // The Qwen provider extends the input with the deterministic
+    // ExperienceDurationService result AFTER build(). The object must not be
+    // frozen, otherwise every qwen screening throws "not extensible".
     const input = builder.build(createMockApplication(), MOCK_RESUME_TEXT);
-    expect(Object.isFrozen(input)).toBe(true);
+    expect(Object.isExtensible(input)).toBe(true);
+    input.experienceDuration = { totalRelevantMonths: 24, uncertain: false, periods: [] };
+    expect(input.experienceDuration?.totalRelevantMonths).toBe(24);
   });
 
   it('includes responsibilities in jobResponsibilities field', () => {
@@ -157,8 +174,8 @@ describe('ScreeningInputBuilderService', () => {
 
   it('formats education requirements into requiredEducation string', () => {
     const input = builder.build(createMockApplication(), MOCK_RESUME_TEXT);
-    expect(input.requiredEducation).toContain("Bachelor");
-    expect(input.requiredEducation).toContain("Computer Science");
+    expect(input.requiredEducation).toContain('Bachelor');
+    expect(input.requiredEducation).toContain('Computer Science');
   });
 
   it('falls back to experienceLevel label when no experience requirements', () => {

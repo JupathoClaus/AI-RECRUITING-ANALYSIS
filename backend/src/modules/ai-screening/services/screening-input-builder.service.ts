@@ -180,7 +180,9 @@ export class ScreeningInputBuilderService {
         ? nameRedacted.slice(0, this.maxResumeChars) + '\n... [resume truncated]'
         : nameRedacted;
 
-    return Object.freeze({
+    // NOT frozen: the Qwen path extends the input with the deterministic
+    // experienceDuration computed by ExperienceDurationService after build.
+    return {
       applicationId: application.id,
       candidateId: application.candidate.id,
       jobId: job.id,
@@ -202,6 +204,6 @@ export class ScreeningInputBuilderService {
       screeningQuestions,
       promptVersion,
       ...(criteria && criteria.length > 0 ? { criteria } : {}),
-    });
+    };
   }
 }

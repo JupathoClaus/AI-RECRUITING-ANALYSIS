@@ -59,6 +59,15 @@ Do NOT produce FULLY_MET if the skill is only listed in a skills section with no
 Prefer PARTIALLY_MET when there is strong adjacent experience but not exact match.
 Use UNCERTAIN when dates are unclear or evidence is ambiguous.
 
+## DETERMINISTIC EXPERIENCE DURATION
+
+The backend has parsed the resume's employment dates and computed a total duration.
+If a "Deterministic experience duration" block is present in the job information:
+- Use the stated total months when judging criteria with a minimum years requirement.
+- Do NOT re-derive or recalculate dates yourself — the backend number is authoritative.
+- If the block says the estimate is uncertain, prefer UNCERTAIN for experience-length criteria when the dates matter.
+- You may still award FULLY_MET for domain-specific criteria when the resume shows deep relevant work, provided the total duration is consistent with the stated minimum.
+
 ## TRANSFERABLE SKILLS
 
 Recognise transferable and adjacent experience.
@@ -159,7 +168,9 @@ function formatCriteriaBlock(criteria: ScreeningCriterion[]): string {
       lines.push(`Minimum years required: ${c.minimumYears}`);
     }
     if (c.acceptedEvidence && c.acceptedEvidence.length > 0) {
-      lines.push(`Accepted evidence (examples only — do NOT keyword match): ${c.acceptedEvidence.join(', ')}`);
+      lines.push(
+        `Accepted evidence (examples only — do NOT keyword match): ${c.acceptedEvidence.join(', ')}`,
+      );
     }
     lines.push(`Description: ${c.description}`);
     lines.push('');
@@ -194,6 +205,23 @@ export function buildQwenCriterionPrompt(
     section('Job Description', input.jobDescription),
   ];
 
+  if (input.experienceDuration) {
+    const { totalRelevantMonths, uncertain, note } = input.experienceDuration;
+    const certainty = uncertain
+      ? 'UNCERTAIN — some dates were estimated, total may be approximate'
+      : 'deterministic (parsed from resume dates, overlapping periods merged)';
+    parts.push(
+      '',
+      section(
+        'Deterministic Experience Duration (backend-computed)',
+        `${totalRelevantMonths} months total employment. Status: ${certainty}.`,
+      ),
+    );
+    if (note) {
+      parts[parts.length - 1] += ` ${note}`;
+    }
+  }
+
   if (input.jobResponsibilities?.trim()) {
     parts.push('', section('Key Responsibilities', input.jobResponsibilities));
   }
@@ -209,10 +237,16 @@ export function buildQwenCriterionPrompt(
   } else {
     // Fallback when no structured criteria — provide skill/experience context
     if (input.requiredSkills.length > 0) {
-      parts.push(`## Required Skills\n${input.requiredSkills.map((s) => `  - ${s}`).join('\n')}`, '');
+      parts.push(
+        `## Required Skills\n${input.requiredSkills.map((s) => `  - ${s}`).join('\n')}`,
+        '',
+      );
     }
     if (input.preferredSkills.length > 0) {
-      parts.push(`## Preferred Skills\n${input.preferredSkills.map((s) => `  - ${s}`).join('\n')}`, '');
+      parts.push(
+        `## Preferred Skills\n${input.preferredSkills.map((s) => `  - ${s}`).join('\n')}`,
+        '',
+      );
     }
     if (input.requiredExperience?.trim()) {
       parts.push(section('Required Experience', input.requiredExperience), '');
@@ -226,7 +260,7 @@ export function buildQwenCriterionPrompt(
   parts.push(
     '# CANDIDATE RESUME',
     '',
-    'The candidate\'s name and contact details have been removed.',
+    "The candidate's name and contact details have been removed.",
     'Evaluate qualifications only.',
     '',
     truncatedResume,

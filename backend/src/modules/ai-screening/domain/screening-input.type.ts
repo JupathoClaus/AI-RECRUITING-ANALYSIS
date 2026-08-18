@@ -1,4 +1,5 @@
 import { ScreeningCriterion } from './screening-criterion.type';
+import { ExperienceDurationResult } from '../services/experience-duration.service';
 
 export interface ScreeningQuestionAnswer {
   question: string;
@@ -40,4 +41,12 @@ export interface ScreeningInput {
    * Legacy providers (mock, openai, deepseek) ignore this field.
    */
   criteria?: ScreeningCriterion[];
+
+  /**
+   * Deterministic employment-duration estimate computed by
+   * ExperienceDurationService from the resume's date ranges.
+   * Present for the Qwen provider; the model is shown it as context and
+   * the backend uses it to cap FULLY_MET claims on experience criteria.
+   */
+  experienceDuration?: ExperienceDurationResult;
 }

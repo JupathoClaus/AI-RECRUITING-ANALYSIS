@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 
 export interface ParsedPeriod {
-  start: string;      // "YYYY-MM" or "YYYY"
-  end: string;        // "YYYY-MM" or "YYYY" or "present"
-  months: number;     // deterministic duration
+  start: string; // "YYYY-MM" or "YYYY"
+  end: string; // "YYYY-MM" or "YYYY" or "present"
+  months: number; // deterministic duration
   uncertain: boolean; // true when dates were estimated or partial
 }
 
@@ -19,23 +19,41 @@ export interface ExperienceDurationResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MONTH_NAME_MAP: Record<string, number> = {
-  jan: 1, january: 1,
-  feb: 2, february: 2,
-  mar: 3, march: 3,
-  apr: 4, april: 4,
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
   may: 5,
-  jun: 6, june: 6,
-  jul: 7, july: 7,
-  aug: 8, august: 8,
-  sep: 9, september: 9, sept: 9,
-  oct: 10, october: 10,
-  nov: 11, november: 11,
-  dec: 12, december: 12,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  september: 9,
+  sept: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
 };
 
 /** Tokens that indicate "current / ongoing" employment */
 const PRESENT_TOKENS = new Set([
-  'present', 'current', 'now', 'ongoing', 'till date', 'to date', 'till now',
+  'present',
+  'current',
+  'now',
+  'ongoing',
+  'till date',
+  'to date',
+  'till now',
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,7 +62,7 @@ const PRESENT_TOKENS = new Set([
 
 interface ParsedDate {
   year: number;
-  month: number;   // 1-based
+  month: number; // 1-based
   uncertain: boolean;
 }
 
@@ -128,30 +146,25 @@ function toDisplayDate(d: ParsedDate): string {
 // Range extraction from resume text
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Split a date range string such as:
- *   "Jan 2021 – Jun 2024"
- *   "2019 - present"
- *   "March 2018 to August 2022"
- * into [startToken, endToken].
- */
-function splitRange(rangeStr: string): [string, string] | null {
-  // Normalise various dash and "to" separators
-  const normalised = rangeStr
-    .replace(/\s*[–—]\s*/g, ' ~~~ ')
-    .replace(/\s+to\s+/gi, ' ~~~ ')
-    .replace(/\s*-\s*/g, ' ~~~ ');
+// Date tokens: "Jan 2021", "2021-06", "06/2021", "2021/06", or bare "2021"
+const MONTH_NAME =
+  '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
 
-  const parts = normalised.split('~~~').map((p) => p.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    return [parts[0], parts[parts.length - 1]];
-  }
-  return null;
-}
+const DATE_TOKEN =
+  `(?:(?:${MONTH_NAME})[\\s,]+\\d{4}` + // Jan 2021 / January 2021
+  `|\\d{4}-\\d{1,2}` + // 2021-06
+  `|\\d{4}\\/\\d{1,2}` + // 2021/06
+  `|\\d{1,2}\\/\\d{4}` + // 06/2021
+  `|\\d{4})`; // 2021
 
-// Regex to find date range patterns in resume text
-const RANGE_PATTERN =
-  /(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[,\s]+)?\d{4}\s*(?:[-–—]|to)\s*(?:(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember|t)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)[,\s]+)?\d{4}|(?:present|current|now|ongoing|till\s+date|to\s+date|till\s+now)/gi;
+// Regex to find date range patterns in resume text. Supports:
+//   "Jan 2021 – Jun 2024", "January 2021 - Present", "2021-01 – 2024-06",
+//   "03/2021 – 06/2024", "2021 – 2024", "2021 to Present"
+// Group 1 = start token, group 2 = end token (or "present").
+const RANGE_PATTERN = new RegExp(
+  `(${DATE_TOKEN})\\s*(?:[-–—]|to)\\s*(present|current|now|ongoing|till\\s+date|to\\s+date|till\\s+now|${DATE_TOKEN})`,
+  'gi',
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public service
@@ -176,15 +189,14 @@ export class ExperienceDurationService {
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1; // 1-based
 
-    const rawRanges = resumeText.match(RANGE_PATTERN) ?? [];
     const periods: ParsedPeriod[] = [];
     let uncertain = false;
 
-    for (const rawRange of rawRanges) {
-      const split = splitRange(rawRange);
-      if (!split) continue;
+    for (const match of resumeText.matchAll(RANGE_PATTERN)) {
+      const startToken = match[1];
+      const endToken = match[2];
+      if (!startToken || !endToken) continue;
 
-      const [startToken, endToken] = split;
       const startDate = parseSingleDate(startToken);
       if (!startDate) continue;
 
@@ -229,11 +241,9 @@ export class ExperienceDurationService {
 
     return {
       totalRelevantMonths,
-      uncertain,
+      uncertain: uncertain || merged.some((p) => p.uncertain),
       periods: merged,
-      note: uncertain
-        ? 'Some dates were estimated; duration may be approximate.'
-        : undefined,
+      note: uncertain ? 'Some dates were estimated; duration may be approximate.' : undefined,
     };
   }
 
@@ -264,7 +274,8 @@ export class ExperienceDurationService {
     // Convert periods to [startOffset, endOffset] pairs
     const spans = periods.map((p) => {
       const start = this.parseDisplayDateOffset(p.start);
-      const endStr = p.end === 'present' ? `${_currentYear}-${String(_currentMonth).padStart(2, '0')}` : p.end;
+      const endStr =
+        p.end === 'present' ? `${_currentYear}-${String(_currentMonth).padStart(2, '0')}` : p.end;
       const end = this.parseDisplayDateOffset(endStr);
       return { start, end, original: p };
     });
@@ -277,11 +288,14 @@ export class ExperienceDurationService {
     for (let i = 1; i < spans.length; i++) {
       const next = spans[i];
       if (next.start <= current.end) {
-        // Overlapping — extend end if needed
+        // Overlapping — extend end if needed, propagate uncertainty
         current = {
           start: current.start,
           end: Math.max(current.end, next.end),
-          original: current.original,
+          original: {
+            ...current.original,
+            uncertain: current.original.uncertain || next.original.uncertain,
+          },
         };
       } else {
         merged.push(current);

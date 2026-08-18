@@ -5,8 +5,11 @@ import { NotFoundException, ConflictException, ServiceUnavailableException } fro
 import { PrismaService } from '@database/prisma/prisma.service';
 import { AiScreeningService } from '../ai-screening.service';
 import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
+import { CriterionBuilderService } from '../services/criterion-builder.service';
+import { ExperienceDurationService } from '../services/experience-duration.service';
 import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
 import { ResumeExtractionService } from '../../resume-processing/services/resume-extraction.service';
+import { computeScreeningFingerprint } from '../utils/screening-input-fingerprint';
 import { AI_SCREENING_QUEUE } from '../queue/ai-screening-queue.constants';
 
 const mockReadFile = jest.fn().mockResolvedValue('Parsed resume text content here.');
@@ -124,6 +127,8 @@ describe('AiScreeningService', () => {
         AiScreeningService,
         ScreeningInputBuilderService,
         ResumeTextLoaderService,
+        CriterionBuilderService,
+        ExperienceDurationService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: getQueueToken(AI_SCREENING_QUEUE), useValue: mockQueue },
         { provide: getQueueToken('resume-processing'), useValue: { add: jest.fn() } },
@@ -353,6 +358,89 @@ describe('AiScreeningService', () => {
       const result = await service.listScreenings('app-1', 'company-1', 1, 20);
       expect(result.data).toHaveLength(1);
       expect(result.total).toBe(1);
+    });
+  });
+
+  describe('qwen fingerprint consistency (service ↔ processor)', () => {
+    it('request-time fingerprint equals the processor-time fingerprint (no STALE_FINGERPRINT)', async () => {
+      // The processor builds the input WITH criteria + deterministic duration.
+      // The service must build the identical input at request time or every
+      // qwen screening fails with STALE_FINGERPRINT.
+      const qwenConfig = {
+        get: (key: string) => {
+          if (key === 'aiScreening.provider') return 'qwen';
+          if (key === 'aiScreening.qwenModel') return 'qwen3.5:9b';
+          return mockConfigService.get(key);
+        },
+      };
+
+      const module = await Test.createTestingModule({
+        providers: [
+          AiScreeningService,
+          ScreeningInputBuilderService,
+          ResumeTextLoaderService,
+          CriterionBuilderService,
+          ExperienceDurationService,
+          { provide: PrismaService, useValue: mockPrisma },
+          { provide: getQueueToken(AI_SCREENING_QUEUE), useValue: mockQueue },
+          { provide: getQueueToken('resume-processing'), useValue: { add: jest.fn() } },
+          { provide: ResumeExtractionService, useValue: { requestExtraction: jest.fn() } },
+          { provide: ConfigService, useValue: qwenConfig },
+        ],
+      }).compile();
+      const qwenService = module.get<AiScreeningService>(AiScreeningService);
+
+      mockPrisma.application.findFirst.mockResolvedValue(mockApplication);
+      mockPrisma.aiScreeningResult.findFirst.mockResolvedValue(null);
+      let captured: { data: Record<string, unknown> } | null = null;
+      mockPrisma.$transaction.mockImplementation(
+        async (cb: (client: typeof mockPrisma) => unknown) => {
+          mockPrisma.aiScreeningResult.create.mockImplementation(
+            (args: { data: Record<string, unknown> }) => {
+              captured = args;
+              return { id: 'screen-qwen', ...args.data, createdAt: new Date() };
+            },
+          );
+          return cb(mockPrisma);
+        },
+      );
+
+      await qwenService.requestScreening('app-1', 'company-1', 'user-1');
+
+      // Recompute the fingerprint the way the processor does:
+      const inputBuilder = module.get<ScreeningInputBuilderService>(ScreeningInputBuilderService);
+      const criterionBuilder = module.get<CriterionBuilderService>(CriterionBuilderService);
+      const durationService = module.get<ExperienceDurationService>(ExperienceDurationService);
+      const extraction = {
+        parsedText: 'Parsed resume text content here.',
+        sourceFileSha256: 'def',
+      };
+      const processorInput = inputBuilder.build(
+        mockApplication as never,
+        extraction as never,
+        'v1',
+        criterionBuilder.build(mockApplication as never),
+      );
+      processorInput.experienceDuration = durationService.calculateFromResumeText(
+        extraction.parsedText,
+      );
+
+      const expectedFingerprint = computeScreeningFingerprint({
+        applicationId: 'app-1',
+        input: processorInput,
+        jobUpdatedAt: mockApplication.job.updatedAt.toISOString(),
+        resumeChecksumSha256: 'abc123',
+        resumeUpdatedAt: mockApplication.resumeFiles[0].updatedAt.toISOString(),
+        provider: 'qwen',
+        model: 'qwen3.5:9b',
+        promptVersion: 'v1',
+        schemaVersion: 'v1',
+      });
+
+      expect(captured).not.toBeNull();
+      expect(captured!.data.inputFingerprint).toBe(expectedFingerprint);
+      // The model recorded for qwen must be the qwen model, not openAiModel
+      expect(captured!.data.model).toBe('qwen3.5:9b');
     });
   });
 });
