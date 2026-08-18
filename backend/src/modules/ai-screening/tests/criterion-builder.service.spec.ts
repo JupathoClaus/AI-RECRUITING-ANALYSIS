@@ -26,7 +26,9 @@ function makeApp(overrides: Partial<ApplicationData['job']> = {}): ApplicationDa
 
 describe('CriterionBuilderService', () => {
   let svc: CriterionBuilderService;
-  beforeEach(() => { svc = new CriterionBuilderService(); });
+  beforeEach(() => {
+    svc = new CriterionBuilderService();
+  });
 
   it('builds skill criteria from job skills', () => {
     const app = makeApp({
@@ -36,8 +38,12 @@ describe('CriterionBuilderService', () => {
       ],
     });
     const criteria = svc.build(app);
-    expect(criteria.some((c) => c.name === 'TypeScript' && c.requirementType === 'REQUIRED')).toBe(true);
-    expect(criteria.some((c) => c.name === 'React' && c.requirementType === 'PREFERRED')).toBe(true);
+    expect(criteria.some((c) => c.name === 'TypeScript' && c.requirementType === 'REQUIRED')).toBe(
+      true,
+    );
+    expect(criteria.some((c) => c.name === 'React' && c.requirementType === 'PREFERRED')).toBe(
+      true,
+    );
   });
 
   it('builds experience criteria from experienceRequirements', () => {
@@ -63,14 +69,19 @@ describe('CriterionBuilderService', () => {
   it('builds education criteria from educationRequirements', () => {
     const app = makeApp({
       educationRequirements: [
-        { level: 'BACHELORS', fieldOfStudy: 'Computer Science', importance: 'REQUIRED', notes: null },
+        {
+          level: 'BACHELORS',
+          fieldOfStudy: 'Computer Science',
+          importance: 'REQUIRED',
+          notes: null,
+        },
       ],
     });
     const criteria = svc.build(app);
     const eduCrit = criteria.find((c) => c.category === 'EDUCATION');
     expect(eduCrit).toBeDefined();
     expect(eduCrit?.requirementType).toBe('REQUIRED');
-    expect(eduCrit?.name).toContain("Bachelor");
+    expect(eduCrit?.name).toContain('Bachelor');
   });
 
   it('synthesises fallback experience criterion from experienceLevel when no explicit reqs', () => {

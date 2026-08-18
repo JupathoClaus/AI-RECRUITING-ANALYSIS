@@ -8,12 +8,7 @@
 export type CriterionRequirementType = 'HARD_REQUIREMENT' | 'REQUIRED' | 'PREFERRED';
 
 export type CriterionCategory =
-  | 'SKILL'
-  | 'EXPERIENCE'
-  | 'EDUCATION'
-  | 'CERTIFICATION'
-  | 'RESPONSIBILITY'
-  | 'OTHER';
+  'SKILL' | 'EXPERIENCE' | 'EDUCATION' | 'CERTIFICATION' | 'RESPONSIBILITY' | 'OTHER';
 
 export interface ScreeningCriterion {
   /** Stable identifier — used to cross-reference evaluations with criteria */

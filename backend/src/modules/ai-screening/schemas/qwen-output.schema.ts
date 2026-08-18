@@ -1,13 +1,26 @@
 import { ScreeningConfidence } from '../domain/screening-confidence.enum';
 import { ScreeningSourceCategory } from '../domain/screening-source-category.enum';
-import { CriterionStatus, QwenScreeningOutput, CriterionEvaluation } from '../domain/criterion-evaluation.type';
+import {
+  CriterionStatus,
+  QwenScreeningOutput,
+  CriterionEvaluation,
+} from '../domain/criterion-evaluation.type';
 import { CriterionRequirementType } from '../domain/screening-criterion.type';
 import { AiScreeningMalformedResponseError } from '../providers/ai-screening-provider.errors';
 
-const ALLOWED_STATUSES = new Set<CriterionStatus>(['FULLY_MET', 'PARTIALLY_MET', 'NOT_MET', 'UNCERTAIN']);
+const ALLOWED_STATUSES = new Set<CriterionStatus>([
+  'FULLY_MET',
+  'PARTIALLY_MET',
+  'NOT_MET',
+  'UNCERTAIN',
+]);
 const ALLOWED_CONFIDENCE = new Set(Object.values(ScreeningConfidence));
 const ALLOWED_SOURCE_CATEGORIES = new Set(Object.values(ScreeningSourceCategory));
-const ALLOWED_REQUIREMENT_TYPES = new Set<CriterionRequirementType>(['HARD_REQUIREMENT', 'REQUIRED', 'PREFERRED']);
+const ALLOWED_REQUIREMENT_TYPES = new Set<CriterionRequirementType>([
+  'HARD_REQUIREMENT',
+  'REQUIRED',
+  'PREFERRED',
+]);
 
 const MAX_CRITERIA = 50;
 const MAX_EVIDENCE_PER_CRITERION = 20;
@@ -35,7 +48,10 @@ function assertString(value: unknown, field: string): string {
  * Validate and parse the raw JSON object returned by the Qwen model.
  * Throws AiScreeningMalformedResponseError on any schema violation.
  */
-export function validateQwenOutput(raw: unknown, expectedCriterionIds?: string[]): QwenScreeningOutput {
+export function validateQwenOutput(
+  raw: unknown,
+  expectedCriterionIds?: string[],
+): QwenScreeningOutput {
   if (typeof raw !== 'object' || raw === null) {
     throw new AiScreeningMalformedResponseError('Qwen output must be a non-null object');
   }
@@ -65,10 +81,16 @@ export function validateQwenOutput(raw: unknown, expectedCriterionIds?: string[]
 
     const ev = item as Record<string, unknown>;
 
-    const criterionId = assertNonEmptyString(ev.criterionId, `criterionEvaluations[${i}].criterionId`);
+    const criterionId = assertNonEmptyString(
+      ev.criterionId,
+      `criterionEvaluations[${i}].criterionId`,
+    );
     const criterion = assertNonEmptyString(ev.criterion, `criterionEvaluations[${i}].criterion`);
 
-    const requirementType = assertString(ev.requirementType, `criterionEvaluations[${i}].requirementType`);
+    const requirementType = assertString(
+      ev.requirementType,
+      `criterionEvaluations[${i}].requirementType`,
+    );
     if (!ALLOWED_REQUIREMENT_TYPES.has(requirementType as CriterionRequirementType)) {
       throw new AiScreeningMalformedResponseError(
         `criterionEvaluations[${i}].requirementType must be one of: ${Array.from(ALLOWED_REQUIREMENT_TYPES).join(', ')}`,
@@ -111,7 +133,10 @@ export function validateQwenOutput(raw: unknown, expectedCriterionIds?: string[]
         );
       }
       const e = evItem as Record<string, unknown>;
-      const sourceCat = assertString(e.sourceCategory, `criterionEvaluations[${i}].evidence[${j}].sourceCategory`);
+      const sourceCat = assertString(
+        e.sourceCategory,
+        `criterionEvaluations[${i}].evidence[${j}].sourceCategory`,
+      );
       if (!ALLOWED_SOURCE_CATEGORIES.has(sourceCat as ScreeningSourceCategory)) {
         throw new AiScreeningMalformedResponseError(
           `criterionEvaluations[${i}].evidence[${j}].sourceCategory invalid: ${sourceCat}`,
