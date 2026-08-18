@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { CriterionEvaluation } from '../domain/criterion-evaluation.type';
 import { ScreeningConfidence } from '../domain/screening-confidence.enum';
 
-export type VerificationStatus = 'VERIFIED' | 'INFERRED' | 'UNVERIFIED';
+export type VerificationStatus = 'VERBATIM' | 'SUPPORTED' | 'INFERRED' | 'UNVERIFIED';
 
 export interface VerifiedEvidence {
   sourceCategory: string;
@@ -17,10 +17,16 @@ export interface VerifiedEvidence {
  * actual resume text to detect hallucinated or fabricated source quotes.
  *
  * Matching strategy (in order of strictness):
- * 1. EXACT: normalised quote is a direct substring of the normalised resume.
- * 2. INFERRED: all significant words (≥4 chars) from the quote appear in the
- *    resume within a short sliding window — paraphrase detection.
- * 3. UNVERIFIED: no meaningful match found.
+ * 1. VERBATIM: normalised quote is a direct substring of the normalised resume.
+ * 2. SUPPORTED: ≥80% of significant words (≥4 chars) appear in the resume —
+ *    a close paraphrase. NOT treated as a verbatim quote.
+ * 3. INFERRED: 50–79% of significant words appear in the resume — a loose
+ *    paraphrase or partial overlap.
+ * 4. UNVERIFIED: less than half of the significant words found, or the quote
+ *    contains fabricated claims.
+ *
+ * Only UNVERIFIED marks evidence as unverified. SUPPORTED/INFERRED are
+ * paraphrases and are never displayed as exact quotes by the UI.
  *
  * Empty sourceText is always INFERRED (the model explicitly withheld the quote)
  * and does not trigger an unverified flag.
@@ -33,10 +39,7 @@ export class EvidenceVerificationService {
    * Verify all evidence items across a list of criterion evaluations.
    * Returns a new array of evaluations with evidenceUnverified set where needed.
    */
-  verifyEvaluations(
-    evaluations: CriterionEvaluation[],
-    resumeText: string,
-  ): CriterionEvaluation[] {
+  verifyEvaluations(evaluations: CriterionEvaluation[], resumeText: string): CriterionEvaluation[] {
     const normalisedResume = normaliseText(resumeText);
 
     return evaluations.map((ev) => {
@@ -70,15 +73,11 @@ export class EvidenceVerificationService {
 
   /**
    * Verify a single evidence item against normalised resume text.
-   * Returns VERIFIED, INFERRED, or UNVERIFIED.
+   * Returns VERBATIM, SUPPORTED, INFERRED, or UNVERIFIED.
    */
-  verify(
-    sourceText: string,
-    sourceCategory: string,
-    normalisedResume: string,
-  ): VerificationStatus {
+  verify(sourceText: string, sourceCategory: string, normalisedResume: string): VerificationStatus {
     // Non-resume sources don't need verification
-    if (sourceCategory !== 'RESUME') return 'VERIFIED';
+    if (sourceCategory !== 'RESUME') return 'VERBATIM';
 
     const text = sourceText.trim();
 
@@ -87,19 +86,22 @@ export class EvidenceVerificationService {
 
     const normText = normaliseText(text);
 
-    // 1. Exact (normalised) substring match
-    if (normalisedResume.includes(normText)) return 'VERIFIED';
+    // 1. Verbatim (normalised) substring match — the resume actually contains
+    //    this exact quote.
+    if (normalisedResume.includes(normText)) return 'VERBATIM';
 
-    // 2. Inferred: most significant words appear in resume
+    // 2. Overlap-based paraphrase detection. A high overlap is NOT treated as
+    //    a verbatim quote — the claim's framing (e.g. "Led" vs "Assisted") may
+    //    still be fabricated.
     const words = significantWords(normText);
     if (words.length === 0) return 'INFERRED'; // too short to verify
 
     const matchCount = words.filter((w) => normalisedResume.includes(w)).length;
     const matchRatio = matchCount / words.length;
 
-    if (matchRatio >= 0.8) return 'VERIFIED';   // almost all words found
-    if (matchRatio >= 0.5) return 'INFERRED';   // majority found — paraphrase
-    return 'UNVERIFIED';                         // less than half found
+    if (matchRatio >= 0.8) return 'SUPPORTED'; // close paraphrase — vocabulary mostly present
+    if (matchRatio >= 0.5) return 'INFERRED'; // loose paraphrase — majority of words present
+    return 'UNVERIFIED'; // less than half of the claim's words appear in the resume
   }
 }
 
