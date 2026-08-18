@@ -112,10 +112,7 @@ export class FilesController {
   @Get('company/logo')
   @RequirePermissions('company.read')
   @ApiOperation({ summary: 'Download the active company logo' })
-  async downloadCompanyLogo(
-    @CurrentUser() user: AuthenticatedPrincipal,
-    @Res() res: Response,
-  ) {
+  async downloadCompanyLogo(@CurrentUser() user: AuthenticatedPrincipal, @Res() res: Response) {
     const result = await this.filesService.downloadCompanyLogo(user.activeCompanyId!);
     res.setHeader('Content-Type', result.mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${result.originalName}"`);

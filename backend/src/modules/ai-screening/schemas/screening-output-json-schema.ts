@@ -47,7 +47,15 @@ export const SCREENING_OUTPUT_JSON_SCHEMA = {
           isRequired: { type: ['boolean', 'null'] },
         },
         // All declared properties must be in required for strict mode
-        required: ['criterion', 'sourceCategory', 'sourceText', 'assessment', 'score', 'weight', 'isRequired'],
+        required: [
+          'criterion',
+          'sourceCategory',
+          'sourceText',
+          'assessment',
+          'score',
+          'weight',
+          'isRequired',
+        ],
         additionalProperties: false,
       },
     },

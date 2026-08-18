@@ -16,7 +16,10 @@ export const validationSchema = Joi.object({
     .required()
     .pattern(/^postgresql:\/\//),
   REDIS_HOST: Joi.string().default('localhost'),
-  REDIS_URL: Joi.string().uri({ scheme: ['redis', 'rediss'] }).optional().allow(''),
+  REDIS_URL: Joi.string()
+    .uri({ scheme: ['redis', 'rediss'] })
+    .optional()
+    .allow(''),
   REDIS_PORT: Joi.number().port().default(6379),
   REDIS_PASSWORD: Joi.string().optional().allow(''),
   REDIS_DB: Joi.number().default(0),
