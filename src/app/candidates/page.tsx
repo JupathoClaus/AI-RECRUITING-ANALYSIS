@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
 import { buildBulkActionFeedback } from "@/lib/candidates-bulk-actions"
-import { startBulkScreening, getBulkScreeningProgress, BulkBatchProgress } from "@/lib/api/ai-screening.api"
+import { startBulkScreening, getBulkScreeningProgress, getRecentBulkScreening, BulkBatchProgress } from "@/lib/api/ai-screening.api"
 import { SendAiInterviewModal } from "@/components/ai-interview/send-ai-interview-modal"
 import { AddCandidateDialog } from "@/components/candidates/add-candidate-dialog"
 import { ScreeningProgress } from "@/components/ai-screening/screening-progress"
@@ -256,6 +256,93 @@ export default function CandidatesPage() {
   const [bulkBatch, setBulkBatch] = React.useState<BulkBatchProgress | null>(null)
   const [bulkBatchError, setBulkBatchError] = React.useState<string | null>(null)
   const bulkPollRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pollFailuresRef = React.useRef(0)
+
+  const BULK_BATCH_STORAGE_KEY = "talentai.activeBulkBatchId"
+
+  const persistBatchId = React.useCallback((batchId: string | null) => {
+    try {
+      if (batchId) sessionStorage.setItem(BULK_BATCH_STORAGE_KEY, batchId)
+      else sessionStorage.removeItem(BULK_BATCH_STORAGE_KEY)
+    } catch {
+      // sessionStorage unavailable — progress simply won't survive reload
+    }
+  }, [])
+
+  const stopBulkPolling = React.useCallback(() => {
+    if (bulkPollRef.current) {
+      clearTimeout(bulkPollRef.current)
+      bulkPollRef.current = null
+    }
+  }, [])
+
+  // Poll batch progress until a terminal state. Survives navigation because
+  // the batch lives on the backend; the batchId is persisted in sessionStorage
+  // and rediscovered on mount via the backend's recent-batch lookup.
+  const pollBulkBatch = React.useCallback(async function poll(batchId: string) {
+    try {
+      const progress = await getBulkScreeningProgress(batchId)
+      pollFailuresRef.current = 0
+      setBulkBatch(progress)
+      setBulkBatchError(null)
+      const terminal =
+        progress.status === "COMPLETED" ||
+        progress.status === "FAILED" ||
+        progress.status === "PARTIALLY_COMPLETED"
+      if (terminal) {
+        persistBatchId(null)
+        setBulkScreening(false)
+      } else {
+        bulkPollRef.current = setTimeout(() => poll(batchId), 4000)
+      }
+    } catch {
+      // Transient network/server error — retry with backoff, then give up
+      pollFailuresRef.current += 1
+      if (pollFailuresRef.current >= 5) {
+        persistBatchId(null)
+        setBulkScreening(false)
+        setBulkBatchError(
+          "Bulk screening is still running in the background, but live progress is temporarily unavailable. Reload the page to re-check."
+        )
+      } else {
+        bulkPollRef.current = setTimeout(() => poll(batchId), 8000)
+      }
+    }
+  }, [persistBatchId])
+
+  // Rediscover an active batch after navigation or a browser reload
+  React.useEffect(() => {
+    let active = true
+    const stored = sessionStorage.getItem(BULK_BATCH_STORAGE_KEY)
+    if (stored) {
+      queueMicrotask(() => {
+        if (!active) return
+        setBulkScreening(true)
+        void pollBulkBatch(stored)
+      })
+      return () => { active = false }
+    }
+    void getRecentBulkScreening()
+      .then((batch) => {
+        if (!active || !batch) return
+        const terminal =
+          batch.status === "COMPLETED" ||
+          batch.status === "FAILED" ||
+          batch.status === "PARTIALLY_COMPLETED"
+        if (terminal) return
+        persistBatchId(batch.batchId)
+        queueMicrotask(() => {
+          if (!active) return
+          setBulkScreening(true)
+          void pollBulkBatch(batch.batchId)
+        })
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [pollBulkBatch, persistBatchId])
+
+  // No timers leak on unmount
+  React.useEffect(() => () => stopBulkPolling(), [stopBulkPolling])
 
   React.useEffect(() => {
     void Promise.all([fetchCandidates(), fetchJobs()])
@@ -345,7 +432,8 @@ export default function CandidatesPage() {
     setBulkScreening(true)
     setBulkBatch(null)
     setBulkBatchError(null)
-    if (bulkPollRef.current) clearTimeout(bulkPollRef.current)
+    stopBulkPolling()
+    pollFailuresRef.current = 0
 
     // Collect the applicationIds for the selected candidates
     const appIds: string[] = []
@@ -363,26 +451,15 @@ export default function CandidatesPage() {
 
     try {
       const response = await startBulkScreening({ mode: "SELECTED", applicationIds: appIds })
-      // Start polling progress
-      const pollProgress = async () => {
-        try {
-          const progress = await getBulkScreeningProgress(response.batchId)
-          setBulkBatch(progress)
-          if (progress.status !== "COMPLETED" && progress.status !== "FAILED" && progress.status !== "PARTIALLY_COMPLETED") {
-            bulkPollRef.current = setTimeout(pollProgress, 4000)
-          } else {
-            setBulkScreening(false)
-          }
-        } catch {
-          setBulkScreening(false)
-        }
-      }
-      bulkPollRef.current = setTimeout(pollProgress, 2000)
+      // Persist the batch so progress can be resumed after navigation/reload
+      persistBatchId(response.batchId)
+      bulkPollRef.current = setTimeout(() => pollBulkBatch(response.batchId), 2000)
     } catch (err) {
+      persistBatchId(null)
       setBulkBatchError(err instanceof Error ? err.message : "Bulk screening failed to start")
       setBulkScreening(false)
     }
-  }, [selectedIds, candidates])
+  }, [selectedIds, candidates, pollBulkBatch, persistBatchId, stopBulkPolling])
 
   const newCount = candidates.filter((c) => getDisplayStatus(c) === "Applied").length
   const pipelineCount = candidates.filter((c) => getDisplayStatus(c) === "Interview").length
@@ -528,6 +605,7 @@ export default function CandidatesPage() {
                     {" · "}Human Review: <span className="font-semibold text-yellow-600">{bulkBatch.humanReview}</span>
                     {" · "}Not Recommended: <span className="font-semibold text-red-600">{bulkBatch.notRecommended}</span>
                     {bulkBatch.failed > 0 && <span className="text-red-600"> · Failed: {bulkBatch.failed}</span>}
+                    {bulkBatch.skipped > 0 && <span className="text-muted-foreground"> · Skipped: {bulkBatch.skipped}</span>}
                   </p>
                 )}
                 {bulkBatch.status === "RUNNING" && (

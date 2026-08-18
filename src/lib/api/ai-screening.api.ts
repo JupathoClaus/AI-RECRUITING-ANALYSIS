@@ -176,6 +176,7 @@ export interface BulkBatchProgress {
   total: number
   completed: number
   failed: number
+  skipped: number
   pending: number
   recommended: number
   humanReview: number
@@ -198,4 +199,8 @@ export async function getBulkScreeningProgress(
   batchId: string,
 ): Promise<BulkBatchProgress> {
   return apiRequest<BulkBatchProgress>(`/ai-screenings/batches/${batchId}`)
+}
+
+export async function getRecentBulkScreening(): Promise<BulkBatchProgress | null> {
+  return apiRequest<BulkBatchProgress | null>('/ai-screenings/batches/recent')
 }
