@@ -1,13 +1,16 @@
 /**
- * Semantic Reasoning Benchmark
+ * Screening Pipeline Semantic Scenarios — INFRASTRUCTURE TEST
  *
- * These tests validate the overall screening pipeline logic using controlled
- * synthetic criterion evaluations. They prove that the scoring engine and
- * recommendation logic produce the correct outputs for each case.
+ * IMPORTANT: These tests are NOT a live-model semantic benchmark.
  *
- * Note: The AI reasoning quality (whether Qwen actually understands semantics)
- * is verified separately via live Ollama runs (task 15).
- * These tests prove the INFRASTRUCTURE handles the outputs correctly.
+ * Each case HARD-CODES the simulated model evaluation (simulatedEvalStatus)
+ * and then exercises the evidence-verification + deterministic scoring
+ * pipeline. They prove the infrastructure handles correct/incorrect model
+ * outputs the right way — they do NOT prove Qwen3.5 understands REST APIs,
+ * PostgreSQL, Linux, leadership, or negation.
+ *
+ * Live-model verification must be performed against a running Ollama/vLLM
+ * endpoint (see the audit report for the live-benchmark procedure).
  */
 
 import { BackendScoringService } from '../services/backend-scoring.service';
@@ -63,19 +66,21 @@ function bench(
     const result = scorer.score({
       evaluations: verified,
       criteria: [criterion],
-      hasUnverifiedCriticalEvidence: verified.some((e) => e.evidenceUnverified && e.requirementType !== 'PREFERRED'),
+      hasUnverifiedCriticalEvidence: verified.some(
+        (e) => e.evidenceUnverified && e.requirementType !== 'PREFERRED',
+      ),
     });
 
     expect(result.recommendation).toBe(expectedRecommendation);
   });
 }
 
-describe('Semantic Reasoning Benchmark — 8 Cases', () => {
+describe('Screening Pipeline — Semantic Scenarios (simulated model output)', () => {
   /**
    * Case 1: REST API development — semantic match
    * Job: "Experience developing REST APIs"
    * Resume: "Designed and maintained NestJS services exposing HTTP endpoints"
-   * Expected: Model returns FULLY_MET → SHORTLIST
+   * Simulated model output: FULLY_MET → SHORTLIST
    */
   bench(
     'Case 1 — REST API semantic equivalence',
@@ -91,7 +96,7 @@ describe('Semantic Reasoning Benchmark — 8 Cases', () => {
    * Case 2: Relational databases — semantic match
    * Job: "Experience with relational databases"
    * Resume: "Designed PostgreSQL schemas and optimized SQL queries."
-   * Expected: FULLY_MET → SHORTLIST
+   * Simulated model output: FULLY_MET → SHORTLIST
    */
   bench(
     'Case 2 — Relational database semantic equivalence',
@@ -107,7 +112,7 @@ describe('Semantic Reasoning Benchmark — 8 Cases', () => {
    * Case 3: Linux server administration — semantic match
    * Job: "Experience managing Linux servers"
    * Resume: "Administered Ubuntu production infrastructure and automated deployments."
-   * Expected: FULLY_MET → SHORTLIST
+   * Simulated model output: FULLY_MET → SHORTLIST
    */
   bench(
     'Case 3 — Linux server semantic match',
@@ -123,7 +128,7 @@ describe('Semantic Reasoning Benchmark — 8 Cases', () => {
    * Case 4: Leadership experience — semantic match
    * Job: "Leadership experience"
    * Resume: "Led a five-person development team and coordinated sprint delivery."
-   * Expected: FULLY_MET → SHORTLIST
+   * Simulated model output: FULLY_MET → SHORTLIST
    */
   bench(
     'Case 4 — Leadership semantic match',
@@ -139,7 +144,7 @@ describe('Semantic Reasoning Benchmark — 8 Cases', () => {
    * Case 5: Culinary experience — semantic match
    * Job: "Culinary experience"
    * Resume: "Prepared meals for a hotel restaurant and managed kitchen prep operations."
-   * Expected: FULLY_MET → SHORTLIST
+   * Simulated model output: FULLY_MET → SHORTLIST
    */
   bench(
     'Case 5 — Culinary semantic match',
@@ -155,7 +160,7 @@ describe('Semantic Reasoning Benchmark — 8 Cases', () => {
    * Case 6: NestJS — transferable skill (Node.js + Express → PARTIALLY_MET)
    * Job: "NestJS experience"
    * Resume: "Built Node.js and Express REST APIs using TypeScript."
-   * Expected: PARTIALLY_MET → HUMAN_REVIEW (score=50, between 38–72)
+   * Simulated model output: PARTIALLY_MET → HUMAN_REVIEW (score=50, between 38–72)
    */
   bench(
     'Case 6 — NestJS transferable (Node.js + Express → PARTIALLY_MET)',
@@ -169,16 +174,14 @@ describe('Semantic Reasoning Benchmark — 8 Cases', () => {
 
   /**
    * Case 7: NEGATION — "I have never worked with TypeScript"
-   * This is the critical false-positive prevention test.
    * The keyword "TypeScript" appears in the resume text but in a negative context.
-   * The model must return NOT_MET (not FULLY_MET).
-   * Expected: NOT_MET → NOT_SHORTLIST
+   * Simulated model output: NOT_MET → NOT_SHORTLIST
    */
   bench(
     'Case 7 — Negation: TypeScript explicitly denied',
     'TypeScript',
     'I have never worked with TypeScript and do not have experience with it.',
-    'NOT_MET',  // Model must detect negation and return NOT_MET
+    'NOT_MET', // Model must detect negation and return NOT_MET
     ScreeningConfidence.HIGH,
     'I have never worked with TypeScript',
     ScreeningRecommendation.NOT_SHORTLIST,
@@ -187,7 +190,7 @@ describe('Semantic Reasoning Benchmark — 8 Cases', () => {
   /**
    * Case 8: Skills list only — ambiguous evidence
    * Resume only lists "Kubernetes" in a skills section with no work evidence.
-   * Expected: PARTIALLY_MET or UNCERTAIN → HUMAN_REVIEW
+   * Simulated model output: UNCERTAIN → HUMAN_REVIEW
    */
   bench(
     'Case 8 — Skills list without evidence → UNCERTAIN → HUMAN_REVIEW',
@@ -195,7 +198,7 @@ describe('Semantic Reasoning Benchmark — 8 Cases', () => {
     'Skills: Python, JavaScript, Docker, Kubernetes, AWS.',
     'UNCERTAIN',
     ScreeningConfidence.LOW,
-    '',  // empty sourceText — model has no direct evidence to quote
+    '', // empty sourceText — model has no direct evidence to quote
     ScreeningRecommendation.HUMAN_REVIEW,
   );
 });
@@ -208,26 +211,109 @@ describe('Multi-Job Isolation — candidate results never mix', () => {
   it('candidate A (React engineer) and candidate B (Chef) produce separate results', () => {
     // Candidate A: React + TypeScript job
     const reactCriteria: ScreeningCriterion[] = [
-      { id: 'r-1', name: 'React', description: 'React experience', requirementType: 'REQUIRED', category: 'SKILL', weight: 0.5 },
-      { id: 'r-2', name: 'TypeScript', description: 'TypeScript', requirementType: 'REQUIRED', category: 'SKILL', weight: 0.5 },
+      {
+        id: 'r-1',
+        name: 'React',
+        description: 'React experience',
+        requirementType: 'REQUIRED',
+        category: 'SKILL',
+        weight: 0.5,
+      },
+      {
+        id: 'r-2',
+        name: 'TypeScript',
+        description: 'TypeScript',
+        requirementType: 'REQUIRED',
+        category: 'SKILL',
+        weight: 0.5,
+      },
     ];
     const reactEvaluations: CriterionEvaluation[] = [
-      { criterionId: 'r-1', criterion: 'React', requirementType: 'REQUIRED', status: 'FULLY_MET', reason: 'Strong React experience.', confidence: ScreeningConfidence.HIGH, evidence: [{ sourceCategory: ScreeningSourceCategory.RESUME, sourceText: 'Built React dashboards at ABC Ltd.' }] },
-      { criterionId: 'r-2', criterion: 'TypeScript', requirementType: 'REQUIRED', status: 'FULLY_MET', reason: 'TypeScript developer.', confidence: ScreeningConfidence.HIGH, evidence: [{ sourceCategory: ScreeningSourceCategory.RESUME, sourceText: 'TypeScript production experience.' }] },
+      {
+        criterionId: 'r-1',
+        criterion: 'React',
+        requirementType: 'REQUIRED',
+        status: 'FULLY_MET',
+        reason: 'Strong React experience.',
+        confidence: ScreeningConfidence.HIGH,
+        evidence: [
+          {
+            sourceCategory: ScreeningSourceCategory.RESUME,
+            sourceText: 'Built React dashboards at ABC Ltd.',
+          },
+        ],
+      },
+      {
+        criterionId: 'r-2',
+        criterion: 'TypeScript',
+        requirementType: 'REQUIRED',
+        status: 'FULLY_MET',
+        reason: 'TypeScript developer.',
+        confidence: ScreeningConfidence.HIGH,
+        evidence: [
+          {
+            sourceCategory: ScreeningSourceCategory.RESUME,
+            sourceText: 'TypeScript production experience.',
+          },
+        ],
+      },
     ];
 
     // Candidate B: Chef job
     const chefCriteria: ScreeningCriterion[] = [
-      { id: 'ch-1', name: 'Kitchen management', description: 'Kitchen experience', requirementType: 'REQUIRED', category: 'EXPERIENCE', weight: 0.6 },
-      { id: 'ch-2', name: 'Food safety certification', description: 'Food safety', requirementType: 'HARD_REQUIREMENT', category: 'CERTIFICATION', weight: 0.4 },
+      {
+        id: 'ch-1',
+        name: 'Kitchen management',
+        description: 'Kitchen experience',
+        requirementType: 'REQUIRED',
+        category: 'EXPERIENCE',
+        weight: 0.6,
+      },
+      {
+        id: 'ch-2',
+        name: 'Food safety certification',
+        description: 'Food safety',
+        requirementType: 'HARD_REQUIREMENT',
+        category: 'CERTIFICATION',
+        weight: 0.4,
+      },
     ];
     const chefEvaluations: CriterionEvaluation[] = [
-      { criterionId: 'ch-1', criterion: 'Kitchen management', requirementType: 'REQUIRED', status: 'FULLY_MET', reason: 'Hotel kitchen experience.', confidence: ScreeningConfidence.HIGH, evidence: [{ sourceCategory: ScreeningSourceCategory.RESUME, sourceText: 'Managed hotel kitchen for 200 covers.' }] },
-      { criterionId: 'ch-2', criterion: 'Food safety certification', requirementType: 'HARD_REQUIREMENT', status: 'NOT_MET', reason: 'No certification mentioned.', confidence: ScreeningConfidence.HIGH, evidence: [{ sourceCategory: ScreeningSourceCategory.RESUME, sourceText: '' }] },
+      {
+        criterionId: 'ch-1',
+        criterion: 'Kitchen management',
+        requirementType: 'REQUIRED',
+        status: 'FULLY_MET',
+        reason: 'Hotel kitchen experience.',
+        confidence: ScreeningConfidence.HIGH,
+        evidence: [
+          {
+            sourceCategory: ScreeningSourceCategory.RESUME,
+            sourceText: 'Managed hotel kitchen for 200 covers.',
+          },
+        ],
+      },
+      {
+        criterionId: 'ch-2',
+        criterion: 'Food safety certification',
+        requirementType: 'HARD_REQUIREMENT',
+        status: 'NOT_MET',
+        reason: 'No certification mentioned.',
+        confidence: ScreeningConfidence.HIGH,
+        evidence: [{ sourceCategory: ScreeningSourceCategory.RESUME, sourceText: '' }],
+      },
     ];
 
-    const resultA = scorer.score({ evaluations: reactEvaluations, criteria: reactCriteria, hasUnverifiedCriticalEvidence: false });
-    const resultB = scorer.score({ evaluations: chefEvaluations, criteria: chefCriteria, hasUnverifiedCriticalEvidence: false });
+    const resultA = scorer.score({
+      evaluations: reactEvaluations,
+      criteria: reactCriteria,
+      hasUnverifiedCriticalEvidence: false,
+    });
+    const resultB = scorer.score({
+      evaluations: chefEvaluations,
+      criteria: chefCriteria,
+      hasUnverifiedCriticalEvidence: false,
+    });
 
     // A: both FULLY_MET → score 100 → SHORTLIST
     expect(resultA.recommendation).toBe(ScreeningRecommendation.SHORTLIST);
@@ -245,21 +331,64 @@ describe('Multi-Job Isolation — candidate results never mix', () => {
 
   it('finance officer and software developer produce separate independent scores', () => {
     const finCriteria: ScreeningCriterion[] = [
-      { id: 'f-1', name: 'Financial reporting', description: 'Accounting', requirementType: 'REQUIRED', category: 'SKILL', weight: 1.0 },
+      {
+        id: 'f-1',
+        name: 'Financial reporting',
+        description: 'Accounting',
+        requirementType: 'REQUIRED',
+        category: 'SKILL',
+        weight: 1.0,
+      },
     ];
     const finEvals: CriterionEvaluation[] = [
-      { criterionId: 'f-1', criterion: 'Financial reporting', requirementType: 'REQUIRED', status: 'FULLY_MET', reason: 'CPA with financial reporting background.', confidence: ScreeningConfidence.HIGH, evidence: [{ sourceCategory: ScreeningSourceCategory.RESUME, sourceText: 'Produced monthly financial reports for Board.' }] },
+      {
+        criterionId: 'f-1',
+        criterion: 'Financial reporting',
+        requirementType: 'REQUIRED',
+        status: 'FULLY_MET',
+        reason: 'CPA with financial reporting background.',
+        confidence: ScreeningConfidence.HIGH,
+        evidence: [
+          {
+            sourceCategory: ScreeningSourceCategory.RESUME,
+            sourceText: 'Produced monthly financial reports for Board.',
+          },
+        ],
+      },
     ];
 
     const devCriteria: ScreeningCriterion[] = [
-      { id: 'd-1', name: 'Node.js', description: 'Node.js development', requirementType: 'REQUIRED', category: 'SKILL', weight: 1.0 },
+      {
+        id: 'd-1',
+        name: 'Node.js',
+        description: 'Node.js development',
+        requirementType: 'REQUIRED',
+        category: 'SKILL',
+        weight: 1.0,
+      },
     ];
     const devEvals: CriterionEvaluation[] = [
-      { criterionId: 'd-1', criterion: 'Node.js', requirementType: 'REQUIRED', status: 'NOT_MET', reason: 'No Node.js evidence.', confidence: ScreeningConfidence.HIGH, evidence: [{ sourceCategory: ScreeningSourceCategory.RESUME, sourceText: '' }] },
+      {
+        criterionId: 'd-1',
+        criterion: 'Node.js',
+        requirementType: 'REQUIRED',
+        status: 'NOT_MET',
+        reason: 'No Node.js evidence.',
+        confidence: ScreeningConfidence.HIGH,
+        evidence: [{ sourceCategory: ScreeningSourceCategory.RESUME, sourceText: '' }],
+      },
     ];
 
-    const finResult = scorer.score({ evaluations: finEvals, criteria: finCriteria, hasUnverifiedCriticalEvidence: false });
-    const devResult = scorer.score({ evaluations: devEvals, criteria: devCriteria, hasUnverifiedCriticalEvidence: false });
+    const finResult = scorer.score({
+      evaluations: finEvals,
+      criteria: finCriteria,
+      hasUnverifiedCriticalEvidence: false,
+    });
+    const devResult = scorer.score({
+      evaluations: devEvals,
+      criteria: devCriteria,
+      hasUnverifiedCriticalEvidence: false,
+    });
 
     expect(finResult.recommendation).toBe(ScreeningRecommendation.SHORTLIST);
     expect(finResult.overallScore).toBe(100);
