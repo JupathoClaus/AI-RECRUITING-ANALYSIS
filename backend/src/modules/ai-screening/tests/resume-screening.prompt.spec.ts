@@ -70,7 +70,7 @@ describe('buildResumeScreeningPrompt', () => {
   it('includes HUMAN_REVIEW safety rule in system instructions', () => {
     const prompt = buildResumeScreeningPrompt(BASE_INPUT, BASE_OPTIONS);
     expect(prompt.systemInstructions).toContain('HUMAN_REVIEW');
-    expect(prompt.systemInstructions).toContain('incomplete, contradictory, or uncertain');
+    expect(prompt.systemInstructions).toContain('incomplete, contradictory, or genuinely uncertain');
   });
 
   it('prohibits protected-characteristic reasoning in system instructions', () => {

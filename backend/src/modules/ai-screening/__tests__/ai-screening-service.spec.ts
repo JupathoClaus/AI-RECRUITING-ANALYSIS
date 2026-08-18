@@ -50,6 +50,7 @@ const mockConfigService = {
       'aiScreening.openAiModel': 'gpt-4o-mini',
       'aiScreening.promptVersion': 'v1',
       'aiScreening.schemaVersion': 'v1',
+      'aiScreening.maxResumeChars': 15000,
       'app.uploadDir': './uploads',
       'app.resumeTextParserSuffix': '_parsed.txt',
     };
@@ -70,12 +71,16 @@ const mockApplication = {
     id: 'job-1',
     title: 'Engineer',
     description: 'Build software.',
+    responsibilities: null,
     qualifications: null,
+    experienceLevel: 'MID',
     updatedAt: new Date(),
     skills: [{ skill: { displayName: 'TypeScript' }, importance: 'REQUIRED' }],
     screeningQuestions: [],
+    educationRequirements: [],
+    experienceRequirements: [],
   },
-  candidate: { id: 'cand-1' },
+  candidate: { id: 'cand-1', firstName: 'Test', lastName: 'User' },
   screeningAnswers: [],
   resumeFiles: [
     {
