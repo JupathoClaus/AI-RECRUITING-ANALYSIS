@@ -68,7 +68,7 @@ export class AiScreeningService {
             experienceRequirements: true,
           },
         },
-        candidate: { select: { id: true } },
+        candidate: { select: { id: true, firstName: true, lastName: true } },
         screeningAnswers: {
           include: { question: { select: { question: true, required: true } } },
         },
@@ -444,6 +444,7 @@ export class AiScreeningService {
     dto.explanation = s.explanation ?? undefined;
     dto.prohibitedReasoningDetected = s.prohibitedReasoningDetected ?? undefined;
     dto.provider = s.provider ?? undefined;
+    dto.model = s.model ?? undefined;
     dto.model = s.model ?? undefined;
     dto.promptVersion = s.promptVersion ?? undefined;
     dto.failureCode = s.failureCode ?? undefined;

@@ -8,6 +8,7 @@ import { AiScreeningJobData } from './ai-screening-job-data.interface';
 import { AI_SCREENING_PROVIDER } from '../providers/ai-screening-provider.token';
 import { AiScreeningProvider } from '../providers/ai-screening-provider.interface';
 import { ScreeningInputBuilderService } from '../services/screening-input-builder.service';
+import { CriterionBuilderService } from '../services/criterion-builder.service';
 import { ResumeTextLoaderService } from '../services/resume-text-loader.service';
 import { computeScreeningFingerprint } from '../utils/screening-input-fingerprint';
 import { AiScreeningProviderError } from '../providers/ai-screening-provider.errors';
@@ -24,6 +25,7 @@ export class AiScreeningProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inputBuilder: ScreeningInputBuilderService,
+    private readonly criterionBuilder: CriterionBuilderService,
     private readonly resumeLoader: ResumeTextLoaderService,
     @Inject(AI_SCREENING_PROVIDER) private readonly provider: AiScreeningProvider,
     configService: ConfigService,
@@ -104,7 +106,7 @@ export class AiScreeningProcessor extends WorkerHost {
               experienceRequirements: true,
             },
           },
-          candidate: { select: { id: true } },
+          candidate: { select: { id: true, firstName: true, lastName: true } },
           screeningAnswers: {
             include: { question: { select: { question: true, required: true } } },
           },
@@ -139,6 +141,10 @@ export class AiScreeningProcessor extends WorkerHost {
         application as never,
         completedExtraction,
         this.promptVersion,
+        // Build structured criteria for Qwen provider — ignored by mock/openai/deepseek
+        this.provider.providerName === 'qwen'
+          ? this.criterionBuilder.build(application as never)
+          : undefined,
       );
 
       const currentFingerprint = computeScreeningFingerprint({

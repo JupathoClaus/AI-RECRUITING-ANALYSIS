@@ -1,12 +1,15 @@
 import { registerAs } from '@nestjs/config';
 
 export interface AiScreeningConfig {
-  provider: 'mock' | 'openai' | 'deepseek';
+  provider: 'mock' | 'openai' | 'deepseek' | 'qwen';
   openAiApiKey: string;
   openAiModel: string;
   deepSeekApiKey: string;
   deepSeekModel: string;
   deepSeekBaseUrl: string;
+  qwenApiKey: string;
+  qwenModel: string;
+  qwenBaseUrl: string;
   timeoutMs: number;
   maxResumeChars: number;
   promptVersion: string;
@@ -40,6 +43,10 @@ export default registerAs('aiScreening', (): AiScreeningConfig => {
     deepSeekApiKey: process.env.DEEPSEEK_API_KEY || '',
     deepSeekModel: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
     deepSeekBaseUrl: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
+    // Qwen / Ollama / vLLM — OpenAI-compatible endpoint
+    qwenApiKey: process.env.QWEN_API_KEY || 'ollama',
+    qwenModel: process.env.QWEN_MODEL || 'qwen2.5:latest',
+    qwenBaseUrl: process.env.QWEN_BASE_URL || 'http://localhost:11434/v1',
     timeoutMs,
     maxResumeChars,
     promptVersion: promptVersion.trim() || 'v1',

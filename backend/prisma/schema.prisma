@@ -2203,6 +2203,9 @@ model AiScreeningResult {
   missingQualifications       Json?
   evidence                    Json?
   criteriaScores              Json?
+  /// Qwen criterion-level evaluations (CriterionEvaluation[] stored as JSON).
+  /// Populated only when provider=qwen. Legacy providers leave this null.
+  criterionEvaluations        Json?
   uncertainties               Json?
   riskFlags                   Json?
   explanation                 String?
@@ -2214,12 +2217,15 @@ model AiScreeningResult {
   inputFingerprint            String?
   failureCode                 String?
   failureMessageSafe          String?
+  /// Batch this screening belongs to (if initiated via bulk screening)
+  batchId                     String?   @db.Uuid
   startedAt                   DateTime?
   completedAt                 DateTime?
   createdAt                   DateTime                   @default(now())
   updatedAt                   DateTime                   @updatedAt
 
-  application Application @relation(fields: [applicationId], references: [id])
+  application Application          @relation(fields: [applicationId], references: [id])
+  batch       AiScreeningBatch?    @relation(fields: [batchId], references: [id])
 
   @@index([applicationId])
   @@index([companyId])
@@ -2227,6 +2233,7 @@ model AiScreeningResult {
   @@index([createdAt])
   @@index([recommendation])
   @@index([applicationId, createdAt])
+  @@index([batchId])
 }
 
 // ─── ResumeTextExtraction ────────────────────────────────────────────────────
@@ -2237,6 +2244,48 @@ enum ResumeExtractionStatus {
   PROCESSING
   COMPLETED
   FAILED
+}
+
+// ─── AiScreeningBatch ────────────────────────────────────────────────────────
+// Phase 5 — Bulk Screening
+
+enum AiScreeningBatchMode {
+  SELECTED
+  ALL_FOR_JOB
+  UNSCREENED_FOR_JOB
+  ALL_UNSCREENED_OPEN_JOBS
+}
+
+enum AiScreeningBatchStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  PARTIALLY_COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model AiScreeningBatch {
+  id                String                 @id @default(uuid())
+  companyId         String
+  initiatedByUserId String
+  /// Job filter — null means cross-job batch
+  jobId             String?
+  mode              AiScreeningBatchMode
+  status            AiScreeningBatchStatus @default(QUEUED)
+  totalCount        Int                    @default(0)
+  completedCount    Int                    @default(0)
+  failedCount       Int                    @default(0)
+  createdAt         DateTime               @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+
+  screeningResults AiScreeningResult[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([jobId])
 }
 
 enum ExtractionDispatchStatus {
