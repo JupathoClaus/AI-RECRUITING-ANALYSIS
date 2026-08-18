@@ -30,6 +30,8 @@ export class AiScreeningResponseDto {
   @ApiPropertyOptional({ type: [ScreeningEvidenceDto] }) evidence?: ScreeningEvidenceDto[];
   @ApiPropertyOptional({ type: [ScreeningCriterionScoreDto] })
   criteriaScores?: ScreeningCriterionScoreDto[];
+  @ApiPropertyOptional()
+  criterionEvaluations?: unknown[];
   @ApiPropertyOptional() uncertainties?: string[];
   @ApiPropertyOptional() riskFlags?: string[];
   @ApiPropertyOptional() explanation?: string;

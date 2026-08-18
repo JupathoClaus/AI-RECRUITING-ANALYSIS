@@ -2,12 +2,20 @@ import { Injectable } from '@nestjs/common';
 import { ScreeningRecommendation } from '../domain/screening-recommendation.enum';
 import { CriterionEvaluation, CriterionStatus } from '../domain/criterion-evaluation.type';
 import { ScreeningCriterion, CriterionRequirementType } from '../domain/screening-criterion.type';
+import { ExperienceDurationResult } from './experience-duration.service';
 
 export interface ScoringInput {
   evaluations: CriterionEvaluation[];
   criteria: ScreeningCriterion[];
   /** True when unverified evidence exists on a non-preferred criterion */
   hasUnverifiedCriticalEvidence: boolean;
+  /**
+   * Deterministic employment-duration estimate from ExperienceDurationService.
+   * When present and certain, it caps FULLY_MET claims on EXPERIENCE criteria
+   * that state a minimum year requirement (a candidate cannot have more years
+   * of domain experience than total employment).
+   */
+  experienceDuration?: ExperienceDurationResult;
 }
 
 export interface ScoringResult {
@@ -63,7 +71,7 @@ const NOT_SHORTLIST_THRESHOLD = 38;
 @Injectable()
 export class BackendScoringService {
   score(input: ScoringInput): ScoringResult {
-    const { evaluations, criteria, hasUnverifiedCriticalEvidence } = input;
+    const { evaluations, criteria, hasUnverifiedCriticalEvidence, experienceDuration } = input;
 
     const criterionWeightMap = new Map(criteria.map((c) => [c.id, c]));
     const criterionPoints = new Map<string, number>();
@@ -79,12 +87,32 @@ export class BackendScoringService {
     for (const ev of evaluations) {
       const criterion = criterionWeightMap.get(ev.criterionId);
       const weight = criterion?.weight ?? 0;
-      const requirementType: CriterionRequirementType = ev.requirementType;
+      // The requirement type is authoritative from the criterion definition —
+      // the model may echo it but must not override it.
+      const requirementType: CriterionRequirementType =
+        criterion?.requirementType ?? ev.requirementType;
 
       if (ev.evidenceUnverified) unverifiedCount++;
       if (ev.status === 'UNCERTAIN') uncertainCount++;
 
-      const multiplier = STATUS_MULTIPLIER[ev.status];
+      let status: CriterionStatus = ev.status;
+      if (
+        status === 'FULLY_MET' &&
+        criterion?.category === 'EXPERIENCE' &&
+        criterion.minimumYears != null &&
+        experienceDuration &&
+        !experienceDuration.uncertain
+      ) {
+        // Deterministic cap: total employment must at least cover the stated
+        // minimum before a FULLY_MET claim is accepted. Downgrade (never to
+        // NOT_MET — domain relevance may still justify partial credit).
+        const totalYears = experienceDuration.totalRelevantMonths / 12;
+        if (totalYears < criterion.minimumYears) {
+          status = 'PARTIALLY_MET';
+        }
+      }
+
+      const multiplier = STATUS_MULTIPLIER[status];
       const points = weight * multiplier;
       criterionPoints.set(ev.criterionId, points);
 
@@ -93,10 +121,10 @@ export class BackendScoringService {
 
       // Track hard requirement violations separately
       if (requirementType === 'HARD_REQUIREMENT') {
-        if (ev.status === 'NOT_MET') hardRequirementUnmet = true;
-        if (ev.status === 'PARTIALLY_MET') hardRequirementPartial = true;
+        if (status === 'NOT_MET') hardRequirementUnmet = true;
+        if (status === 'PARTIALLY_MET') hardRequirementPartial = true;
       }
-      if (requirementType === 'REQUIRED' && ev.status === 'UNCERTAIN') {
+      if (requirementType === 'REQUIRED' && status === 'UNCERTAIN') {
         requiredUncertain = true;
       }
     }
@@ -112,12 +140,14 @@ export class BackendScoringService {
       // Unmet hard requirement → not shortlist
       recommendation = ScreeningRecommendation.NOT_SHORTLIST;
     } else if (
+      evaluations.length === 0 ||
+      totalWeight === 0 ||
       hardRequirementPartial ||
       requiredUncertain ||
       hasUnverifiedCriticalEvidence ||
       uncertainCount > evaluations.length * 0.25
     ) {
-      // Partial hard requirement or significant uncertainty → human review
+      // No meaningful criteria or significant uncertainty → human review
       recommendation = ScreeningRecommendation.HUMAN_REVIEW;
     } else if (overallScore >= SHORTLIST_THRESHOLD) {
       recommendation = ScreeningRecommendation.SHORTLIST;

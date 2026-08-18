@@ -13,9 +13,7 @@ function makeEval(overrides: Partial<CriterionEvaluation> = {}): CriterionEvalua
     status: 'FULLY_MET',
     reason: 'Strong evidence.',
     confidence: ScreeningConfidence.HIGH,
-    evidence: [
-      { sourceCategory: ScreeningSourceCategory.RESUME, sourceText: 'Built TS apps.' },
-    ],
+    evidence: [{ sourceCategory: ScreeningSourceCategory.RESUME, sourceText: 'Built TS apps.' }],
     ...overrides,
   };
 }
@@ -34,7 +32,9 @@ function makeCriterion(overrides: Partial<ScreeningCriterion> = {}): ScreeningCr
 
 describe('BackendScoringService', () => {
   let scorer: BackendScoringService;
-  beforeEach(() => { scorer = new BackendScoringService(); });
+  beforeEach(() => {
+    scorer = new BackendScoringService();
+  });
 
   // ── Scoring formula ────────────────────────────────────────────────────────
 
@@ -93,7 +93,11 @@ describe('BackendScoringService', () => {
   });
 
   it('empty evaluations → score 0', () => {
-    const result = scorer.score({ evaluations: [], criteria: [], hasUnverifiedCriticalEvidence: false });
+    const result = scorer.score({
+      evaluations: [],
+      criteria: [],
+      hasUnverifiedCriticalEvidence: false,
+    });
     expect(result.overallScore).toBe(0);
   });
 
@@ -159,5 +163,210 @@ describe('BackendScoringService', () => {
     expect(scorer.scoreCriterion('PARTIALLY_MET', 0.5)).toBe(0.25);
     expect(scorer.scoreCriterion('NOT_MET', 0.5)).toBe(0);
     expect(scorer.scoreCriterion('UNCERTAIN', 0.5)).toBe(0);
+  });
+
+  // ── Threshold boundaries ───────────────────────────────────────────────────
+  // NOTE: the score is a weighted RATIO (points / total weight), so absolute
+  // weights are irrelevant — only their relative sizes matter. These tests use
+  // two criteria whose relative weights hit the exact boundary ratios.
+
+  it('score 38 → NOT_SHORTLIST (boundary inclusive)', () => {
+    const result = scorer.score({
+      evaluations: [
+        makeEval({ criterionId: 'c-1', status: 'FULLY_MET' }),
+        makeEval({ criterionId: 'c-2', criterion: 'Node.js', status: 'NOT_MET' }),
+      ],
+      criteria: [
+        makeCriterion({ id: 'c-1', weight: 0.38 }),
+        makeCriterion({ id: 'c-2', name: 'Node.js', weight: 0.62 }),
+      ],
+      hasUnverifiedCriticalEvidence: false,
+    });
+    expect(result.overallScore).toBe(38);
+    expect(result.recommendation).toBe(ScreeningRecommendation.NOT_SHORTLIST);
+  });
+
+  it('score 39 → HUMAN_REVIEW (above NOT_SHORTLIST boundary)', () => {
+    const result = scorer.score({
+      evaluations: [
+        makeEval({ criterionId: 'c-1', status: 'FULLY_MET' }),
+        makeEval({ criterionId: 'c-2', criterion: 'Node.js', status: 'NOT_MET' }),
+      ],
+      criteria: [
+        makeCriterion({ id: 'c-1', weight: 0.39 }),
+        makeCriterion({ id: 'c-2', name: 'Node.js', weight: 0.61 }),
+      ],
+      hasUnverifiedCriticalEvidence: false,
+    });
+    expect(result.overallScore).toBe(39);
+    expect(result.recommendation).toBe(ScreeningRecommendation.HUMAN_REVIEW);
+  });
+
+  it('score 71 → HUMAN_REVIEW (below SHORTLIST boundary)', () => {
+    const result = scorer.score({
+      evaluations: [
+        makeEval({ criterionId: 'c-1', status: 'FULLY_MET' }),
+        makeEval({ criterionId: 'c-2', criterion: 'Node.js', status: 'NOT_MET' }),
+      ],
+      criteria: [
+        makeCriterion({ id: 'c-1', weight: 0.71 }),
+        makeCriterion({ id: 'c-2', name: 'Node.js', weight: 0.29 }),
+      ],
+      hasUnverifiedCriticalEvidence: false,
+    });
+    expect(result.overallScore).toBe(71);
+    expect(result.recommendation).toBe(ScreeningRecommendation.HUMAN_REVIEW);
+  });
+
+  it('score 72 → SHORTLIST (boundary inclusive)', () => {
+    const result = scorer.score({
+      evaluations: [
+        makeEval({ criterionId: 'c-1', status: 'FULLY_MET' }),
+        makeEval({ criterionId: 'c-2', criterion: 'Node.js', status: 'NOT_MET' }),
+      ],
+      criteria: [
+        makeCriterion({ id: 'c-1', weight: 0.72 }),
+        makeCriterion({ id: 'c-2', name: 'Node.js', weight: 0.28 }),
+      ],
+      hasUnverifiedCriticalEvidence: false,
+    });
+    expect(result.overallScore).toBe(72);
+    expect(result.recommendation).toBe(ScreeningRecommendation.SHORTLIST);
+  });
+
+  // ── Zero criteria / zero weight safety ─────────────────────────────────────
+
+  it('no evaluations at all → HUMAN_REVIEW, never NOT_SHORTLIST', () => {
+    const result = scorer.score({
+      evaluations: [],
+      criteria: [],
+      hasUnverifiedCriticalEvidence: false,
+    });
+    expect(result.overallScore).toBe(0);
+    expect(result.recommendation).toBe(ScreeningRecommendation.HUMAN_REVIEW);
+  });
+
+  it('evaluations with no matching criteria (zero total weight) → HUMAN_REVIEW, never NOT_SHORTLIST', () => {
+    const result = scorer.score({
+      evaluations: [makeEval({ status: 'NOT_MET' })],
+      criteria: [],
+      hasUnverifiedCriticalEvidence: false,
+    });
+    expect(result.overallScore).toBe(0);
+    expect(result.recommendation).toBe(ScreeningRecommendation.HUMAN_REVIEW);
+  });
+
+  // ── Authoritative requirementType ──────────────────────────────────────────
+
+  it('model-echoed HARD_REQUIREMENT on a REQUIRED criterion does NOT force NOT_SHORTLIST', () => {
+    const result = scorer.score({
+      evaluations: [
+        makeEval({ criterionId: 'c-1', status: 'FULLY_MET' }),
+        makeEval({
+          criterionId: 'c-2',
+          criterion: 'Node.js',
+          requirementType: 'HARD_REQUIREMENT',
+          status: 'NOT_MET',
+        }),
+      ],
+      criteria: [
+        makeCriterion({ id: 'c-1', weight: 0.7 }),
+        makeCriterion({ id: 'c-2', weight: 0.3, name: 'Node.js', requirementType: 'REQUIRED' }),
+      ],
+      hasUnverifiedCriticalEvidence: false,
+    });
+    // Score 70 → HUMAN_REVIEW. If the model's HARD_REQUIREMENT echo were
+    // trusted, this would be NOT_SHORTLIST.
+    expect(result.overallScore).toBe(70);
+    expect(result.recommendation).toBe(ScreeningRecommendation.HUMAN_REVIEW);
+  });
+
+  it('real HARD_REQUIREMENT from the criterion definition still forces NOT_SHORTLIST', () => {
+    const result = scorer.score({
+      evaluations: [makeEval({ status: 'NOT_MET' })],
+      criteria: [makeCriterion({ requirementType: 'HARD_REQUIREMENT' })],
+      hasUnverifiedCriticalEvidence: false,
+    });
+    expect(result.recommendation).toBe(ScreeningRecommendation.NOT_SHORTLIST);
+  });
+
+  // ── Deterministic experience duration cap ─────────────────────────────────
+
+  it('caps FULLY_MET on an EXPERIENCE criterion when total duration is below the minimum', () => {
+    const result = scorer.score({
+      evaluations: [
+        makeEval({
+          criterionId: 'exp-1',
+          criterion: '5+ years backend',
+          status: 'FULLY_MET',
+          requirementType: 'REQUIRED',
+        }),
+      ],
+      criteria: [
+        makeCriterion({
+          id: 'exp-1',
+          name: '5+ years backend',
+          category: 'EXPERIENCE',
+          minimumYears: 5,
+        }),
+      ],
+      hasUnverifiedCriticalEvidence: false,
+      // Resume shows only 2 years of total employment (certain) — the model
+      // claimed FULLY_MET on a 5-year criterion. Deterministic cap downgrades
+      // to PARTIALLY_MET → score 50 → HUMAN_REVIEW.
+      experienceDuration: { totalRelevantMonths: 24, uncertain: false, periods: [] },
+    });
+    expect(result.overallScore).toBe(50);
+    expect(result.recommendation).toBe(ScreeningRecommendation.HUMAN_REVIEW);
+  });
+
+  it('does NOT cap FULLY_MET when deterministic duration meets the minimum', () => {
+    const result = scorer.score({
+      evaluations: [
+        makeEval({ criterionId: 'exp-1', criterion: '5+ years backend', status: 'FULLY_MET' }),
+      ],
+      criteria: [
+        makeCriterion({
+          id: 'exp-1',
+          name: '5+ years backend',
+          category: 'EXPERIENCE',
+          minimumYears: 5,
+        }),
+      ],
+      hasUnverifiedCriticalEvidence: false,
+      experienceDuration: { totalRelevantMonths: 72, uncertain: false, periods: [] },
+    });
+    expect(result.overallScore).toBe(100);
+    expect(result.recommendation).toBe(ScreeningRecommendation.SHORTLIST);
+  });
+
+  it('does NOT cap when the duration estimate is uncertain (bare years, gaps)', () => {
+    const result = scorer.score({
+      evaluations: [
+        makeEval({ criterionId: 'exp-1', criterion: '5+ years backend', status: 'FULLY_MET' }),
+      ],
+      criteria: [
+        makeCriterion({
+          id: 'exp-1',
+          name: '5+ years backend',
+          category: 'EXPERIENCE',
+          minimumYears: 5,
+        }),
+      ],
+      hasUnverifiedCriticalEvidence: false,
+      experienceDuration: { totalRelevantMonths: 24, uncertain: true, periods: [] },
+    });
+    expect(result.overallScore).toBe(100);
+    expect(result.recommendation).toBe(ScreeningRecommendation.SHORTLIST);
+  });
+
+  it('does not cap SKILL criteria — duration only constrains EXPERIENCE criteria', () => {
+    const result = scorer.score({
+      evaluations: [makeEval()],
+      criteria: [makeCriterion({ minimumYears: 5 })], // SKILL category
+      hasUnverifiedCriticalEvidence: false,
+      experienceDuration: { totalRelevantMonths: 12, uncertain: false, periods: [] },
+    });
+    expect(result.overallScore).toBe(100);
   });
 });

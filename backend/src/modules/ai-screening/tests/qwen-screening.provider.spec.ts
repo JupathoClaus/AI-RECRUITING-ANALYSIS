@@ -37,7 +37,7 @@ function makeProvider() {
   const scorer = new BackendScoringService();
   const verifier = new EvidenceVerificationService();
   const config = {
-    model: 'qwen2.5:latest',
+    model: 'qwen3.5:9b',
     baseUrl: 'http://localhost:11434/v1',
     timeoutMs: 30000,
     maxResumeChars: 15000,
@@ -70,7 +70,7 @@ function makeCriterionEvaluation(overrides?: Record<string, unknown>) {
 function makeValidQwenResponse(overrides?: Record<string, unknown>) {
   return {
     id: 'resp-1',
-    model: 'qwen2.5:latest',
+    model: 'qwen3.5:9b',
     choices: [
       {
         finish_reason: 'stop',
@@ -138,7 +138,7 @@ describe('QwenScreeningProvider', () => {
     const call = mock.mock.calls[0][0];
     expect(call.response_format).toEqual({ type: 'json_object' });
     expect(call.temperature).toBe(0.1);
-    expect(call.model).toBe('qwen2.5:latest');
+    expect(call.model).toBe('qwen3.5:9b');
   });
 
   it('returns SHORTLIST when TypeScript is FULLY_MET', async () => {
@@ -255,20 +255,24 @@ describe('QwenScreeningProvider', () => {
     const { provider, client } = makeProvider();
     mockCreate(client, {
       id: 'r1',
-      model: 'qwen2.5:latest',
+      model: 'qwen3.5:9b',
       choices: [{ finish_reason: 'stop', message: { content: 'not valid json' } }],
     });
-    await expect(provider.screen(BASE_INPUT)).rejects.toBeInstanceOf(AiScreeningMalformedResponseError);
+    await expect(provider.screen(BASE_INPUT)).rejects.toBeInstanceOf(
+      AiScreeningMalformedResponseError,
+    );
   });
 
   it('throws AiScreeningMalformedResponseError on truncated response (length finish_reason)', async () => {
     const { provider, client } = makeProvider();
     mockCreate(client, {
       id: 'r1',
-      model: 'qwen2.5:latest',
+      model: 'qwen3.5:9b',
       choices: [{ finish_reason: 'length', message: { content: '{}' } }],
     });
-    await expect(provider.screen(BASE_INPUT)).rejects.toBeInstanceOf(AiScreeningMalformedResponseError);
+    await expect(provider.screen(BASE_INPUT)).rejects.toBeInstanceOf(
+      AiScreeningMalformedResponseError,
+    );
   });
 
   it('throws AiScreeningMalformedResponseError when expected criterion IDs are missing', async () => {
@@ -280,7 +284,9 @@ describe('QwenScreeningProvider', () => {
         criterionEvaluations: [], // skill-1 is missing
       }),
     );
-    await expect(provider.screen(BASE_INPUT)).rejects.toBeInstanceOf(AiScreeningMalformedResponseError);
+    await expect(provider.screen(BASE_INPUT)).rejects.toBeInstanceOf(
+      AiScreeningMalformedResponseError,
+    );
   });
 
   it('throws AiScreeningTimeoutError on timeout', async () => {
@@ -294,7 +300,9 @@ describe('QwenScreeningProvider', () => {
     const { provider, client } = makeProvider();
     const mock = (client.chat.completions as unknown as { create: jest.Mock }).create;
     mock.mockRejectedValue({ status: 401, message: 'Unauthorized' });
-    await expect(provider.screen(BASE_INPUT)).rejects.toBeInstanceOf(AiScreeningAuthenticationError);
+    await expect(provider.screen(BASE_INPUT)).rejects.toBeInstanceOf(
+      AiScreeningAuthenticationError,
+    );
   });
 
   it('throws AiScreeningRateLimitError on HTTP 429', async () => {
@@ -320,5 +328,71 @@ describe('QwenScreeningProvider', () => {
     const err = await provider.screen(BASE_INPUT).catch((e) => e);
     expect(err).toBeInstanceOf(AiScreeningProviderError);
     expect((err as AiScreeningProviderError).safeCode).toBe('PROVIDER_SERVER_ERROR');
+  });
+
+  it('does NOT let the model self-declare HARD_REQUIREMENT on a REQUIRED criterion', async () => {
+    const { provider, client } = makeProvider();
+    // Two REQUIRED criteria in the job definition.
+    // The model echoes HARD_REQUIREMENT + NOT_MET for one of them in a
+    // (malicious or confused) attempt to force NOT_SHORTLIST.
+    const input: ScreeningInput = {
+      ...BASE_INPUT,
+      resumeText: 'Built TypeScript applications at ABC Ltd. No Node.js experience.',
+      criteria: [
+        {
+          id: 'skill-1',
+          name: 'TypeScript',
+          description: 'Required skill',
+          requirementType: 'REQUIRED',
+          category: 'SKILL',
+          weight: 0.7,
+        },
+        {
+          id: 'skill-2',
+          name: 'Node.js',
+          description: 'Required skill',
+          requirementType: 'REQUIRED',
+          category: 'SKILL',
+          weight: 0.3,
+        },
+      ],
+    };
+    mockCreate(
+      client,
+      makeValidQwenResponse({
+        criterionEvaluations: [
+          makeCriterionEvaluation({ status: 'FULLY_MET' }),
+          makeCriterionEvaluation({
+            criterionId: 'skill-2',
+            criterion: 'Node.js',
+            requirementType: 'HARD_REQUIREMENT', // ← model attempt to escalate
+            status: 'NOT_MET',
+            evidence: [{ sourceCategory: 'RESUME', sourceText: '' }],
+          }),
+        ],
+      }),
+    );
+    const result = await provider.screen(input);
+    // Score = 0.7 * 1.0 = 70 → HUMAN_REVIEW (NOT NOT_SHORTLIST, which would
+    // have been forced if the model's HARD_REQUIREMENT echo were trusted).
+    expect(result.overallScore).toBe(70);
+    expect(result.recommendation).toBe(ScreeningRecommendation.HUMAN_REVIEW);
+  });
+
+  it('returns criterionEvaluations with authoritative requirementType', async () => {
+    const { provider, client } = makeProvider();
+    mockCreate(
+      client,
+      makeValidQwenResponse({
+        criterionEvaluations: [
+          makeCriterionEvaluation({ requirementType: 'HARD_REQUIREMENT' }), // model echo mismatch
+        ],
+      }),
+    );
+    const result = await provider.screen(BASE_INPUT);
+    expect(result.criterionEvaluations).toBeDefined();
+    // The criterion is REQUIRED in the job definition — the echoed value is
+    // normalised back to the authoritative one.
+    expect(result.criterionEvaluations![0].requirementType).toBe('REQUIRED');
   });
 });

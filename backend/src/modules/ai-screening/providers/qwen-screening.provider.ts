@@ -149,13 +149,27 @@ export class QwenScreeningProvider implements AiScreeningProvider {
       input.resumeText,
     );
 
+    // ── Normalise requirement types ──────────────────────────────────────────
+    // The criterion definition is authoritative. The model may echo a
+    // requirementType, but it must not override the job's actual requirements
+    // (e.g. it cannot self-declare HARD_REQUIREMENT on a plain REQUIRED skill).
+    const authoritativeRequirement = new Map(criteria.map((c) => [c.id, c.requirementType]));
+    const normalisedEvaluations = verifiedEvaluations.map((ev) => ({
+      ...ev,
+      requirementType: (authoritativeRequirement.get(ev.criterionId) ??
+        ev.requirementType) as CriterionEvaluation['requirementType'],
+    }));
+
     // ── Deterministic scoring ───────────────────────────────────────────────
     const scoringInput: ScoringInput = {
-      evaluations: verifiedEvaluations,
+      evaluations: normalisedEvaluations,
       criteria,
-      hasUnverifiedCriticalEvidence: verifiedEvaluations.some(
-        (e) => e.evidenceUnverified && e.requirementType !== 'PREFERRED',
+      hasUnverifiedCriticalEvidence: normalisedEvaluations.some(
+        (e) =>
+          e.evidenceUnverified &&
+          (authoritativeRequirement.get(e.criterionId) ?? e.requirementType) !== 'PREFERRED',
       ),
+      experienceDuration: input.experienceDuration,
     };
 
     const scoringResult = this.scorer.score(scoringInput);
@@ -179,9 +193,7 @@ export class QwenScreeningProvider implements AiScreeningProvider {
         case 'FULLY_MET':
         case 'PARTIALLY_MET':
           matchedQualifications.push(
-            ev.status === 'FULLY_MET'
-              ? ev.criterion
-              : `${ev.criterion} (partial)`,
+            ev.status === 'FULLY_MET' ? ev.criterion : `${ev.criterion} (partial)`,
           );
           break;
         case 'NOT_MET':
@@ -200,14 +212,18 @@ export class QwenScreeningProvider implements AiScreeningProvider {
     }
 
     // Map criterion evaluations → criteriaScores for display
-    const criteriaScores = this.buildCriteriaScores(verifiedEvaluations, criteria, scoringResult.criterionPoints);
+    const criteriaScores = this.buildCriteriaScores(
+      normalisedEvaluations,
+      criteria,
+      scoringResult.criterionPoints,
+    );
 
     // Map evidence items from evaluations → flat evidence array
-    const evidenceItems = this.flattenEvidence(verifiedEvaluations);
+    const evidenceItems = this.flattenEvidence(normalisedEvaluations);
 
     // Overall confidence: downgrade if many uncertainties or unverified evidence
     const overallConfidence = this.computeOverallConfidence(
-      verifiedEvaluations,
+      normalisedEvaluations,
       scoringResult.uncertainCount,
       scoringResult.unverifiedCount,
     );
@@ -275,6 +291,7 @@ export class QwenScreeningProvider implements AiScreeningProvider {
       riskFlags,
       explanation: qwenOutput.summary,
       prohibitedReasoningDetected: qwenOutput.prohibitedReasoningDetected,
+      criterionEvaluations: normalisedEvaluations,
       providerMetadata: {
         provider: 'qwen',
         model: modelName!,
@@ -377,7 +394,10 @@ export class QwenScreeningProvider implements AiScreeningProvider {
           : typeof headers?.['retry-after'] === 'string'
             ? parseInt(headers['retry-after'] as string, 10) * 1000
             : undefined;
-      throw new AiScreeningRateLimitError('qwen', isNaN(retryAfterMs ?? NaN) ? undefined : retryAfterMs);
+      throw new AiScreeningRateLimitError(
+        'qwen',
+        isNaN(retryAfterMs ?? NaN) ? undefined : retryAfterMs,
+      );
     }
 
     if (status >= 500) {
