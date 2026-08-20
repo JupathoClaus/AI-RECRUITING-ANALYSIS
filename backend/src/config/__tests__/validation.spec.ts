@@ -21,6 +21,33 @@ describe('validationSchema', () => {
     expect(error).toBeUndefined();
   });
 
+  it('should accept deepseek and qwen as AI_SCREENING_PROVIDER values', () => {
+    for (const provider of ['deepseek', 'qwen']) {
+      const { error } = validationSchema.validate(
+        { ...validEnv, AI_SCREENING_PROVIDER: provider },
+        { allowUnknown: true },
+      );
+      expect(error).toBeUndefined();
+    }
+  });
+
+  it('should reject unknown AI_SCREENING_PROVIDER values', () => {
+    const { error } = validationSchema.validate(
+      { ...validEnv, AI_SCREENING_PROVIDER: 'anthropic' },
+      { allowUnknown: true },
+    );
+    expect(error).toBeDefined();
+    expect(error?.details[0].message).toContain('AI_SCREENING_PROVIDER');
+  });
+
+  it('should default QWEN_MODEL to qwen3.5:9b', () => {
+    const { value } = validationSchema.validate(
+      { ...validEnv, AI_SCREENING_PROVIDER: 'qwen' },
+      { allowUnknown: true },
+    );
+    expect(value.QWEN_MODEL).toBe('qwen3.5:9b');
+  });
+
   it('should require DATABASE_URL', () => {
     const { error } = validationSchema.validate(
       { ...validEnv, DATABASE_URL: undefined },

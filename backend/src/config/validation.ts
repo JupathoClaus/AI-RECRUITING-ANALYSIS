@@ -56,9 +56,15 @@ export const validationSchema = Joi.object({
   UPLOAD_DIR: Joi.string().default('./uploads'),
 
   // AI Screening
-  AI_SCREENING_PROVIDER: Joi.string().valid('mock', 'openai').default('mock'),
+  AI_SCREENING_PROVIDER: Joi.string().valid('mock', 'openai', 'deepseek', 'qwen').default('mock'),
   OPENAI_API_KEY: Joi.string().optional().allow(''),
   OPENAI_MODEL: Joi.string().optional().default('gpt-4o-mini'),
+  DEEPSEEK_API_KEY: Joi.string().optional().allow(''),
+  DEEPSEEK_MODEL: Joi.string().optional().default('deepseek-chat'),
+  DEEPSEEK_BASE_URL: Joi.string().uri().optional().default('https://api.deepseek.com'),
+  QWEN_API_KEY: Joi.string().optional().allow('').default('ollama'),
+  QWEN_MODEL: Joi.string().optional().default('qwen3.5:9b'),
+  QWEN_BASE_URL: Joi.string().uri().optional().default('http://localhost:11434/v1'),
   AI_SCREENING_TIMEOUT_MS: Joi.number().min(5000).max(120000).default(30000),
   AI_SCREENING_MAX_RESUME_CHARS: Joi.number().min(1000).max(100000).default(15000),
   AI_SCREENING_PROMPT_VERSION: Joi.string().min(1).default('v1'),
