@@ -107,10 +107,18 @@ async function main() {
     });
     page.on('pageerror', (error) => recordBrowserError('pageerror', error.message));
     page.on('requestfailed', (request) => {
-      recordBrowserError(
-        'requestfailed',
-        `${request.method()} ${request.url()} :: ${request.failure()?.errorText ?? 'unknown failure'}`,
-      );
+      // The UI aborts the in-flight extraction-status poll when it re-issues a
+      // fresh poll (see AGENTS.md: waitForExtraction/pollScreening retry on
+      // abort). This is a deliberate client-side cancellation, not a failure.
+      const benignAbort =
+        request.failure()?.errorText === 'net::ERR_ABORTED' &&
+        /\/api\/v1\/applications\/[^/]+\/resume-extraction(?:\?|$)/.test(request.url());
+      if (!benignAbort) {
+        recordBrowserError(
+          'requestfailed',
+          `${request.method()} ${request.url()} :: ${request.failure()?.errorText ?? 'unknown failure'}`,
+        );
+      }
     });
     page.on('response', (response) => {
       if (response.status() < 400) return;
@@ -181,6 +189,7 @@ async function main() {
 
     // ---------- item 1c: login ----------
     await page.goto(`${FE_URL}/login`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1500); // let SSR hydration settle before filling
     await fillFormWithRetry(page, [
       ['input[type="email"]', EMAIL],
       ['input[type="password"]', PASSWORD],
