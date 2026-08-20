@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { IsIn, IsOptional, IsArray, IsUUID } from 'class-validator';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -19,8 +20,16 @@ import { AuthenticatedPrincipal } from '../../auth/interfaces/auth.interface';
 import { BulkScreeningService } from '../services/bulk-screening.service';
 
 export class BulkScreeningRequestDto {
+  @IsIn(['SELECTED', 'ALL_FOR_JOB', 'UNSCREENED_FOR_JOB', 'ALL_UNSCREENED_OPEN_JOBS'])
   mode!: 'SELECTED' | 'ALL_FOR_JOB' | 'UNSCREENED_FOR_JOB' | 'ALL_UNSCREENED_OPEN_JOBS';
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
   applicationIds?: string[];
+
+  @IsOptional()
+  @IsUUID('4')
   jobId?: string;
 }
 
