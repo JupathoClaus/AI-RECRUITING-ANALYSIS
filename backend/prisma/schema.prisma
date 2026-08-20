@@ -2270,7 +2270,7 @@ enum AiScreeningBatchStatus {
 }
 
 model AiScreeningBatch {
-  id                String                 @id @default(uuid())
+  id                String                 @id @default(uuid()) @db.Uuid
   companyId         String
   initiatedByUserId String
   /// Job filter — null means cross-job batch
@@ -2317,8 +2317,8 @@ enum AiScreeningBatchItemAction {
 }
 
 model AiScreeningBatchItem {
-  id            String                    @id @default(uuid())
-  batchId       String
+  id            String                    @id @default(uuid()) @db.Uuid
+  batchId       String                    @db.Uuid
   applicationId String
   /// Linked screening result. Null when the item never reached a screening
   /// (skipped due to missing resume, or failed before a result existed).

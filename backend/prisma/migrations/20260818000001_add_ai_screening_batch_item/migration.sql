@@ -31,7 +31,7 @@ CREATE TABLE "AiScreeningBatchItem" (
   "id"            UUID      NOT NULL DEFAULT gen_random_uuid(),
   "batchId"       UUID      NOT NULL,
   "applicationId" TEXT      NOT NULL,
-  "screeningId"   UUID,
+  "screeningId"   TEXT,
   "status"        "AiScreeningBatchItemStatus" NOT NULL DEFAULT 'PENDING',
   "action"        "AiScreeningBatchItemAction" NOT NULL DEFAULT 'QUEUED',
   "errorMessage"  TEXT,
