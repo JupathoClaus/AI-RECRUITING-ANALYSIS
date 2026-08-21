@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { ModalHeader } from "@/components/ui/modal-header"
+import { JobSalaryFields } from "@/components/jobs/job-salary-fields"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -143,12 +144,16 @@ export default function JobsPage() {
     workplaceType: "HYBRID",
     experienceLevel: "MID",
     description: "",
+    salaryMin: undefined,
+    salaryMax: undefined,
+    salaryCurrency: undefined,
   })
   const [createSubmitting, setCreateSubmitting] = React.useState(false)
   const [createError, setCreateError] = React.useState<string | null>(null)
 
   const [editMode, setEditMode] = React.useState(false)
   const [editForm, setEditForm] = React.useState<UpdateJobRequest>({})
+  const [editError, setEditError] = React.useState<string | null>(null)
   const [actionLoading, setActionLoading] = React.useState<string | null>(null)
 
   const handleJobAction = React.useCallback(async (jobId: string, action: string) => {
@@ -191,11 +196,35 @@ export default function JobsPage() {
   const handleUpdateJob = React.useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     if (!detailsJobId) return
+    const { salaryMin, salaryMax } = editForm
+    if (salaryMin != null && salaryMin < 0) {
+      setEditError("Minimum salary cannot be negative.")
+      return
+    }
+    if (salaryMax != null && salaryMax < 0) {
+      setEditError("Maximum salary cannot be negative.")
+      return
+    }
+    if (salaryMin != null && salaryMax != null && salaryMin > salaryMax) {
+      setEditError("Minimum salary cannot be greater than maximum salary.")
+      return
+    }
     setActionLoading(`${detailsJobId}-update`)
+    setEditError(null)
     try {
-      await updateJob(detailsJobId, editForm)
+      // The API returns salary values as Decimal strings; coerce to numbers so
+      // the UpdateJobDto @IsInt() contract is honoured (blank = undefined).
+      const payload: UpdateJobRequest = { ...editForm }
+      if (editForm.salaryMin !== undefined) {
+        payload.salaryMin = Number(editForm.salaryMin)
+      }
+      if (editForm.salaryMax !== undefined) {
+        payload.salaryMax = Number(editForm.salaryMax)
+      }
+      await updateJob(detailsJobId, payload)
       setEditMode(false)
       setEditForm({})
+      setEditError(null)
       const updated = await getJobById(detailsJobId)
       setDetailsJob(updated)
       setFetchKey((k) => k + 1)
@@ -294,10 +323,26 @@ export default function JobsPage() {
     e.preventDefault()
     setCreateSubmitting(true)
     setCreateError(null)
+    const { salaryMin, salaryMax } = createForm
+    if (salaryMin != null && salaryMin < 0) {
+      setCreateSubmitting(false)
+      setCreateError("Minimum salary cannot be negative.")
+      return
+    }
+    if (salaryMax != null && salaryMax < 0) {
+      setCreateSubmitting(false)
+      setCreateError("Maximum salary cannot be negative.")
+      return
+    }
+    if (salaryMin != null && salaryMax != null && salaryMin > salaryMax) {
+      setCreateSubmitting(false)
+      setCreateError("Minimum salary cannot be greater than maximum salary.")
+      return
+    }
     try {
       await createJob(createForm)
       setShowCreateDialog(false)
-      setCreateForm({ title: "", employmentType: "FULL_TIME", workplaceType: "HYBRID", experienceLevel: "MID", description: "" })
+      setCreateForm({ title: "", employmentType: "FULL_TIME", workplaceType: "HYBRID", experienceLevel: "MID", description: "", salaryMin: undefined, salaryMax: undefined, salaryCurrency: undefined })
       setFetchKey((k) => k + 1)
     } catch (err: unknown) {
       const apiErr = err as { message?: string }
@@ -324,7 +369,7 @@ export default function JobsPage() {
               <DialogTitle>Create New Job</DialogTitle>
               <DialogDescription>Fill in the details to create a new job posting.</DialogDescription>
             </ModalHeader>
-            <form onSubmit={handleCreateJob} className="space-y-4">
+            <form onSubmit={handleCreateJob} className="max-h-[72vh] space-y-4 overflow-y-auto pr-1">
               {createError && (
                 <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">{createError}</div>
               )}
@@ -394,6 +439,10 @@ export default function JobsPage() {
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
                 />
               </div>
+              <JobSalaryFields
+                value={createForm}
+                onChange={(v) => setCreateForm((f) => ({ ...f, ...v }))}
+              />
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
                 <Button type="submit" disabled={createSubmitting}>
@@ -558,7 +607,7 @@ export default function JobsPage() {
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <DollarSquare className="h-3.5 w-3.5 shrink-0" />
                             {job.salaryMin != null && job.salaryMax != null ? (
-                              <span>{formatCurrency(job.salaryMin)} \u2013 {formatCurrency(job.salaryMax)}</span>
+                              <span>{formatCurrency(job.salaryMin)} {"\u2013"} {formatCurrency(job.salaryMax)}</span>
                             ) : job.salaryMin != null ? (
                               <span>From {formatCurrency(job.salaryMin)}</span>
                             ) : (
@@ -632,7 +681,7 @@ export default function JobsPage() {
                                 </>
                               )}
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => { openDetails(job.id); setEditMode(true); setEditForm({ title: job.title, description: job.description || "", numberOfOpenings: job.numberOfOpenings, salaryMin: job.salaryMin ?? undefined, salaryMax: job.salaryMax ?? undefined }) }}>
+                              <DropdownMenuItem onClick={() => { openDetails(job.id); setEditMode(true); setEditError(null); setEditForm({ title: job.title, description: job.description || "", numberOfOpenings: job.numberOfOpenings, salaryMin: job.salaryMin ?? undefined, salaryMax: job.salaryMax ?? undefined, salaryCurrency: job.salaryCurrency ?? undefined }) }}>
                                 <Edit2 className="h-4 w-4 mr-2" />
                                 Edit
                               </DropdownMenuItem>
@@ -720,7 +769,7 @@ export default function JobsPage() {
                             </TableCell>
                             <TableCell className="hidden sm:table-cell text-muted-foreground">
                               {job.salaryMin != null && job.salaryMax != null
-                                ? `${formatCurrency(job.salaryMin)} \u2013 ${formatCurrency(job.salaryMax)}`
+                                ? `${formatCurrency(job.salaryMin)} – ${formatCurrency(job.salaryMax)}`
                                 : job.salaryMin != null
                                   ? `From ${formatCurrency(job.salaryMin)}`
                                   : "\u2014"}
@@ -813,7 +862,7 @@ export default function JobsPage() {
       )}
 
       {/* Job Details Dialog */}
-      <Dialog open={!!detailsJobId} onOpenChange={(open) => { if (!open) { setDetailsJobId(null); setDetailsJob(null); setDetailsError(null); setEditMode(false); setEditForm({}) } }}>
+      <Dialog open={!!detailsJobId} onOpenChange={(open) => { if (!open) { setDetailsJobId(null); setDetailsJob(null); setDetailsError(null); setEditMode(false); setEditForm({}); setEditError(null) } }}>
         <DialogContent className="max-w-xl">
           {detailsError ? (
             <div className="py-6 text-center">
@@ -840,35 +889,32 @@ export default function JobsPage() {
                 <DialogTitle>Edit Job</DialogTitle>
                 <DialogDescription>Update the job details below.</DialogDescription>
               </ModalHeader>
-              <form onSubmit={handleUpdateJob} className="space-y-4">
+              <form onSubmit={handleUpdateJob} className="max-h-[72vh] space-y-4 overflow-y-auto pr-1">
+                {editError && (
+                  <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">{editError}</div>
+                )}
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Job Title</label>
                   <Input value={editForm.title ?? detailsJob.title} onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))} maxLength={200} />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Openings</label>
-                    <Input type="number" min={1} value={editForm.numberOfOpenings ?? detailsJob.numberOfOpenings} onChange={(e) => setEditForm((f) => ({ ...f, numberOfOpenings: parseInt(e.target.value) || 1 }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Salary Currency</label>
-                    <Input value={editForm.salaryCurrency ?? detailsJob.salaryCurrency ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, salaryCurrency: e.target.value }))} placeholder="USD" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Salary Min</label>
-                    <Input type="number" min={0} value={editForm.salaryMin ?? detailsJob.salaryMin ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, salaryMin: e.target.value ? parseInt(e.target.value) : undefined }))} />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Salary Max</label>
-                    <Input type="number" min={0} value={editForm.salaryMax ?? detailsJob.salaryMax ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, salaryMax: e.target.value ? parseInt(e.target.value) : undefined }))} />
-                  </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Openings</label>
+                  <Input type="number" min={1} value={editForm.numberOfOpenings ?? detailsJob.numberOfOpenings} onChange={(e) => setEditForm((f) => ({ ...f, numberOfOpenings: parseInt(e.target.value) || 1 }))} />
                 </div>
+                <JobSalaryFields
+                  value={{
+                    salaryMin: editForm.salaryMin ?? detailsJob.salaryMin ?? undefined,
+                    salaryMax: editForm.salaryMax ?? detailsJob.salaryMax ?? undefined,
+                    salaryCurrency: editForm.salaryCurrency ?? detailsJob.salaryCurrency ?? undefined,
+                  }}
+                  onChange={(v) => setEditForm((f) => ({ ...f, ...v }))}
+                />
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Description</label>
                   <textarea className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none" rows={5} value={editForm.description ?? detailsJob.description ?? ""} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
-                  <Button type="button" variant="outline" onClick={() => { setEditMode(false); setEditForm({}) }}>Cancel</Button>
+                  <Button type="button" variant="outline" onClick={() => { setEditMode(false); setEditForm({}); setEditError(null) }}>Cancel</Button>
                   <Button type="submit" disabled={actionLoading === `${detailsJobId}-update`}>{actionLoading === `${detailsJobId}-update` ? "Saving..." : "Save Changes"}</Button>
                 </div>
               </form>
@@ -904,7 +950,7 @@ export default function JobsPage() {
                     <p className="text-xs text-muted mb-1">Salary Range</p>
                     <p className="text-sm font-medium text-foreground">
                       {detailsJob.salaryMin != null && detailsJob.salaryMax != null
-                        ? `${formatCurrency(detailsJob.salaryMin)} \u2013 ${formatCurrency(detailsJob.salaryMax)}`
+                        ? `${formatCurrency(detailsJob.salaryMin)} – ${formatCurrency(detailsJob.salaryMax)}`
                         : detailsJob.salaryMin != null
                           ? `From ${formatCurrency(detailsJob.salaryMin)}`
                           : "Not specified"}
@@ -923,7 +969,7 @@ export default function JobsPage() {
                 )}
               </div>
               <div className="flex justify-end gap-2 pt-4 border-t border-border mt-4">
-                <Button variant="outline" size="sm" onClick={() => { setEditMode(true); setEditForm({ title: detailsJob.title, description: detailsJob.description || "", numberOfOpenings: detailsJob.numberOfOpenings, salaryMin: detailsJob.salaryMin ?? undefined, salaryMax: detailsJob.salaryMax ?? undefined }) }}>
+                <Button variant="outline" size="sm" onClick={() => { setEditMode(true); setEditError(null); setEditForm({ title: detailsJob.title, description: detailsJob.description || "", numberOfOpenings: detailsJob.numberOfOpenings, salaryMin: detailsJob.salaryMin ?? undefined, salaryMax: detailsJob.salaryMax ?? undefined, salaryCurrency: detailsJob.salaryCurrency ?? undefined }) }}>
                   <Edit2 className="h-4 w-4 mr-1.5" />
                   Edit
                 </Button>

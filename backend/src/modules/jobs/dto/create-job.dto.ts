@@ -80,10 +80,14 @@ export class CreateJobDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsInt()
+  @Min(0)
   salaryMin?: number;
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsInt()
+  @Min(0)
   salaryMax?: number;
 
   @ApiPropertyOptional()
