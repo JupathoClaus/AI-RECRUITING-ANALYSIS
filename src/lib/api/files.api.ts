@@ -31,6 +31,9 @@ export async function uploadResume(
       method: 'POST',
       body: formData,
       signal,
+      // Resume uploads can be several MB through the dev proxy — give them
+      // room so a slow upload does not hit the default 15s request timeout.
+      timeoutMs: 60000,
     },
   )
 }

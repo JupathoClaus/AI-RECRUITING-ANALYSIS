@@ -113,7 +113,7 @@ describe("apiRequest", () => {
     await expect(apiRequest("/test", { signal: controller.signal })).rejects.toThrow()
   })
 
-  it("internal timeout aborts after configured ms", async () => {
+  it("internal timeout surfaces a friendly typed error instead of a raw abort", async () => {
     vi.useFakeTimers()
     mockFetch.mockImplementation(async (_url: string, opts: RequestInit) => {
       return new Promise<never>((_resolve, reject) => {
@@ -123,10 +123,15 @@ describe("apiRequest", () => {
         }
       })
     })
-    const { apiRequest } = await import("../client")
+    const { apiRequest, ApiErrorResponse } = await import("../client")
     const promise = apiRequest("/test")
     vi.advanceTimersByTime(15000)
-    await expect(promise).rejects.toThrow(/abort/i)
+    await expect(promise).rejects.toBeInstanceOf(ApiErrorResponse)
+    await expect(promise).rejects.toMatchObject({
+      statusCode: 408,
+      errorCode: 'REQUEST_TIMEOUT',
+      message: 'The request took too long and was cancelled. Please try again.',
+    })
     vi.useRealTimers()
   })
 

@@ -289,6 +289,24 @@ describe('AddCandidateDialog', () => {
       expect(await screen.findByText('Retry Application Creation')).toBeDefined()
     })
 
+    it('surfaces the friendly request-timeout message, not a raw abort string', async () => {
+      renderDialog(true)
+      await fillForm()
+      const { ApiErrorResponse } = await import('@/lib/api/client')
+      const timeoutError = new ApiErrorResponse(
+        408,
+        'REQUEST_TIMEOUT',
+        'The request took too long and was cancelled. Please try again.',
+      )
+      mockCreateCandidate.mockRejectedValue(timeoutError as never)
+
+      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
+
+      expect(await screen.findByText('The request took too long and was cancelled. Please try again.')).toBeDefined()
+      expect(screen.queryByText(/signal is aborted without reason/i)).toBeNull()
+      expect(await screen.findByText('Retry from Candidate Creation')).toBeDefined()
+    })
+
     it('shows replace resume on extraction failure', async () => {
       mockUseAiScreening.mockReturnValue(hookState({
         workflowState: 'EXTRACTION_FAILED',

@@ -55,6 +55,7 @@ interface RequestOptions {
   responseType?: 'json' | 'blob'
   signal?: AbortSignal
   statusInBody?: boolean
+  timeoutMs?: number
 }
 
 export class ApiErrorResponse extends Error {
@@ -72,11 +73,26 @@ export class ApiErrorResponse extends Error {
 
 async function doFetch(url: string, options: RequestInit, timeoutMs: number, externalSignal?: AbortSignal): Promise<Response> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let timedOut = false
+  const timer = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
   const combinedSignal = externalSignal ? combineAbortSignals(controller.signal, externalSignal) : controller.signal
   try {
-    const res = await fetch(url, { ...options, signal: combinedSignal })
-    return res
+    return await fetch(url, { ...options, signal: combinedSignal })
+  } catch (err) {
+    // A timeout abort must surface as a friendly typed error, not the raw
+    // browser "signal is aborted without reason" message. External-signal
+    // aborts keep their semantics (callers rely on AbortError to cancel polls).
+    const isAbort =
+      (typeof DOMException !== 'undefined' && err instanceof DOMException) ||
+      (err instanceof Error && err.name === 'AbortError')
+    if (isAbort && timedOut) {
+      throw new ApiErrorResponse(
+        408,
+        'REQUEST_TIMEOUT',
+        'The request took too long and was cancelled. Please try again.',
+      )
+    }
+    throw err
   } finally {
     clearTimeout(timer)
   }
@@ -138,7 +154,7 @@ export interface BlobResponse {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, params, headers: customHeaders, skipAuth = false, responseType = 'json', signal, statusInBody } = options
+  const { method = "GET", body, params, headers: customHeaders, skipAuth = false, responseType = 'json', signal, statusInBody, timeoutMs } = options
 
   let url = `${getBaseUrl()}${path}`
   if (params) {
@@ -178,7 +194,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   let res = await doFetch(
     url,
     { method, headers, body: fetchBody, credentials: 'include' },
-    REQUEST_TIMEOUT_MS,
+    timeoutMs ?? REQUEST_TIMEOUT_MS,
     signal,
   )
 
@@ -190,7 +206,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       res = await doFetch(
         url,
         { method, headers, body: retryBody, credentials: 'include' },
-        REQUEST_TIMEOUT_MS,
+        timeoutMs ?? REQUEST_TIMEOUT_MS,
         signal,
       )
     }
