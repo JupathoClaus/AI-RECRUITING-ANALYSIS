@@ -83,6 +83,24 @@ const ALLOWED_TRANSITIONS: Partial<Record<ApplicationStatus, ApplicationStatus[]
   ARCHIVED: [], // non-active
 };
 
+// Pipeline stage type -> application status. When an application is moved
+// between pipeline stages, the target stage's type drives the status (a move
+// to the Offer stage sets OFFER, to Hired sets HIRED, and so on) instead of
+// forcing every move through a single hard-coded status.
+const STAGE_TYPE_TO_STATUS: Partial<Record<PipelineStageType, ApplicationStatus>> = {
+  APPLIED: ApplicationStatus.SUBMITTED,
+  SCREENING: ApplicationStatus.SCREENING,
+  ASSESSMENT: ApplicationStatus.ASSESSMENT,
+  AI_INTERVIEW: ApplicationStatus.INTERVIEW,
+  RECRUITER_INTERVIEW: ApplicationStatus.INTERVIEW,
+  TECHNICAL_INTERVIEW: ApplicationStatus.INTERVIEW,
+  FINAL_INTERVIEW: ApplicationStatus.INTERVIEW,
+  REFERENCE_CHECK: ApplicationStatus.INTERVIEW,
+  OFFER: ApplicationStatus.OFFER,
+  HIRED: ApplicationStatus.HIRED,
+  REJECTED: ApplicationStatus.REJECTED,
+};
+
 const TERMINAL_STATUSES: ApplicationStatus[] = [
   ApplicationStatus.HIRED,
   ApplicationStatus.WITHDRAWN,
@@ -157,16 +175,24 @@ export class ApplicationWorkflowService {
         });
       }
 
-      const allowed = ALLOWED_TRANSITIONS[app.status as ApplicationStatus] ?? [];
-      if (!allowed.includes(params.toStatus)) {
-        throw new BadRequestException({
-          code: 'APPLICATION_STATUS_TRANSITION_INVALID',
-          message: `Cannot transition from ${app.status} to ${params.toStatus}`,
-        });
+      // Stage moves: the target stage's type decides the resulting status, and
+      // the stage-ownership check below is the governing guard (this lets a
+      // DRAFT application move along its job's pipeline without tripping the
+      // linear status-rule matrix). Non-stage transitions keep the matrix.
+      const isStageMove = !!params.toStageId;
+      if (!isStageMove) {
+        const allowed = ALLOWED_TRANSITIONS[app.status as ApplicationStatus] ?? [];
+        if (!allowed.includes(params.toStatus)) {
+          throw new BadRequestException({
+            code: 'APPLICATION_STATUS_TRANSITION_INVALID',
+            message: `Cannot transition from ${app.status} to ${params.toStatus}`,
+          });
+        }
       }
 
       // Validate toStageId belongs to this job's pipeline
       let resolvedStageId = params.toStageId ?? app.currentStageId;
+      let resolvedToStatus = params.toStatus;
       if (params.toStageId) {
         const stage = await tx.jobPipelineStage.findFirst({
           where: { id: params.toStageId, deletedAt: null, pipeline: { jobId: app.jobId } },
@@ -177,22 +203,23 @@ export class ApplicationWorkflowService {
             message: 'Stage does not belong to this job pipeline',
           });
         resolvedStageId = stage.id;
+        resolvedToStatus = STAGE_TYPE_TO_STATUS[stage.type] ?? params.toStatus;
       }
 
       // Build update data
       const now = new Date();
       const updateData: Record<string, unknown> = {
-        status: params.toStatus,
+        status: resolvedToStatus,
         currentStageId: resolvedStageId,
         version: app.version + 1,
         ...(params.additionalData ?? {}),
       };
 
-      if (params.toStatus === ApplicationStatus.REJECTED) updateData.rejectedAt = now;
-      if (params.toStatus === ApplicationStatus.WITHDRAWN) updateData.withdrawnAt = now;
-      if (params.toStatus === ApplicationStatus.HIRED) updateData.hiredAt = now;
-      if (params.toStatus === ApplicationStatus.DISQUALIFIED) updateData.disqualifiedAt = now;
-      if (params.toStatus === ApplicationStatus.ARCHIVED) updateData.archivedAt = now;
+      if (resolvedToStatus === ApplicationStatus.REJECTED) updateData.rejectedAt = now;
+      if (resolvedToStatus === ApplicationStatus.WITHDRAWN) updateData.withdrawnAt = now;
+      if (resolvedToStatus === ApplicationStatus.HIRED) updateData.hiredAt = now;
+      if (resolvedToStatus === ApplicationStatus.DISQUALIFIED) updateData.disqualifiedAt = now;
+      if (resolvedToStatus === ApplicationStatus.ARCHIVED) updateData.archivedAt = now;
 
       await tx.application.update({
         where: { id: params.applicationId },
@@ -206,7 +233,7 @@ export class ApplicationWorkflowService {
           fromStageId: app.currentStageId ?? null,
           toStageId: resolvedStageId ?? app.currentStageId!,
           fromStatus: app.status as ApplicationStatus,
-          toStatus: params.toStatus,
+          toStatus: resolvedToStatus,
           actorType: params.actorType,
           actorUserId: params.actorUserId ?? null,
           actorMembershipId: params.actorMembershipId ?? null,
@@ -223,20 +250,20 @@ export class ApplicationWorkflowService {
         actorType: params.actorType,
         actorUserId: params.actorUserId,
         actorMembershipId: params.actorMembershipId,
-        eventType: this.statusToAuditEvent(params.toStatus),
+        eventType: this.statusToAuditEvent(resolvedToStatus),
         entityType: 'Application',
         entityId: params.applicationId,
-        description: `Application status changed from ${app.status} to ${params.toStatus}`,
+        description: `Application status changed from ${app.status} to ${resolvedToStatus}`,
         metadata: {
           fromStatus: app.status,
-          toStatus: params.toStatus,
+          toStatus: resolvedToStatus,
           reasonCode: params.reasonCode,
         },
         requestId: params.requestId,
         tx,
       });
 
-      return { success: true, newVersion: app.version + 1, status: params.toStatus };
+      return { success: true, newVersion: app.version + 1, status: resolvedToStatus };
     });
   }
 

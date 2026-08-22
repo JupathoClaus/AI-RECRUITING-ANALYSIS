@@ -3,7 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { ApplicationWorkflowService } from '../services/application-workflow.service';
 import { ApplicationAuditService } from '../services/application-audit.service';
 import { PrismaService } from '@database/prisma/prisma.service';
-import { ApplicationStatus, ApplicationActorType } from '@prisma/client';
+import { ApplicationStatus, ApplicationActorType, PipelineStageType } from '@prisma/client';
 
 const COMPANY_ID = 'company-1';
 const APP_ID = 'app-1';
@@ -128,6 +128,95 @@ describe('ApplicationWorkflowService', () => {
         ...base,
         toStatus: ApplicationStatus.UNDER_REVIEW,
         toStageId: 'wrong-stage-id',
+        expectedVersion: 1,
+      }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('allows a DRAFT application to move to a pipeline stage', async () => {
+    const app = makeApp(ApplicationStatus.DRAFT, 1, 'stage-1');
+    prisma._tx.application.findFirst.mockResolvedValue(app);
+    prisma._tx.jobPipelineStage.findFirst.mockResolvedValue({
+      id: 'stage-2',
+      type: PipelineStageType.SCREENING,
+    });
+    prisma._tx.application.update.mockResolvedValue({
+      ...app,
+      status: ApplicationStatus.SCREENING,
+      currentStageId: 'stage-2',
+      version: 2,
+    });
+    prisma._tx.applicationStageHistory.create.mockResolvedValue({});
+    const result = await service.transition({
+      ...base,
+      toStatus: ApplicationStatus.UNDER_REVIEW,
+      toStageId: 'stage-2',
+    });
+    expect(result.status).toBe(ApplicationStatus.SCREENING);
+    expect(prisma._tx.application.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: ApplicationStatus.SCREENING,
+          currentStageId: 'stage-2',
+        }),
+      }),
+    );
+  });
+
+  it('derives OFFER status when moving to an Offer stage', async () => {
+    const app = makeApp(ApplicationStatus.DRAFT, 1, 'stage-1');
+    prisma._tx.application.findFirst.mockResolvedValue(app);
+    prisma._tx.jobPipelineStage.findFirst.mockResolvedValue({
+      id: 'stage-4',
+      type: PipelineStageType.OFFER,
+    });
+    prisma._tx.application.update.mockResolvedValue({
+      ...app,
+      status: ApplicationStatus.OFFER,
+      currentStageId: 'stage-4',
+      version: 2,
+    });
+    prisma._tx.applicationStageHistory.create.mockResolvedValue({});
+    const result = await service.transition({
+      ...base,
+      toStatus: ApplicationStatus.UNDER_REVIEW,
+      toStageId: 'stage-4',
+    });
+    expect(result.status).toBe(ApplicationStatus.OFFER);
+  });
+
+  it('derives HIRED status and records hire time when moving to the Hired stage', async () => {
+    const app = makeApp(ApplicationStatus.DRAFT, 1, 'stage-1');
+    prisma._tx.application.findFirst.mockResolvedValue(app);
+    prisma._tx.jobPipelineStage.findFirst.mockResolvedValue({
+      id: 'stage-5',
+      type: PipelineStageType.HIRED,
+    });
+    prisma._tx.application.update.mockResolvedValue({
+      ...app,
+      status: ApplicationStatus.HIRED,
+      currentStageId: 'stage-5',
+      version: 2,
+      hiredAt: new Date(),
+    });
+    prisma._tx.applicationStageHistory.create.mockResolvedValue({});
+    const result = await service.transition({
+      ...base,
+      toStatus: ApplicationStatus.UNDER_REVIEW,
+      toStageId: 'stage-5',
+    });
+    expect(result.status).toBe(ApplicationStatus.HIRED);
+    const updateCall = prisma._tx.application.update.mock.calls[0][0];
+    expect(updateCall.data.hiredAt).toBeDefined();
+  });
+
+  it('prevents stage moves from terminal statuses', async () => {
+    prisma._tx.application.findFirst.mockResolvedValue(makeApp(ApplicationStatus.HIRED, 1, 'stage-1'));
+    await expect(
+      service.transition({
+        ...base,
+        toStatus: ApplicationStatus.UNDER_REVIEW,
+        toStageId: 'stage-2',
         expectedVersion: 1,
       }),
     ).rejects.toThrow(BadRequestException);
