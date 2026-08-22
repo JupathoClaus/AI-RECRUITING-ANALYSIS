@@ -25,7 +25,8 @@ const ALLOWED_MIME_TYPES = new Set([
 const PDF_HEADER = Buffer.from('%PDF');
 const DOCX_ZIP_MARKER = Buffer.from('PK');
 const MAX_LOGO_SIZE = 5 * 1024 * 1024;
-const LOGO_TYPES: Record<string, { extension: string; signature: number[] }> = {
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
+const IMAGE_TYPES: Record<string, { extension: string; signature: number[] }> = {
   'image/png': { extension: 'png', signature: [0x89, 0x50, 0x4e, 0x47] },
   'image/jpeg': { extension: 'jpg', signature: [0xff, 0xd8, 0xff] },
 };
@@ -144,7 +145,7 @@ export class FilesService {
     if (!buffer?.length) throw new BadRequestException('FILE_EMPTY');
     if (buffer.length > MAX_LOGO_SIZE) throw new BadRequestException('FILE_TOO_LARGE');
 
-    const type = LOGO_TYPES[mimeType];
+    const type = IMAGE_TYPES[mimeType];
     if (!type) throw new BadRequestException('FILE_TYPE_NOT_ALLOWED');
     if (!type.signature.every((byte, index) => buffer[index] === byte)) {
       throw new BadRequestException('FILE_SIGNATURE_MISMATCH');
@@ -215,6 +216,100 @@ export class FilesService {
       },
     });
     if (!file) throw new NotFoundException('COMPANY_LOGO_NOT_FOUND');
+
+    const stored = await this.storage.get(file.storageKey);
+    return { ...stored, mimeType: file.mimeType, originalName: file.originalName };
+  }
+
+  /**
+   * Upload (or replace) the current user's profile photo. PNG/JPG only, max
+   * 2 MB, validated by MIME type AND file signature. The active avatar is
+   * superseded and a new StoredFile row links to the user.
+   */
+  async uploadUserAvatar(
+    userId: string,
+    buffer: Buffer,
+    originalName: string,
+    mimeType: string,
+  ) {
+    if (!buffer?.length) throw new BadRequestException('FILE_EMPTY');
+    if (buffer.length > MAX_AVATAR_SIZE) throw new BadRequestException('FILE_TOO_LARGE');
+
+    const type = IMAGE_TYPES[mimeType];
+    if (!type) throw new BadRequestException('FILE_TYPE_NOT_ALLOWED');
+    if (!type.signature.every((byte, index) => buffer[index] === byte)) {
+      throw new BadRequestException('FILE_SIGNATURE_MISMATCH');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('USER_NOT_FOUND');
+
+    const storedName = this.storage.generateStoredName(type.extension);
+    const { storageKey, checksumSha256, sizeBytes } = await this.storage.put(
+      'user-avatars',
+      storedName,
+      buffer,
+      mimeType,
+    );
+
+    try {
+      const file = await this.prisma.$transaction(async (tx) => {
+        await tx.storedFile.updateMany({
+          where: {
+            uploadedByUserId: userId,
+            category: FileCategory.USER_AVATAR,
+            status: FileStatus.ACTIVE,
+          },
+          data: { status: FileStatus.SUPERSEDED },
+        });
+        const created = await tx.storedFile.create({
+          data: {
+            companyId: null,
+            uploadedByUserId: userId,
+            storageKey,
+            originalName: this.sanitizeFilename(originalName),
+            storedName,
+            extension: type.extension,
+            mimeType,
+            sizeBytes,
+            checksumSha256,
+            category: FileCategory.USER_AVATAR,
+            status: FileStatus.ACTIVE,
+          },
+        });
+        await tx.user.update({
+          where: { id: userId },
+          data: { avatarFileId: created.id, avatarUrl: `/api/v1/user/avatar` },
+        });
+        return created;
+      });
+      return file;
+    } catch (error) {
+      await this.storage.delete(storageKey).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async downloadUserAvatar(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarFileId: true },
+    });
+    if (!user?.avatarFileId) throw new NotFoundException('USER_AVATAR_NOT_FOUND');
+
+    const file = await this.prisma.storedFile.findFirst({
+      where: {
+        id: user.avatarFileId,
+        uploadedByUserId: userId,
+        category: FileCategory.USER_AVATAR,
+        status: FileStatus.ACTIVE,
+        deletedAt: null,
+      },
+    });
+    if (!file) throw new NotFoundException('USER_AVATAR_NOT_FOUND');
 
     const stored = await this.storage.get(file.storageKey);
     return { ...stored, mimeType: file.mimeType, originalName: file.originalName };

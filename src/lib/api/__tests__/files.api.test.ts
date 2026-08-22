@@ -12,7 +12,7 @@ vi.mock('../client', () => ({
   },
 }))
 
-import { uploadResume, getApplicationResume } from '../files.api'
+import { uploadResume, getApplicationResume, uploadProfilePhoto, getProfilePhoto } from '../files.api'
 
 describe('files.api', () => {
   beforeEach(() => vi.clearAllMocks())
@@ -49,6 +49,27 @@ describe('files.api', () => {
       mockApiRequest.mockResolvedValue(null)
       await getApplicationResume('app-4')
       expect(mockApiRequest).toHaveBeenCalledWith('/applications/app-4/resume')
+    })
+  })
+
+  describe('uploadProfilePhoto', () => {
+    it('posts FormData with the file to /user/avatar', async () => {
+      mockApiRequest.mockResolvedValue({ id: 'a1' })
+      const file = new File(['png'], 'me.png', { type: 'image/png' })
+      await uploadProfilePhoto(file)
+      const call = mockApiRequest.mock.calls[0]
+      expect(call[0]).toBe('/user/avatar')
+      expect(call[1].method).toBe('POST')
+      expect((call[1].body as FormData).get('file')).toBe(file)
+    })
+  })
+
+  describe('getProfilePhoto', () => {
+    it('requests the blob from /user/avatar and returns it', async () => {
+      mockApiRequest.mockResolvedValue({ blob: new Blob(['png']), headers: new Headers() })
+      const r = await getProfilePhoto()
+      expect(mockApiRequest).toHaveBeenCalledWith('/user/avatar', expect.objectContaining({ responseType: 'blob' }))
+      expect(r.size).toBe(3)
     })
   })
 })

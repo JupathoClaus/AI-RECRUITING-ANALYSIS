@@ -141,6 +141,7 @@ model User {
   lastName            String
   phone               String?
   avatarUrl           String?
+  avatarFileId        String?
   status              UserStatus @default(PENDING_VERIFICATION)
   emailVerifiedAt     DateTime?
   lastLoginAt         DateTime?
@@ -1960,6 +1961,7 @@ model Application {
 enum FileCategory {
   RESUME
   COMPANY_LOGO
+  USER_AVATAR
   COVER_IMAGE
   SCREENING_ANSWER
 }
@@ -1972,7 +1974,7 @@ enum FileStatus {
 
 model StoredFile {
   id               String       @id @default(uuid())
-  companyId        String
+  companyId        String?
   applicationId    String?
   uploadedByUserId String?
   storageKey       String       @unique

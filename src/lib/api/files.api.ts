@@ -60,3 +60,14 @@ export async function getCompanyLogo(): Promise<Blob> {
   const response = await apiRequest<{ blob: Blob }>('/company/logo', { responseType: 'blob' })
   return response.blob
 }
+
+export async function uploadProfilePhoto(file: File): Promise<StoredFileResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiRequest<StoredFileResponse>('/user/avatar', { method: 'POST', body: formData })
+}
+
+export async function getProfilePhoto(): Promise<Blob> {
+  const response = await apiRequest<{ blob: Blob }>('/user/avatar', { responseType: 'blob' })
+  return response.blob
+}

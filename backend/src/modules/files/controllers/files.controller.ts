@@ -121,6 +121,39 @@ export class FilesController {
     result.stream.pipe(res);
   }
 
+  @Post('user/avatar')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 2 * 1024 * 1024 } }))
+  @ApiOperation({ summary: 'Upload or replace the current user profile photo' })
+  @ApiConsumes('multipart/form-data')
+  async uploadUserAvatar(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 2 * 1024 * 1024 })],
+        fileIsRequired: true,
+      }),
+    )
+    file: UploadedFile,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    return this.filesService.uploadUserAvatar(
+      user.userId,
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+    );
+  }
+
+  @Get('user/avatar')
+  @ApiOperation({ summary: 'Download the current user profile photo' })
+  async downloadUserAvatar(@CurrentUser() user: AuthenticatedPrincipal, @Res() res: Response) {
+    const result = await this.filesService.downloadUserAvatar(user.userId);
+    res.setHeader('Content-Type', result.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${result.originalName}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Length', result.sizeBytes);
+    result.stream.pipe(res);
+  }
+
   @Get('files/:fileId/download')
   @RequirePermissions('applications.read')
   @ApiOperation({ summary: 'Download a file by ID' })

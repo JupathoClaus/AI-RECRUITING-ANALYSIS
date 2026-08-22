@@ -26,6 +26,10 @@ describe('FilesService', () => {
         findFirst: jest.fn(),
         update: jest.fn(),
       },
+      user: {
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
       application: {
         findFirst: jest.fn(),
       },
@@ -75,6 +79,81 @@ describe('FilesService', () => {
     }).compile();
 
     service = module.get<FilesService>(FilesService);
+  });
+
+  describe('uploadUserAvatar', () => {
+    const pngBuffer = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]);
+    const jpgBuffer = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+
+    it('should store a valid PNG and link it to the user', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: mockUserId });
+      prisma.storedFile.create.mockResolvedValue({ id: 'avatar-1', category: 'USER_AVATAR' });
+
+      const result = await service.uploadUserAvatar(mockUserId, pngBuffer, 'me.png', 'image/png');
+
+      expect(storage.put).toHaveBeenCalled();
+      expect(prisma.storedFile.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            uploadedByUserId: mockUserId,
+            category: 'USER_AVATAR',
+            status: 'ACTIVE',
+            extension: 'png',
+          }),
+        }),
+      );
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: mockUserId },
+          data: expect.objectContaining({ avatarFileId: 'avatar-1', avatarUrl: '/api/v1/user/avatar' }),
+        }),
+      );
+      expect(result.id).toBe('avatar-1');
+    });
+
+    it('should supersede the previous active avatar on replacement', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: mockUserId });
+      prisma.storedFile.create.mockResolvedValue({ id: 'avatar-2', category: 'USER_AVATAR' });
+
+      await service.uploadUserAvatar(mockUserId, jpgBuffer, 'me.jpg', 'image/jpeg');
+
+      expect(prisma.storedFile.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ category: 'USER_AVATAR', status: 'ACTIVE' }),
+          data: { status: 'SUPERSEDED' },
+        }),
+      );
+    });
+
+    it('should reject an oversized avatar', async () => {
+      await expect(
+        service.uploadUserAvatar(mockUserId, Buffer.alloc(2 * 1024 * 1024 + 1), 'big.png', 'image/png'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject an unsupported MIME type', async () => {
+      await expect(
+        service.uploadUserAvatar(mockUserId, Buffer.from([1, 2, 3]), 'evil.gif', 'image/gif'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should reject a spoofed file whose signature does not match its MIME type', async () => {
+      await expect(
+        service.uploadUserAvatar(mockUserId, Buffer.from('not-a-real-png!!'), 'fake.png', 'image/png'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw USER_AVATAR_NOT_FOUND when no avatar exists', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: mockUserId, avatarFileId: null });
+      await expect(service.downloadUserAvatar(mockUserId)).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reject upload when the user does not exist', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      await expect(
+        service.uploadUserAvatar(mockUserId, pngBuffer, 'me.png', 'image/png'),
+      ).rejects.toThrow(NotFoundException);
+    });
   });
 
   describe('uploadResume', () => {

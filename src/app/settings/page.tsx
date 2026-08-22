@@ -40,6 +40,30 @@ import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { cn, getErrorMessage } from "@/lib/utils"
+
+function formatUploadError(error: unknown, fallback: string): string {
+  const code =
+    error && typeof error === "object" && "errorCode" in error
+      ? String((error as { errorCode?: unknown }).errorCode)
+      : ""
+  const message =
+    error && typeof error === "object" && "message" in error
+      ? String((error as { message?: unknown }).message)
+      : ""
+  if (
+    code === "FILE_SIGNATURE_MISMATCH" ||
+    code === "FILE_TYPE_NOT_ALLOWED" ||
+    code === "FILE_EXTENSION_NOT_ALLOWED" ||
+    /FILE_SIGNATURE_MISMATCH|FILE_TYPE_NOT_ALLOWED|FILE_EXTENSION_NOT_ALLOWED/.test(message)
+  ) {
+    return "Choose a valid PNG or JPG image."
+  }
+  if (code === "FILE_TOO_LARGE" || /FILE_TOO_LARGE/.test(message)) {
+    return "The image is too large. Check the size limit and try again."
+  }
+  if (code === "FILE_EMPTY" || /FILE_EMPTY/.test(message)) return "The selected file is empty."
+  return getErrorMessage(error, fallback)
+}
 import * as authApi from "@/lib/api/auth.api"
 import * as companyApi from "@/lib/api/company.api"
 import * as filesApi from "@/lib/api/files.api"
@@ -110,10 +134,14 @@ export default function SettingsPage() {
   const [companySuccess, setCompanySuccess] = useState<string | null>(null)
   const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
-  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [logoUploading, setLogoUploading] = useState(false)
   const [logoError, setLogoError] = useState<string | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const initialFirstName = user?.name?.split(" ")[0] || ""
   const initialLastName = user?.name?.split(" ").slice(1).join(" ") || ""
@@ -167,7 +195,7 @@ export default function SettingsPage() {
     return () => { cancelled = true }
   }, [])
 
-  useEffect(() => {
+useEffect(() => {
     let objectUrl: string | null = null
     filesApi.getCompanyLogo()
       .then((blob) => {
@@ -177,6 +205,46 @@ export default function SettingsPage() {
       .catch(() => undefined)
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
   }, [])
+
+  useEffect(() => {
+    let objectUrl: string | null = null
+    filesApi.getProfilePhoto()
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob)
+        setAvatarUrl(objectUrl)
+      })
+      .catch(() => undefined)
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl) }
+  }, [])
+
+  const uploadAvatar = useCallback(async (file?: File) => {
+    if (!file) return
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      setAvatarError('Choose a PNG or JPG image')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setAvatarError('Photo must be 2 MB or smaller')
+      return
+    }
+
+    setAvatarUploading(true)
+    setAvatarError(null)
+    try {
+      await filesApi.uploadProfilePhoto(file)
+      const blob = await filesApi.getProfilePhoto()
+      setAvatarUrl((previous) => {
+        if (previous) URL.revokeObjectURL(previous)
+        return URL.createObjectURL(blob)
+      })
+      await refreshUser()
+    } catch (error: unknown) {
+      setAvatarError(formatUploadError(error, 'Failed to upload profile photo'))
+    } finally {
+      setAvatarUploading(false)
+      if (avatarInputRef.current) avatarInputRef.current.value = ''
+    }
+  }, [refreshUser])
 
   const uploadLogo = useCallback(async (file?: File) => {
     if (!file) return
@@ -199,7 +267,7 @@ export default function SettingsPage() {
         return URL.createObjectURL(blob)
       })
     } catch (error: unknown) {
-      setLogoError(getErrorMessage(error, 'Failed to upload company logo'))
+      setLogoError(formatUploadError(error, 'Failed to upload company logo'))
     } finally {
       setLogoUploading(false)
       if (logoInputRef.current) logoInputRef.current.value = ''
@@ -375,7 +443,7 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card>
+<Card>
               <CardHeader>
                 <CardTitle className="text-base">Profile Photo</CardTitle>
                 <CardDescription>Upload a profile avatar.</CardDescription>
@@ -384,10 +452,29 @@ export default function SettingsPage() {
                 <Avatar
                   className="h-24 w-24 text-lg"
                   fallback={user?.name?.split(" ").map((n) => n[0]).join("") || "U"}
-                />
+                >
+                  {avatarUrl && <AvatarImage src={avatarUrl} alt="Profile photo" className="object-cover" />}
+                </Avatar>
+                {avatarError && (
+                  <p className="text-sm text-error">{avatarError}</p>
+                )}
                 <div className="flex flex-col items-center gap-2">
-                  <Button variant="outline" size="sm" disabled title="Photo upload coming soon">
-                    <DocumentUpload className="h-4 w-4" /> Upload Photo
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    className="hidden"
+                    aria-label="Upload profile photo"
+                    onChange={(e) => { void uploadAvatar(e.target.files?.[0]) }}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={avatarUploading}
+                    onClick={() => avatarInputRef.current?.click()}
+                  >
+                    <DocumentUpload className="h-4 w-4" />
+                    {avatarUploading ? "Uploading..." : "Upload Photo"}
                   </Button>
                   <p className="text-xs text-muted">PNG, JPG. Max 2MB.</p>
                 </div>

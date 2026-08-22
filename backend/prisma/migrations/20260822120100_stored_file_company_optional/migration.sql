@@ -1,0 +1,1 @@
+ALTER TABLE "StoredFile" ALTER COLUMN "companyId" DROP NOT NULL;
