@@ -54,12 +54,12 @@ const makeCandidate = (id: string, name: string) => ({
 })
 
 vi.mock("@/store/useStore", () => ({
-  useStore: () => ({
+  useStore: vi.fn(() => ({
     candidates: [makeCandidate("c1", "Ada Lovelace")],
     jobs: [{ id: "job-1", title: "Senior Engineer", status: "Active" }],
     fetchCandidates: vi.fn().mockResolvedValue(undefined),
     fetchJobs: vi.fn().mockResolvedValue(undefined),
-  }),
+  })),
 }))
 
 vi.mock("iconsax-react", () => {
@@ -271,5 +271,97 @@ describe("AIInterviewsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Application not found")).toBeTruthy()
     })
+  })
+
+  it("keeps Create Interview disabled until a candidate and a valid duration are set", async () => {
+    render(<AIInterviewsPage />)
+    await waitFor(() => {
+      expect(screen.getByText("No AI interviews yet")).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Create AI Interview/i }))
+    await waitFor(() => {
+      expect(screen.getByText("Candidate & Position")).toBeTruthy()
+    })
+
+    const createBtn = () => screen.getByRole("button", { name: /^Create Interview$/i })
+    const durationInput = screen.getByRole("spinbutton")
+
+    // No candidate selected yet: disabled even with a valid duration.
+    expect(createBtn().hasAttribute("disabled")).toBe(true)
+
+    // Select the candidate application option.
+    fireEvent.click(screen.getAllByRole("combobox")[0])
+    await waitFor(() => {
+      fireEvent.click(screen.getByText("Ada Lovelace — Senior Engineer"))
+    })
+
+    // Invalid durations keep the button disabled and surface a hint.
+    for (const bad of ["0", "-5", "121", "500"]) {
+      fireEvent.change(durationInput, { target: { value: bad } })
+      expect(createBtn().hasAttribute("disabled")).toBe(true)
+      expect(screen.getByText(/between 5 and 120 minutes/i)).toBeTruthy()
+    }
+
+    // Non-numeric / empty input also keeps the button disabled (no hint needed
+    // for an empty field).
+    for (const bad of ["abc", ""]) {
+      fireEvent.change(durationInput, { target: { value: bad } })
+      expect(createBtn().hasAttribute("disabled")).toBe(true)
+      expect(screen.queryByText(/between 5 and 120 minutes/i)).toBeNull()
+    }
+
+    // Backend lower/upper bounds are valid.
+    for (const ok of ["5", "120"]) {
+      fireEvent.change(durationInput, { target: { value: ok } })
+      expect(createBtn().hasAttribute("disabled")).toBe(false)
+      expect(screen.queryByText(/between 5 and 120 minutes/i)).toBeNull()
+    }
+
+    fireEvent.change(durationInput, { target: { value: "45" } })
+    fireEvent.click(createBtn())
+    await waitFor(() => {
+      expect(mockCreateAiInterview).toHaveBeenCalledWith({
+        applicationId: "app-c1",
+        language: "en",
+        estimatedDurationMinutes: 45,
+      })
+    })
+  })
+
+  it("shows the empty candidate state when the tenant has candidates without applications", async () => {
+    const candidatesWithoutApps = [
+      {
+        id: "c1",
+        firstName: "Ada",
+        lastName: "Lovelace",
+        displayName: "Ada Lovelace",
+        email: "ada@test.com",
+        phone: "",
+        totalExperienceYears: 5,
+        skills: [],
+        aiScore: null,
+        status: "ACTIVE",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        applicationSummary: { total: 0, active: 0 },
+      },
+    ]
+    const { useStore } = await import("@/store/useStore")
+    vi.mocked(useStore).mockReturnValue({
+      candidates: candidatesWithoutApps,
+      jobs: [{ id: "job-1", title: "Senior Engineer", status: "Active" }],
+      fetchCandidates: vi.fn().mockResolvedValue(undefined),
+      fetchJobs: vi.fn().mockResolvedValue(undefined),
+    })
+
+    render(<AIInterviewsPage />)
+    await waitFor(() => {
+      expect(screen.getByText("No AI interviews yet")).toBeTruthy()
+    })
+    fireEvent.click(screen.getByRole("button", { name: /Create AI Interview/i }))
+    await waitFor(() => {
+      expect(screen.getByText("No candidates available")).toBeTruthy()
+    })
+    expect(screen.getByRole("button", { name: /^Create Interview$/i }).hasAttribute("disabled")).toBe(true)
   })
 })

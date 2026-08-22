@@ -85,19 +85,27 @@ export default function AIInterviewsPage() {
 
   const selectedApp = applicationOptions.find((a) => a.applicationId === selectedApplicationId)
 
+  const durationValue = Number(durationMinutes)
+  const durationValid = Number.isFinite(durationValue) && durationValue >= 5 && durationValue <= 120
+  const durationError = durationMinutes.trim() !== "" && !durationValid
+  const formValid = !!selectedApplicationId && durationValid
+
   const handleCreate = useCallback(async () => {
-    if (!selectedApplicationId) return
+    if (!formValid) return
     setCreating(true)
     setCreateError(null)
     try {
       const interview = await createAiInterview({
         applicationId: selectedApplicationId,
         language,
-        estimatedDurationMinutes: Number(durationMinutes) || 30,
+        estimatedDurationMinutes: durationValue,
       })
       // Load any existing interviews for the same application (tenant-scoped).
       const [detail, existing] = await Promise.all([getAiInterview(interview.id), getAiInterviewsByApplication(selectedApplicationId).catch(() => [])])
-      setCreated((prev) => [detail, ...existing.filter((i) => i.id !== detail.id), ...prev])
+      setCreated((prev) => {
+        const merged = [detail, ...existing.filter((i) => i.id !== detail.id), ...prev]
+        return [...new Map(merged.map((i) => [i.id, i])).values()]
+      })
       setCreateOpen(false)
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Interview could not be created"
@@ -105,7 +113,7 @@ export default function AIInterviewsPage() {
     } finally {
       setCreating(false)
     }
-  }, [selectedApplicationId, language, durationMinutes])
+  }, [selectedApplicationId, language, durationValid, formValid, durationValue])
 
   const handleSend = useCallback(async (interview: AiInterviewDetail) => {
     setBusyId(interview.id)
@@ -181,7 +189,7 @@ export default function AIInterviewsPage() {
             <div className="space-y-4 py-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Candidate &amp; Position</label>
-                <Select value={selectedApplicationId || undefined} onValueChange={setSelectedApplicationId}>
+                <Select value={selectedApplicationId} onValueChange={setSelectedApplicationId}>
                   <SelectTrigger className="bg-background border-border">
                     <SelectValue placeholder={applicationOptions.length ? "Select a candidate application" : "No candidates available"} />
                   </SelectTrigger>
@@ -217,7 +225,10 @@ export default function AIInterviewsPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground">Estimated duration (min)</label>
-                  <Input type="number" min={5} max={180} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} />
+                  <Input type="number" min={5} max={120} value={durationMinutes} onChange={(e) => setDurationMinutes(e.target.value)} aria-invalid={durationError} />
+                  {durationError && (
+                    <p className="text-xs text-error">Enter a duration between 5 and 120 minutes.</p>
+                  )}
                 </div>
               </div>
               {createError && (
@@ -231,7 +242,7 @@ export default function AIInterviewsPage() {
               <Button variant="outline" onClick={() => setCreateOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreate} disabled={!selectedApplicationId || creating}>
+              <Button onClick={handleCreate} disabled={!formValid || creating}>
                 <MagicStar className="h-4 w-4 mr-2" />
                 {creating ? "Creating..." : "Create Interview"}
               </Button>
