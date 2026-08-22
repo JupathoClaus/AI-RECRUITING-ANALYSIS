@@ -49,6 +49,7 @@ describe('CandidatesService', () => {
     candidate: {
       create: jest.fn(),
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
       update: jest.fn(),
@@ -62,12 +63,21 @@ describe('CandidatesService', () => {
     },
     application: {
       findMany: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn(),
     },
     // Phase 2.2 — auto CompanyCandidate on create
     companyCandidate: {
       upsert: jest.fn().mockResolvedValue({ id: 'cc-1' }),
       findMany: jest.fn().mockResolvedValue([]),
+      updateMany: jest.fn(),
     },
+    $transaction: jest.fn((fn) =>
+      fn({
+        candidate: mockPrismaService.candidate,
+        application: mockPrismaService.application,
+        companyCandidate: mockPrismaService.companyCandidate,
+      }),
+    ),
   };
 
   const mockAuditService = {
@@ -994,6 +1004,87 @@ describe('CandidatesService', () => {
       expect(result).toEqual({ archived: true, status: 'already_archived' });
       expect(prisma.candidate.update).not.toHaveBeenCalled();
       expect(auditService.record).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── deleteCandidate ──────────────────────────────────────────────────────────
+  describe('deleteCandidate', () => {
+    it('should soft-delete an active candidate and its applications', async () => {
+      prisma.candidate.findFirst.mockResolvedValue(baseCandidate);
+      prisma.candidate.update.mockResolvedValue({
+        ...baseCandidate,
+        status: 'DELETED',
+        version: 2,
+        deletedAt: new Date(),
+      });
+      prisma.application.updateMany.mockResolvedValue({ count: 1 });
+      prisma.companyCandidate.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.deleteCandidate(
+        'candidate-1',
+        1,
+        'Removed by HR',
+        'user-1',
+        'mem-1',
+        'company-1',
+        'req-1',
+      );
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(prisma.candidate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'candidate-1' },
+          data: expect.objectContaining({ status: 'DELETED', version: 2 }),
+        }),
+      );
+      expect(prisma.application.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { companyId: 'company-1', candidateId: 'candidate-1', deletedAt: null },
+        }),
+      );
+      expect(prisma.companyCandidate.updateMany).toHaveBeenCalled();
+      expect(auditService.record).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'CANDIDATE_DELETED' }),
+      );
+      expect(result.deleted).toBe(true);
+    });
+
+    it('should return 404 when the candidate is not linked to the company (tenant isolation)', async () => {
+      prisma.candidate.findFirst.mockResolvedValue(null);
+      await expect(service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-2')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.candidate.update).not.toHaveBeenCalled();
+    });
+
+    it('should be idempotent for an already-deleted candidate', async () => {
+      prisma.candidate.findFirst.mockResolvedValue({
+        ...baseCandidate,
+        status: 'DELETED',
+        deletedAt: new Date(),
+      });
+      const result = await service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1');
+      expect(result).toEqual({ deleted: true, status: 'already_deleted' });
+      expect(prisma.candidate.update).not.toHaveBeenCalled();
+      expect(auditService.record).not.toHaveBeenCalled();
+    });
+
+    it('should reject deleting a merged or anonymized candidate', async () => {
+      prisma.candidate.findFirst.mockResolvedValue({ ...baseCandidate, status: 'MERGED' });
+      await expect(service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1')).rejects.toThrow(
+        BadRequestException,
+      );
+      prisma.candidate.findFirst.mockResolvedValue({ ...baseCandidate, status: 'ANONYMIZED' });
+      await expect(service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should reject on stale version', async () => {
+      prisma.candidate.findFirst.mockResolvedValue({ ...baseCandidate, version: 5 });
+      await expect(service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1')).rejects.toThrow(
+        ConflictException,
+      );
     });
   });
 

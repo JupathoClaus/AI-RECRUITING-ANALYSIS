@@ -32,6 +32,7 @@ import { CandidateMergeService } from './candidate-merge.service';
 import { CreateCandidateDto, UpdateCandidateDto } from './dto/create-candidate.dto';
 import { CandidateQueryDto } from './dto/candidate-query.dto';
 import { ArchiveCandidateDto } from './dto/archive-candidate.dto';
+import { DeleteCandidateDto } from './dto/delete-candidate.dto';
 import { BlockCandidateDto } from './dto/block-candidate.dto';
 import { MergePreviewDto } from './dto/merge-preview.dto';
 import { MergeCandidateDto } from './dto/merge-candidate.dto';
@@ -223,6 +224,28 @@ export class CandidatesController {
     return this.candidatesService.restore(
       candidateId,
       dto.expectedVersion,
+      user.userId,
+      user.membershipId,
+      user.activeCompanyId,
+      undefined,
+    );
+  }
+
+  @Post(':candidateId/delete')
+  @RequirePermissions('candidates.archive')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Delete a candidate (soft delete: removed from active UI and reports)',
+  })
+  async removeCandidate(
+    @Param('candidateId') candidateId: string,
+    @Body() dto: DeleteCandidateDto,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    return this.candidatesService.deleteCandidate(
+      candidateId,
+      dto.expectedVersion,
+      dto.reason,
       user.userId,
       user.membershipId,
       user.activeCompanyId,

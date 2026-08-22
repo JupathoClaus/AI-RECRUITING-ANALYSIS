@@ -177,6 +177,28 @@ export async function createCandidate(dto: CreateCandidateRequest, idempotencyKe
   })
 }
 
+export interface DeleteCandidateRequest {
+  expectedVersion: number
+  reason?: string
+}
+
+export interface DeleteCandidateResponse {
+  deleted: boolean
+  status?: string
+  version?: number
+}
+
+/** Soft-delete a candidate: removed from active UI, reports and metrics. */
+export async function deleteCandidate(
+  candidateId: string,
+  dto: DeleteCandidateRequest,
+): Promise<DeleteCandidateResponse> {
+  return apiRequest<DeleteCandidateResponse>(`/candidates/${candidateId}/delete`, {
+    method: "POST",
+    body: dto,
+  })
+}
+
 // ── Status mapping ─────────────────────────────────────────────────
 
 const TERMINAL_STATUSES: ApplicationStatus[] = ["HIRED", "REJECTED", "WITHDRAWN", "DISQUALIFIED"]
@@ -338,6 +360,7 @@ export function mapCandidateFromApi(
     aiScore: api.screening?.overallScore ?? null,
     status: mapCandidateApiStatus(api.status),
     source: api.source || undefined,
+    version: api.version,
     createdAt: parseDate(api.createdAt),
     updatedAt: parseDate(api.updatedAt),
     companyProfile,

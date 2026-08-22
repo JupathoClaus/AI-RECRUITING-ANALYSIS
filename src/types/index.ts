@@ -104,6 +104,7 @@ export interface Candidate {
   aiScore: number | null
   status: CandidateStatus
   source?: string
+  version: number
   createdAt: Date
   updatedAt: Date
 

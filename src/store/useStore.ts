@@ -236,6 +236,7 @@ function mapCreatedCandidate(api: CandidateApiDetail): Candidate {
     aiScore: null,
     status: "ACTIVE" as CandidateStatus,
     source: api.source || undefined,
+    version: api.version,
     createdAt: new Date(api.createdAt),
     updatedAt: new Date(api.updatedAt),
     applicationSummary: { total: 0, active: 0 },

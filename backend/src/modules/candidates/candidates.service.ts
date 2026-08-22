@@ -915,6 +915,77 @@ export class CandidatesService {
     return { restored: true, version: updated.version };
   }
 
+  /**
+   * Soft-delete a candidate (status DELETED + deletedAt). The candidate and its
+   * company-scoped applications/links disappear from every active UI, report
+   * and metric while the historical recruitment records remain intact in the
+   * database for audit/reporting integrity.
+   */
+  async deleteCandidate(
+    id: string,
+    expectedVersion: number,
+    reason: string | undefined,
+    actorUserId?: string,
+    actorMembershipId?: string | null,
+    companyId?: string,
+    requestId?: string,
+  ) {
+    const existing = await this.prisma.candidate.findFirst({
+      where: {
+        id,
+        // Tenant scope: a candidate must be linked to this company. The link's
+        // deletedAt is intentionally NOT filtered so a repeat delete on an
+        // already-soft-deleted candidate still resolves it (idempotent
+        // already_deleted) while cross-company ids keep returning 404.
+        ...(companyId ? { companyCandidates: { some: { companyId } } } : {}),
+      },
+    });
+    if (!existing) throw new NotFoundException('Candidate not found');
+    if (existing.status === 'DELETED') return { deleted: true, status: 'already_deleted' };
+    if (existing.status === 'MERGED' || existing.status === 'ANONYMIZED') {
+      throw new BadRequestException('Cannot delete a merged or anonymized candidate');
+    }
+    if (existing.version !== expectedVersion) {
+      throw new ConflictException({
+        code: 'CANDIDATE_STALE_VERSION',
+        message: 'Stale version',
+        currentVersion: existing.version,
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.candidate.update({
+        where: { id },
+        data: { status: 'DELETED', version: existing.version + 1, deletedAt: new Date() },
+      });
+      if (companyId) {
+        await tx.application.updateMany({
+          where: { companyId, candidateId: id, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+        await tx.companyCandidate.updateMany({
+          where: { companyId, candidateId: id, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+      }
+    });
+
+    await this.auditService.record({
+      candidateId: id,
+      companyId,
+      actorUserId,
+      actorMembershipId,
+      eventType: 'CANDIDATE_DELETED',
+      entityType: 'Candidate',
+      entityId: id,
+      description: `Candidate ${existing.firstName} ${existing.lastName} deleted`,
+      metadata: reason ? { reason } : undefined,
+      requestId,
+    });
+
+    return { deleted: true, version: existing.version + 1 };
+  }
+
   async block(
     id: string,
     reasonCode: string,

@@ -35,6 +35,7 @@ import { ScreeningResultView } from "@/components/ai-screening/screening-result-
 import { useAiScreening } from "@/lib/ai-screening/use-ai-screening"
 import { getApplicationResume } from "@/lib/api/files.api"
 import type { StoredFileResponse } from "@/lib/api/files.api"
+import { deleteCandidate } from "@/lib/api/candidates.api"
 import {
   SearchNormal,
   Add,
@@ -51,6 +52,7 @@ import {
   MagicStar,
   MessageSquare,
   DocumentText,
+  Trash,
 } from "iconsax-react"
 
 const statusConfig: Record<DisplayApplicationStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" | "info" }> = {
@@ -245,6 +247,9 @@ export default function CandidatesPage() {
   const [ratingFilter, setRatingFilter] = React.useState<string>("all")
   const [addDialogOpen, setAddDialogOpen] = React.useState(false)
   const [detailsCandidate, setDetailsCandidate] = React.useState<Candidate | null>(null)
+  const [deleteTarget, setDeleteTarget] = React.useState<Candidate | null>(null)
+  const [deleteBusy, setDeleteBusy] = React.useState(false)
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
   const [actionInProgress, setActionInProgress] = React.useState(false)
   const [aiInterviewModalOpen, setAiInterviewModalOpen] = React.useState(false)
   const [pageFeedback, setPageFeedback] = React.useState<{ type: "success" | "warning"; message: string } | null>(null)
@@ -388,6 +393,23 @@ export default function CandidatesPage() {
       setSelectedIds(new Set(allFilteredIds))
     }
   }, [allSelected, allFilteredIds])
+
+  const handleDeleteCandidate = React.useCallback(async () => {
+    if (!deleteTarget) return
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      await deleteCandidate(deleteTarget.id, { expectedVersion: deleteTarget.version })
+      setDeleteTarget(null)
+      setDetailsCandidate(null)
+      void fetchCandidates()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete candidate"
+      setDeleteError(msg)
+    } finally {
+      setDeleteBusy(false)
+    }
+  }, [deleteTarget, fetchCandidates])
 
   const handleBulkAction = React.useCallback(async (action: string) => {
     setBulkActionLoading(true)
@@ -805,18 +827,26 @@ export default function CandidatesPage() {
                                 <Calendar className="h-4 w-4 mr-2" />
                                 Schedule Interview
                               </DropdownMenuItem>
-                              {displayStatus && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    className="text-error"
-                                    onClick={async (e) => { e.stopPropagation(); await rejectCandidateApplication(candidate.id) }}
-                                  >
-                                    <CloseSquare className="h-4 w-4 mr-2" />
-                                    Reject
-                                  </DropdownMenuItem>
-                                </>
-                              )}
+{displayStatus && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-error"
+                    onClick={async (e) => { e.stopPropagation(); await rejectCandidateApplication(candidate.id) }}
+                  >
+                    <CloseSquare className="h-4 w-4 mr-2" />
+                    Reject
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-error"
+                onClick={(e) => { e.stopPropagation(); setDeleteTarget(candidate) }}
+              >
+                <Trash className="h-4 w-4 mr-2" />
+                Delete Candidate
+              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -1081,6 +1111,31 @@ export default function CandidatesPage() {
               </>
             )
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Candidate confirmation */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open && !deleteBusy) { setDeleteTarget(null); setDeleteError(null) } }}>
+        <DialogContent className="max-w-md">
+          <ModalHeader>
+            <DialogTitle>Delete Candidate?</DialogTitle>
+            <DialogDescription>
+              This will remove <span className="font-medium text-foreground">{deleteTarget?.displayName}</span> from the
+              active candidate list, dashboard counts and reports. Historical recruitment records are retained internally
+              for audit purposes.
+            </DialogDescription>
+          </ModalHeader>
+          {deleteError && (
+            <div className="rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">{deleteError}</div>
+          )}
+          <DialogFooter>
+            <div className="flex items-center justify-end gap-3 w-full">
+              <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleteBusy}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDeleteCandidate} disabled={deleteBusy}>
+                {deleteBusy ? "Deleting..." : "Delete Candidate"}
+              </Button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

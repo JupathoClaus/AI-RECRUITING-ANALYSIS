@@ -1,0 +1,1 @@
+ALTER TYPE "CandidateAuditEventType" ADD VALUE 'CANDIDATE_DELETED';
