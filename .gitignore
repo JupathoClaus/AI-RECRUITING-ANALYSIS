@@ -69,3 +69,6 @@ verification/runtime-*.log
 verification/dev-*.log
 # verification helper scripts (local, not committed)
 verification/test-*.ps1
+
+# next dev server log (local runtime)
+next-dev.log
