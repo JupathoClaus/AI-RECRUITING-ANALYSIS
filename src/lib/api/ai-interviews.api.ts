@@ -42,10 +42,17 @@ export interface AiInterviewDetail {
   startedAt: string | null
   completedAt: string | null
   cancelledAt: string | null
+  consentAcceptedAt: string | null
+  accommodationRequested: boolean
+  accommodationNotes: string | null
   tavusConversationId: string | null
   tavusConversationUrl: string | null
   tavusStatus: string | null
   transcriptStatus: AiInterviewTranscriptStatus
+  transcriptUrl: string | null
+  transcript: TranscriptTurn[] | null
+  recordingStatus: string | null
+  recordingUrl: string | null
   language: string
   estimatedDurationMinutes: number
   expiresAt: string | null
@@ -61,6 +68,14 @@ export interface AiInterviewDetail {
     }
     job: { id: string; title: string }
   }
+}
+
+export interface TranscriptTurn {
+  role?: string
+  content?: string
+  timestamp?: number
+  seconds_from_start?: number
+  duration?: number
 }
 
 export interface SendInvitationRequest {
@@ -171,7 +186,11 @@ export async function getInterviewSession(accessToken: string): Promise<{
 
 export async function startAiInterview(
   accessToken: string,
-  acknowledgementsAccepted: boolean,
+  dto: {
+    acknowledgementsAccepted: boolean
+    accommodationRequested?: boolean
+    accommodationNotes?: string
+  },
 ): Promise<{
   conversationUrl: string
   conversationId: string
@@ -181,7 +200,7 @@ export async function startAiInterview(
 }> {
   return apiRequest("/ai-interviews/public/start", {
     method: "POST",
-    body: { acknowledgementsAccepted },
+    body: dto,
     headers: { Authorization: `Bearer ${accessToken}` },
     skipAuth: true,
   })

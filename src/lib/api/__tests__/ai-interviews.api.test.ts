@@ -54,10 +54,18 @@ describe("ai-interviews.api", () => {
     it("calls POST /ai-interviews/public/start with Bearer token", async () => {
       vi.mocked(apiRequest).mockResolvedValue({ conversationUrl: "https://tavus.com/abc", provider: "TAVUS" })
       const { startAiInterview } = await import("../ai-interviews.api")
-      const result = await startAiInterview("tok-1", true)
+      const result = await startAiInterview("tok-1", {
+        acknowledgementsAccepted: true,
+        accommodationRequested: true,
+        accommodationNotes: "Extra time",
+      })
       expect(apiRequest).toHaveBeenCalledWith("/ai-interviews/public/start", {
         method: "POST",
-        body: { acknowledgementsAccepted: true },
+        body: {
+          acknowledgementsAccepted: true,
+          accommodationRequested: true,
+          accommodationNotes: "Extra time",
+        },
         headers: { Authorization: "Bearer tok-1" },
         skipAuth: true,
       })
