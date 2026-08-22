@@ -200,6 +200,7 @@ export default function PipelinePage() {
   const [selectedCandidate, setSelectedCandidate] = React.useState<Candidate | null>(null)
   const [pipeline, setPipeline] = React.useState<JobPipelineDto | null>(null)
   const [stages, setStages] = React.useState<PipelineStage[]>([])
+  const [jobPipelines, setJobPipelines] = React.useState<Map<string, PipelineStageDto[]>>(new Map())
   const [pipelineLoading, setPipelineLoading] = React.useState(false)
 
   const dataLoadedRef = React.useRef(false)
@@ -221,28 +222,71 @@ export default function PipelinePage() {
     let active = true
     queueMicrotask(() => {
       if (!active) return
-      if (jobFilter && jobFilter !== "all") {
+      if (jobFilter !== "all") {
         setPipelineLoading(true)
-        void getJobPipeline(jobFilter).then((p) => {
+        void getJobPipeline(jobFilter)
+          .then((p) => {
+            if (!active) return
+            setPipeline(p)
+            setJobPipelines(new Map())
+            setStages(
+              (p.stages || []).sort((a, b) => a.sortOrder - b.sortOrder).map((s, i) => mapStageToPipeline(s, i)),
+            )
+          })
+          .catch(() => {
+            if (!active) return
+            setPipeline(null)
+            setStages([])
+          })
+          .finally(() => {
+            if (active) setPipelineLoading(false)
+          })
+        return
+      }
+      if (jobs.length === 0) {
+        setPipeline(null)
+        setStages([])
+        setJobPipelines(new Map())
+        setPipelineLoading(false)
+        return
+      }
+      setPipelineLoading(true)
+      Promise.all(jobs.map((j) => getJobPipeline(j.id)))
+        .then((pipelines) => {
           if (!active) return
-          setPipeline(p)
-          setStages((p.stages || []).sort((a, b) => a.sortOrder - b.sortOrder).map((s, i) => mapStageToPipeline(s, i)))
-        }).catch(() => {
+          const byJob = new Map<string, PipelineStageDto[]>()
+          const byName = new Map<string, { name: string; minOrder: number }>()
+          for (const p of pipelines) {
+            const ordered = [...(p.stages || [])].sort((a, b) => a.sortOrder - b.sortOrder)
+            byJob.set(p.jobId, ordered)
+            for (const s of ordered) {
+              const existing = byName.get(s.name)
+              if (!existing || s.sortOrder < existing.minOrder) {
+                byName.set(s.name, { name: s.name, minOrder: s.sortOrder })
+              }
+            }
+          }
+          setJobPipelines(byJob)
+          const orderedColumns = [...byName.values()].sort((a, b) => a.minOrder - b.minOrder)
+          setStages(
+            orderedColumns.map((c, i) =>
+              mapStageToPipeline({ id: c.name, name: c.name, sortOrder: c.minOrder } as PipelineStageDto, i),
+            ),
+          )
+        })
+        .catch(() => {
           if (!active) return
           setPipeline(null)
           setStages([])
-        }).finally(() => {
+        })
+        .finally(() => {
           if (active) setPipelineLoading(false)
         })
-      } else {
-        setPipeline(null)
-        setStages([])
-      }
     })
     return () => {
       active = false
     }
-  }, [jobFilter])
+  }, [jobFilter, jobs])
 
   const filteredCandidates = React.useMemo(() => {
     return candidates.filter((candidate) => {
@@ -256,34 +300,47 @@ export default function PipelinePage() {
     })
   }, [candidates, searchQuery, jobFilter])
 
+  const isAllPositions = jobFilter === "all"
+
+  const stageSequenceForCandidate = React.useCallback(
+    (candidate: Candidate): PipelineStageDto[] => {
+      const app = candidate.applicationSummary?.current
+      if (!app) return []
+      if (!isAllPositions) return [...(pipeline?.stages ?? [])].sort((a, b) => a.sortOrder - b.sortOrder)
+      return jobPipelines.get(app.jobId) ?? []
+    },
+    [isAllPositions, pipeline, jobPipelines],
+  )
+
   const stageCandidates = React.useMemo(() => {
     const map: Record<string, Candidate[]> = {}
     for (const stage of stages) {
       map[stage.id] = []
     }
     for (const c of filteredCandidates) {
-      const stageId = c.applicationSummary?.current?.stageId
-      if (stageId && map[stageId]) {
-        map[stageId].push(c)
+      const current = c.applicationSummary?.current
+      const key = isAllPositions ? current?.stageName : current?.stageId
+      if (key && map[key]) {
+        map[key].push(c)
       }
     }
     return map as Record<string, Candidate[]>
-  }, [filteredCandidates, stages])
+  }, [filteredCandidates, stages, isAllPositions])
 
   const handleMove = React.useCallback(
     async (candidate: Candidate, direction: "left" | "right") => {
       const currentApp = candidate.applicationSummary?.current
       if (!currentApp || !currentApp.stageId || !currentApp.id) return
-      const stageOrder = stages.map((s) => s.id)
-      if (stageOrder.length === 0) return
-      const currentIdx = stageOrder.indexOf(currentApp.stageId)
+      const sequence = stageSequenceForCandidate(candidate)
+      if (sequence.length === 0) return
+      const currentIdx = sequence.findIndex((s) => s.id === currentApp.stageId)
       if (currentIdx < 0) return
       const targetIdx = direction === "right" ? currentIdx + 1 : currentIdx - 1
-      if (targetIdx < 0 || targetIdx >= stageOrder.length) return
-      await moveApplication(currentApp.id, { toStageId: stageOrder[targetIdx], expectedVersion: currentApp.version })
+      if (targetIdx < 0 || targetIdx >= sequence.length) return
+      await moveApplication(currentApp.id, { toStageId: sequence[targetIdx].id, expectedVersion: currentApp.version })
       setSelectedCandidate(null)
     },
-    [stages]
+    [stageSequenceForCandidate],
   )
 
   const handleSaveStage = React.useCallback(async (e: React.FormEvent) => {
@@ -374,43 +431,32 @@ export default function PipelinePage() {
       )}
 
       <div className="animate-fade-in">
-        {totalCandidates === 0 && jobFilter === "all" ? (
+        {jobs.length === 0 ? (
           <EmptyState
-            icon={<People className="h-8 w-8 text-muted" />}
-            title="No candidates in pipeline"
-            description={
-              searchQuery || jobFilter !== "all"
-                ? "Try adjusting your filters to see more results."
-                : "Start adding candidates to see them appear in the pipeline."
-            }
-            action={
-              searchQuery || jobFilter !== "all" ? (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSearchQuery("")
-                    setJobFilter("all")
-                  }}
-                >
-                  Clear Filters
-                </Button>
-              ) : undefined
-            }
+            icon={<Briefcase className="h-8 w-8 text-muted" />}
+            title="No jobs yet"
+            description="Create and publish a job to start building your recruitment pipeline."
           />
         ) : pipelineLoading ? (
           <div className="flex items-center justify-center py-16">
             <p className="text-sm text-muted">Loading pipeline...</p>
           </div>
-        ) : stages.length === 0 && jobFilter !== "all" ? (
+        ) : stages.length === 0 ? (
           <EmptyState
             icon={<People className="h-8 w-8 text-muted" />}
             title="No pipeline stages"
-            description="This job has no pipeline stages configured yet. Add a stage to get started."
+            description={
+              isAllPositions
+                ? "Published jobs get a default pipeline automatically. Publish a job to begin using the pipeline."
+                : "This job has no pipeline stages configured yet. Add a stage to get started."
+            }
             action={
-              <Button size="sm" onClick={() => { setEditingStage(null); setStageForm({ name: "", description: "" }); setShowStageDialog(true) }}>
-                <Add className="h-4 w-4 mr-1" />
-                Add Stage
-              </Button>
+              isAllPositions ? undefined : (
+                <Button size="sm" onClick={() => { setEditingStage(null); setStageForm({ name: "", description: "" }); setShowStageDialog(true) }}>
+                  <Add className="h-4 w-4 mr-1" />
+                  Add Stage
+                </Button>
+              )
             }
           />
         ) : (
@@ -625,7 +671,8 @@ export default function PipelinePage() {
                   {(() => {
                     const currentApp = s.applicationSummary?.current
                     if (!currentApp || !currentApp.stageId || displayStatus === "Hired") return null
-                    const idx = stages.findIndex((st) => st.id === currentApp.stageId)
+                    const sequence = stageSequenceForCandidate(s)
+                    const idx = sequence.findIndex((st) => st.id === currentApp.stageId)
                     return (
                       <>
                         <Button
@@ -639,13 +686,13 @@ export default function PipelinePage() {
                           <CloseSquare className="h-4 w-4" />
                           Reject
                         </Button>
-                        {idx >= 0 && idx < stages.length - 1 && (
+                        {idx >= 0 && idx < sequence.length - 1 && (
                           <Button size="sm" onClick={async () => {
-                            await moveApplication(currentApp.id, { toStageId: stages[idx + 1].id, expectedVersion: currentApp.version })
+                            await moveApplication(currentApp.id, { toStageId: sequence[idx + 1].id, expectedVersion: currentApp.version })
                             setSelectedCandidate(null)
                           }}>
                             <ArrowRight className="h-4 w-4" />
-                            Move to {stages[idx + 1].label}
+                            Move to {sequence[idx + 1].name}
                           </Button>
                         )}
                       </>
