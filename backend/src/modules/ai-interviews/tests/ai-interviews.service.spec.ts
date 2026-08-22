@@ -218,6 +218,141 @@ describe('AiInterviewsService', () => {
         service.create({ applicationId: 'app-1' }, 'other-company', 'membership-1'),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('should return the existing interview instead of creating a duplicate', async () => {
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(mockInterview);
+
+      const result = await service.create(
+        { applicationId: 'app-1', estimatedDurationMinutes: 30 },
+        'company-1',
+        'membership-1',
+      );
+
+      expect(result.id).toBe('interview-1');
+      expect(prisma.aiInterview.create).not.toHaveBeenCalled();
+      expect(codeService.generate).not.toHaveBeenCalled();
+    });
+
+    it('should allow a new round after a terminal interview (COMPLETED)', async () => {
+      // Prisma filters terminal statuses out of the "existing" lookup, so a
+      // completed interview does not block a fresh round.
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      codeService.generate.mockReturnValue('ABCD-EFGH');
+      codeService.hash.mockReturnValue('hash');
+      codeService.displayHint.mockReturnValue('ABCD-EFGH');
+      prisma.aiInterview.create.mockResolvedValue(mockInterview);
+
+      const result = await service.create(
+        { applicationId: 'app-1', estimatedDurationMinutes: 30 },
+        'company-1',
+        'membership-1',
+      );
+
+      expect(prisma.aiInterview.create).toHaveBeenCalledTimes(1);
+      expect(result.id).toBe('interview-1');
+    });
+
+    it('should allow a new round after CANCELLED / EXPIRED / FAILED interviews', async () => {
+      for (const terminal of [
+        AiInterviewStatus.CANCELLED,
+        AiInterviewStatus.EXPIRED,
+        AiInterviewStatus.FAILED,
+      ]) {
+        prisma.application.findFirst.mockResolvedValue(mockApplication);
+        prisma.aiInterview.findFirst.mockResolvedValue(null);
+        codeService.generate.mockReturnValue('ABCD-EFGH');
+        codeService.hash.mockReturnValue('hash');
+        codeService.displayHint.mockReturnValue('ABCD-EFGH');
+        prisma.aiInterview.create.mockResolvedValue(mockInterview);
+
+        const result = await service.create(
+          { applicationId: 'app-1', estimatedDurationMinutes: 30 },
+          'company-1',
+          'membership-1',
+        );
+        expect(prisma.aiInterview.create).toHaveBeenCalledTimes(1);
+        expect(result.id).toBe('interview-1');
+        prisma.aiInterview.create.mockClear();
+      }
+    });
+
+    it('should apply defaults language "en" and duration 30 when omitted', async () => {
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      codeService.generate.mockReturnValue('ABCD-EFGH');
+      codeService.hash.mockReturnValue('hash');
+      codeService.displayHint.mockReturnValue('ABCD-EFGH');
+      prisma.aiInterview.create.mockResolvedValue(mockInterview);
+
+      await service.create({ applicationId: 'app-1' }, 'company-1', 'membership-1');
+
+      expect(prisma.aiInterview.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            language: 'en',
+            estimatedDurationMinutes: 30,
+          }),
+        }),
+      );
+    });
+
+    it('should store status CREATED with transcript NOT_REQUESTED and an expiry', async () => {
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      codeService.generate.mockReturnValue('ABCD-EFGH');
+      codeService.hash.mockReturnValue('hash');
+      codeService.displayHint.mockReturnValue('ABCD-EFGH');
+      prisma.aiInterview.create.mockResolvedValue(mockInterview);
+
+      await service.create(
+        { applicationId: 'app-1', estimatedDurationMinutes: 30 },
+        'company-1',
+        'membership-1',
+      );
+
+      expect(prisma.aiInterview.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: AiInterviewStatus.CREATED,
+            transcriptStatus: AiInterviewTranscriptStatus.NOT_REQUESTED,
+            createdByMembershipId: 'membership-1',
+            expiresAt: expect.any(Date),
+          }),
+        }),
+      );
+      const data = prisma.aiInterview.create.mock.calls[0][0].data;
+      const days = (data.expiresAt.getTime() - Date.now()) / 86400000;
+      expect(Math.abs(days - 30)).toBeLessThan(1);
+    });
+
+    it('should store only the hashed code, never the raw code', async () => {
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      codeService.generate.mockReturnValue('ABCD-EFGH');
+      codeService.hash.mockReturnValue('the-hash');
+      codeService.displayHint.mockReturnValue('ABCD-EFGH');
+      prisma.aiInterview.create.mockResolvedValue(mockInterview);
+
+      const result = await service.create(
+        { applicationId: 'app-1', estimatedDurationMinutes: 30 },
+        'company-1',
+        'membership-1',
+      );
+
+      expect(result.rawCode).toBe('ABCD-EFGH');
+      expect(prisma.aiInterview.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            codeHash: 'the-hash',
+          }),
+        }),
+      );
+      const data = prisma.aiInterview.create.mock.calls[0][0].data;
+      expect(data).not.toHaveProperty('rawCode');
+      expect(data.codeHash).not.toContain('ABCD-EFGH');
+    });
   });
 
   // ─── FIND BY ID ───────────────────────────────────────────────────────────

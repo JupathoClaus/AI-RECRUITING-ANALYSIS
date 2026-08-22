@@ -59,6 +59,85 @@ describe('CreateAiInterviewDto', () => {
     const errors = await validate(dto);
     expect(errors).toHaveLength(1);
   });
+
+  describe('estimatedDurationMinutes bounds', () => {
+    it.each([0, -1, 4])('rejects duration %i below the 5-minute minimum', async (d) => {
+      const dto = plainToInstance(CreateAiInterviewDto, {
+        applicationId: VALID_APPLICATION_ID,
+        estimatedDurationMinutes: d,
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(1);
+      expect(errors[0].property).toBe('estimatedDurationMinutes');
+    });
+
+    it.each([121, 500, 10000])('rejects duration %i above the 120-minute maximum', async (d) => {
+      const dto = plainToInstance(CreateAiInterviewDto, {
+        applicationId: VALID_APPLICATION_ID,
+        estimatedDurationMinutes: d,
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(1);
+      expect(errors[0].property).toBe('estimatedDurationMinutes');
+    });
+
+    it('rejects non-integer duration', async () => {
+      const dto = plainToInstance(CreateAiInterviewDto, {
+        applicationId: VALID_APPLICATION_ID,
+        estimatedDurationMinutes: 30.5,
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(1);
+      expect(errors[0].property).toBe('estimatedDurationMinutes');
+    });
+
+    it('rejects non-numeric duration string', async () => {
+      const dto = plainToInstance(CreateAiInterviewDto, {
+        applicationId: VALID_APPLICATION_ID,
+        estimatedDurationMinutes: 'abc',
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(1);
+    });
+
+    it('rejects NaN duration', async () => {
+      const dto = plainToInstance(CreateAiInterviewDto, {
+        applicationId: VALID_APPLICATION_ID,
+        estimatedDurationMinutes: Number.NaN,
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(1);
+      expect(errors[0].property).toBe('estimatedDurationMinutes');
+    });
+
+    it.each([5, 30, 120])('accepts boundary duration %i', async (d) => {
+      const dto = plainToInstance(CreateAiInterviewDto, {
+        applicationId: VALID_APPLICATION_ID,
+        estimatedDurationMinutes: d,
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+  });
+
+  describe('language', () => {
+    it('defaults to undefined when omitted (service applies "en")', async () => {
+      const dto = plainToInstance(CreateAiInterviewDto, {
+        applicationId: VALID_APPLICATION_ID,
+      });
+      expect(dto.language).toBeUndefined();
+    });
+
+    it('accepts a language code', async () => {
+      const dto = plainToInstance(CreateAiInterviewDto, {
+        applicationId: VALID_APPLICATION_ID,
+        language: 'es',
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+      expect(dto.language).toBe('es');
+    });
+  });
 });
 
 describe('isUUID validator with seed UUIDs', () => {
