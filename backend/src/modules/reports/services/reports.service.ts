@@ -240,12 +240,16 @@ export class ReportsService {
       status: { notIn: [ApplicationStatus.DRAFT, ApplicationStatus.ARCHIVED] },
     };
 
-    const [grouped, hiredCount, rejectedCount, activeCount] = await Promise.all([
+    const [grouped, totalApplications, hiredCount, rejectedCount, activeCount] = await Promise.all([
       this.prisma.application.groupBy({
         by: ['status'],
         where: activeWhere,
         _count: { id: true },
       }),
+      // Total counts every non-deleted application (matching the Candidate
+      // Evaluation and Job Summary reports, which include DRAFT rows). The
+      // stage/active breakdowns below intentionally exclude DRAFT/ARCHIVED.
+      this.prisma.application.count({ where }),
       this.prisma.application.count({ where: { ...where, status: ApplicationStatus.HIRED } }),
       this.prisma.application.count({
         where: {
@@ -278,7 +282,7 @@ export class ReportsService {
 
     return {
       stages: grouped.map((g) => ({ stage: g.status, count: g._count?.id ?? 0 })),
-      totalApplications: grouped.reduce((acc, g) => acc + (g._count?.id ?? 0), 0),
+      totalApplications,
       hiredCount,
       rejectedCount,
       activeCount,

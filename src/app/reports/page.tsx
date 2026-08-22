@@ -324,7 +324,7 @@ export default function ReportsPage() {
                 </div>
               ) : data ? (
                 <>
-                  <ReportTable viewId={activeView!} data={data} />
+                  <ReportTable viewId={activeView!} data={data} hasFilters={!!(appliedDateFrom || appliedDateTo || appliedJobId || appliedDeptId || appliedStatuses.length)} />
                   {isPaginated && <Pagination meta={meta} page={page} onPageChange={setPage} loading={loading} />}
                 </>
               ) : (
@@ -349,7 +349,7 @@ export default function ReportsPage() {
   )
 }
 
-function ReportTable({ viewId, data }: { viewId: string; data: unknown }) {
+function ReportTable({ viewId, data, hasFilters = false }: { viewId: string; data: unknown; hasFilters?: boolean }) {
   if (viewId === "pipeline") {
     const pipeline = data as PipelineReport
     return (
@@ -382,7 +382,13 @@ function ReportTable({ viewId, data }: { viewId: string; data: unknown }) {
 
   if (viewId === "candidate-evaluation") {
     const rows = data as CandidateEvaluationRow[]
-    if (!rows.length) return <div className="py-8 text-center text-sm text-muted">No candidate data</div>
+    if (!rows.length) return (
+      <div className="py-8 text-center text-sm text-muted">
+        {hasFilters
+          ? "No candidate applications match the selected filters."
+          : "No candidate applications yet. Candidates appear here once they apply to a job."}
+      </div>
+    )
     return (<Table><TableHeader><TableRow><TableHead>Candidate</TableHead><TableHead>Email</TableHead><TableHead>Job</TableHead><TableHead>Status</TableHead><TableHead>Source</TableHead><TableHead>Submitted</TableHead></TableRow></TableHeader>
       <TableBody>{rows.map((r) => (<TableRow key={r.applicationId}><TableCell className="font-medium">{r.candidateName}</TableCell><TableCell className="text-xs text-muted">{r.email}</TableCell><TableCell>{r.jobTitle}</TableCell><TableCell><Badge variant="secondary" className="text-[10px]">{r.applicationStatus}</Badge></TableCell><TableCell className="text-xs">{r.source}</TableCell><TableCell className="text-xs">{formatDate(r.submittedAt)}</TableCell></TableRow>))}</TableBody></Table>)
   }

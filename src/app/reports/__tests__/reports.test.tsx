@@ -72,6 +72,14 @@ describe("ReportsPage", () => {
     await waitFor(() => expect(mockReportsApi.getCandidateEvaluation).toHaveBeenCalled())
   })
 
+  it("candidate evaluation empty state is accurate (not 'No candidate data')", async () => {
+    renderPage()
+    screen.getByText("Candidate Evaluation Report").click()
+    await waitFor(() => expect(mockReportsApi.getCandidateEvaluation).toHaveBeenCalled())
+    expect(await screen.findByText(/No candidate applications yet/)).toBeDefined()
+    expect(screen.queryByText("No candidate data")).toBeNull()
+  })
+
   it("selecting Interview Summary calls interview API", async () => {
     renderPage()
     screen.getByText("Interview Summary Report").click()

@@ -188,12 +188,30 @@ describe('ReportsService', () => {
         { status: 'HIRED', _count: { id: 3 } },
       ]);
       prisma.application.count
-        .mockResolvedValueOnce(3)
-        .mockResolvedValueOnce(2)
-        .mockResolvedValueOnce(15);
+        .mockResolvedValueOnce(18) // total (all non-deleted)
+        .mockResolvedValueOnce(3) // hired
+        .mockResolvedValueOnce(2) // rejected
+        .mockResolvedValueOnce(15); // active
       const result = await service.getPipeline(COMPANY_A, makeFilter());
       expect(result.stages).toHaveLength(3);
+      expect(result.totalApplications).toBe(18);
       expect(result.hiredCount).toBe(3);
+      expect(result.activeCount).toBe(15);
+    });
+
+    it('counts DRAFT applications in total while excluding them from the active stage set', async () => {
+      // 1 DRAFT + 1 SUBMITTED application exist. Total must be 2 (consistent
+      // with the Candidate Evaluation / Job Summary reports), while the
+      // stages/active breakdown keeps DRAFT out.
+      prisma.application.groupBy.mockResolvedValue([{ status: 'SUBMITTED', _count: { id: 1 } }]);
+      prisma.application.count
+        .mockResolvedValueOnce(2) // total (all non-deleted)
+        .mockResolvedValueOnce(0) // hired
+        .mockResolvedValueOnce(0) // rejected
+        .mockResolvedValueOnce(1); // active (non-DRAFT, non-terminal)
+      const result = await service.getPipeline(COMPANY_A, makeFilter());
+      expect(result.totalApplications).toBe(2);
+      expect(result.activeCount).toBe(1);
     });
   });
 
