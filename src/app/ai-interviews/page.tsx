@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
 import { useStore } from "@/store/useStore"
 import { createAiInterview, sendAiInterviewInvitation, cancelAiInterview, regenerateAiInterviewCode, getAiInterview, listAiInterviews, getAiInterviewsByApplication, type AiInterviewDetail, type AiInterviewStatus } from "@/lib/api/ai-interviews.api"
-import { MagicStar, DocumentText, Clock, Link2, Warning2, Send2, Refresh } from "iconsax-react"
+import { AiInterviewDetailDialog } from "@/components/ai-interview/ai-interview-detail-dialog"
+import { MagicStar, DocumentText, Clock, Link2, Warning2, Send2, Refresh, Eye } from "iconsax-react"
 
 const STATUS_LABEL: Record<AiInterviewStatus, string> = {
   CREATED: "Created",
@@ -50,6 +51,7 @@ export default function AIInterviewsPage() {
   const [durationMinutes, setDurationMinutes] = useState("30")
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [detailTarget, setDetailTarget] = useState<AiInterviewDetail | null>(null)
 
   useEffect(() => {
     let active = true
@@ -301,6 +303,10 @@ export default function AIInterviewsPage() {
                       </div>
                       <div className="flex flex-col items-end gap-2 shrink-0">
                         <div className="flex flex-wrap gap-2 justify-end">
+                          <Button size="sm" variant="outline" className="h-8" onClick={() => setDetailTarget(interview)}>
+                            <Eye className="h-3.5 w-3.5 mr-1.5" />
+                            View Details
+                          </Button>
                           {canSend(interview.status) && (
                             <Button size="sm" className="h-8" disabled={busyId === interview.id} onClick={() => handleSend(interview)}>
                               <Send2 className="h-3.5 w-3.5 mr-1.5" />
@@ -335,6 +341,16 @@ export default function AIInterviewsPage() {
           </div>
         </div>
       ) : null}
+
+      {detailTarget && (
+        <AiInterviewDetailDialog
+          interview={detailTarget}
+          open={!!detailTarget}
+          onOpenChange={(o) => {
+            if (!o) setDetailTarget(null)
+          }}
+        />
+      )}
     </AppLayout>
   )
 }

@@ -118,10 +118,17 @@ export function SendAiInterviewModal({
         startedAt: null,
         completedAt: null,
         cancelledAt: null,
+        consentAcceptedAt: null,
+        accommodationRequested: false,
+        accommodationNotes: null,
         tavusConversationId: null,
         tavusConversationUrl: null,
         tavusStatus: null,
         transcriptStatus: "NOT_REQUESTED",
+        transcriptUrl: null,
+        transcript: null,
+        recordingStatus: null,
+        recordingUrl: null,
         language: result.language,
         estimatedDurationMinutes: result.estimatedDurationMinutes,
         expiresAt: result.expiresAt,
@@ -158,6 +165,7 @@ export function SendAiInterviewModal({
       const result = await sendAiInterviewInvitation(interview.id, {
         rawCode,
       })
+      void result
       setSendSuccess(true)
       setStep("sent")
     } catch (err: unknown) {
