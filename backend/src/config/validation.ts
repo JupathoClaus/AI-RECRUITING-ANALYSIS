@@ -12,6 +12,7 @@ export const validationSchema = Joi.object({
   API_PREFIX: Joi.string().default('api'),
   API_VERSION: Joi.string().default('v1'),
   FRONTEND_URL: Joi.string().uri().default('http://localhost:3001'),
+  BACKEND_URL: Joi.string().uri().default('http://localhost:3000'),
   DATABASE_URL: Joi.string()
     .required()
     .pattern(/^postgresql:\/\//),
@@ -95,6 +96,7 @@ export const validationSchema = Joi.object({
   }),
   TAVUS_CALLBACK_BASE_URL: Joi.string().uri().optional().allow(''),
   TAVUS_CALLBACK_SECRET: Joi.string().optional().allow(''),
+  TAVUS_TEST_MODE: Joi.boolean().default(false),
   TAVUS_MAX_CALL_DURATION_SECONDS: Joi.number().min(60).max(14400).default(600),
   TAVUS_PARTICIPANT_ABSENT_TIMEOUT_SECONDS: Joi.number().min(10).max(3600).default(120),
   TAVUS_PARTICIPANT_LEFT_TIMEOUT_SECONDS: Joi.number().min(10).max(3600).default(60),

@@ -36,6 +36,7 @@ export class PublicAiInterviewsController {
 
   @Post('public/start')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Start AI interview' })
   async startInterview(@Headers('authorization') auth: string, @Body() dto: StartAiInterviewDto) {
     const token = this.extractBearerToken(auth);
@@ -44,6 +45,7 @@ export class PublicAiInterviewsController {
 
   @Post('public/complete')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @ApiOperation({ summary: 'Mark interview as completed' })
   async completeInterview(@Headers('authorization') auth: string) {
     const token = this.extractBearerToken(auth);

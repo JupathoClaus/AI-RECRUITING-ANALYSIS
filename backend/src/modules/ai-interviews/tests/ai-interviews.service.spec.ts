@@ -27,6 +27,7 @@ describe('AiInterviewsService', () => {
     normalize: jest.fn(),
     validate: jest.fn(),
     displayHint: jest.fn(),
+    format: jest.fn((code: string) => code),
   };
 
   const mockTokenService = {
@@ -503,6 +504,38 @@ describe('AiInterviewsService', () => {
         service.sendInvitation('interview-1', { rawCode: 'ABCD-EFGH' }, 'company-1'),
       ).rejects.toThrow(BadRequestException);
     });
+
+    it('should email the raw code, not the masked hint', async () => {
+      codeService.normalize.mockReturnValue('ABCDEFGH');
+      codeService.hash.mockReturnValue(mockInterview.codeHash);
+      codeService.format.mockReturnValue('ABCD-EFGH');
+      emailService.sendAiInterviewInvitationEmail.mockResolvedValue(undefined);
+      prisma.aiInterview.findFirst.mockResolvedValue(sentInterview);
+      prisma.aiInterview.update.mockResolvedValue(sentInterview);
+
+      await service.sendInvitation('interview-1', { rawCode: 'ABCD-EFGH' }, 'company-1');
+
+      const emailCall = emailService.sendAiInterviewInvitationEmail.mock.calls[0];
+      expect(emailCall[5]).toBe('ABCD-EFGH');
+      expect(emailCall[5]).not.toMatch(/^\*\*\*\*/);
+    });
+
+    it('should generate a fresh code and email it when rawCode is absent', async () => {
+      codeService.generate.mockReturnValue('NEWC-ODE1');
+      codeService.hash.mockReturnValue('new-hash');
+      codeService.displayHint.mockReturnValue('****-ODE1');
+      emailService.sendAiInterviewInvitationEmail.mockResolvedValue(undefined);
+      prisma.aiInterview.findFirst.mockResolvedValue(sentInterview);
+      prisma.aiInterview.update.mockResolvedValue(sentInterview);
+
+      const result = await service.sendInvitation('interview-1', {}, 'company-1');
+
+      const emailCall = emailService.sendAiInterviewInvitationEmail.mock.calls[0];
+      expect(emailCall[5]).toBe('NEWC-ODE1');
+      const updateCall = prisma.aiInterview.update.mock.calls[0][0];
+      expect(updateCall.data.codeHash).toBe('new-hash');
+      expect(result.sent).toBe(true);
+    });
   });
 
   // ─── REGENERATE CODE ──────────────────────────────────────────────────────
@@ -710,6 +743,54 @@ describe('AiInterviewsService', () => {
           status: AiInterviewStatus.IN_PROGRESS,
         }),
       });
+    });
+
+    it('should persist consent and accommodation on start', async () => {
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
+      prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
+      prisma.aiInterview.updateMany.mockResolvedValue({ count: 1 });
+      prisma.aiInterview.findUnique.mockResolvedValue(mockInterview);
+      prisma.aiInterview.update.mockResolvedValue(mockInterview);
+
+      await service.startInterview('token', {
+        acknowledgementsAccepted: true,
+        accommodationRequested: true,
+        accommodationNotes: '   Extended time please.   ',
+      });
+
+      const updateManyCall = prisma.aiInterview.updateMany.mock.calls[0][0];
+      expect(updateManyCall.data.consentAcceptedAt).toBeDefined();
+      expect(updateManyCall.data.accommodationRequested).toBe(true);
+      expect(updateManyCall.data.accommodationNotes).toBe('Extended time please.');
+    });
+
+    it('should persist consent without accommodation when not requested', async () => {
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
+      prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
+      prisma.aiInterview.updateMany.mockResolvedValue({ count: 1 });
+      prisma.aiInterview.findUnique.mockResolvedValue(mockInterview);
+      prisma.aiInterview.update.mockResolvedValue(mockInterview);
+
+      await service.startInterview('token', {
+        acknowledgementsAccepted: true,
+        accommodationRequested: false,
+      });
+
+      const updateManyCall = prisma.aiInterview.updateMany.mock.calls[0][0];
+      expect(updateManyCall.data.accommodationRequested).toBe(false);
+      expect(updateManyCall.data.accommodationNotes).toBeNull();
     });
 
     it('should only create one provider session on duplicate start', async () => {
@@ -990,7 +1071,9 @@ describe('AiInterviewsService', () => {
       await service.handleTavusCallback(callbackPayload);
 
       const updateCall = prisma.aiInterview.update.mock.calls[0][0];
-      expect(updateCall.data.status).toBe(AiInterviewStatus.COMPLETED);
+      // Idempotent: status is NOT overwritten for an already-completed interview
+      expect(updateCall.data.status).toBeUndefined();
+      expect(updateCall.data.tavusStatus).toBeDefined();
     });
 
     it('should handle transcript_ready event', async () => {
@@ -1000,12 +1083,64 @@ describe('AiInterviewsService', () => {
       await service.handleTavusCallback({
         event: 'application.transcription_ready',
         conversation_id: 'tavus-conv-1',
-        payload: { transcript_url: 'https://tavus.com/transcript/abc' },
+        properties: {
+          transcript_url: 'https://tavus.com/transcript/abc',
+          transcript: [
+            {
+              role: 'assistant',
+              content: 'Welcome to your interview.',
+              timestamp: 1779475657.84,
+              seconds_from_start: 0.0,
+              duration: 2.15,
+            },
+            {
+              role: 'user',
+              content: 'Thank you.',
+              timestamp: 1779475684.88,
+              seconds_from_start: 27.04,
+              duration: 1.84,
+            },
+          ],
+        },
       });
 
       const updateCall = prisma.aiInterview.update.mock.calls[0][0];
       expect(updateCall.data.transcriptStatus).toBe(AiInterviewTranscriptStatus.READY);
       expect(updateCall.data.transcriptUrl).toBe('https://tavus.com/transcript/abc');
+      expect(updateCall.data.transcript).toHaveLength(2);
+      expect(updateCall.data.transcript[0].role).toBe('assistant');
+      expect(updateCall.data.transcript[0].content).toContain('Welcome');
+    });
+
+    it('should handle recording_ready event', async () => {
+      prisma.aiInterview.findFirst.mockResolvedValue(mockInterview);
+      prisma.aiInterview.update.mockResolvedValue(mockInterview);
+
+      await service.handleTavusCallback({
+        event: 'application.recording_ready',
+        conversation_id: 'tavus-conv-1',
+        properties: {
+          storage_provider: 's3',
+          storage_uri: 's3://recordings/tavus/conv-1/1234',
+          duration: 120,
+        },
+      });
+
+      const updateCall = prisma.aiInterview.update.mock.calls[0][0];
+      expect(updateCall.data.recordingStatus).toBe('READY');
+      expect(updateCall.data.recordingUrl).toBe('s3://recordings/tavus/conv-1/1234');
+    });
+
+    it('should ignore events for unknown conversations', async () => {
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+
+      const result = await service.handleTavusCallback({
+        event: 'system.shutdown',
+        conversation_id: 'unknown-conv',
+      });
+
+      expect(result.received).toBe(true);
+      expect(prisma.aiInterview.update).not.toHaveBeenCalled();
     });
 
     it('should reject malformed payload', async () => {

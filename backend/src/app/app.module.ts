@@ -35,6 +35,7 @@ import { AiScreeningModule } from '../modules/ai-screening/ai-screening.module';
 import { ResumeProcessingModule } from '../modules/resume-processing/resume-processing.module';
 import { AiInterviewsModule } from '../modules/ai-interviews/ai-interviews.module';
 import { IdempotencyModule } from '../common/idempotency/idempotency.module';
+import { CommonModule } from '../common/common.module';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -155,6 +156,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
     ResumeProcessingModule,
     AiInterviewsModule,
     IdempotencyModule,
+    CommonModule,
   ],
 })
 export class AppModule {}

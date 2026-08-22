@@ -7,6 +7,7 @@ export default registerAs('tavus', () => ({
   replicaId: process.env.TAVUS_REPLICA_ID || '',
   callbackBaseUrl: process.env.TAVUS_CALLBACK_BASE_URL || '',
   callbackSecret: process.env.TAVUS_CALLBACK_SECRET || '',
+  testMode: process.env.TAVUS_TEST_MODE === 'true',
   maxCallDurationSeconds: parseInt(process.env.TAVUS_MAX_CALL_DURATION_SECONDS || '600', 10),
   participantAbsentTimeoutSeconds: parseInt(
     process.env.TAVUS_PARTICIPANT_ABSENT_TIMEOUT_SECONDS || '120',

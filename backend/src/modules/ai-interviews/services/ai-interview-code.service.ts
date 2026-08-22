@@ -32,6 +32,12 @@ export class AiInterviewCodeService {
       .replace(/1/g, '');
   }
 
+  format(code: string): string {
+    const normalized = this.normalize(code);
+    if (normalized.length !== CODE_LENGTH) return code;
+    return `${normalized.slice(0, GROUP_SIZE)}-${normalized.slice(GROUP_SIZE)}`;
+  }
+
   validate(raw: string): boolean {
     const normalized = this.normalize(raw);
     if (normalized.length !== CODE_LENGTH) return false;

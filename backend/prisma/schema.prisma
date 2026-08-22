@@ -2655,6 +2655,13 @@ model AiInterview {
   completedAt DateTime?
   cancelledAt DateTime?
 
+  // Candidate consent
+  consentAcceptedAt DateTime?
+
+  // Accommodation / accessibility
+  accommodationRequested Boolean @default(false)
+  accommodationNotes     String?
+
   // Tavus integration
   tavusConversationId  String?
   tavusConversationUrl String?
@@ -2664,6 +2671,11 @@ model AiInterview {
   // Transcript
   transcriptStatus AiInterviewTranscriptStatus @default(NOT_REQUESTED)
   transcriptUrl    String?
+  transcript       Json?
+
+  // Recording
+  recordingStatus String?
+  recordingUrl    String?
 
   // Config
   language                 String    @default("en")

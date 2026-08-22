@@ -1,16 +1,17 @@
-import {
+﻿import {
   Injectable,
   Logger,
   NotFoundException,
   BadRequestException,
-  ConflictException,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import {
   AiInterviewStatus,
   AiInterviewProvider,
   AiInterviewTranscriptStatus,
+  Prisma,
 } from '@prisma/client';
 import { CreateAiInterviewDto } from '../dto/create-ai-interview.dto';
 import { SendInvitationDto } from '../dto/send-invitation.dto';
@@ -26,12 +27,27 @@ import { AiInterviewTokenService } from './ai-interview-token.service';
 import { TavusClientService } from './tavus-client.service';
 import { EmailService } from '@modules/email/email.service';
 
+interface TavusCallbackPayload {
+  event: string;
+  conversation_id: string;
+  status?: string;
+  properties?: Record<string, unknown>;
+}
+
+interface TranscriptTurn {
+  role?: string;
+  content?: string;
+  timestamp?: number;
+  seconds_from_start?: number;
+  duration?: number;
+}
+
 @Injectable()
 export class AiInterviewsService {
   private readonly logger = new Logger(AiInterviewsService.name);
   private readonly frontendUrl: string;
+  private readonly backendUrl: string;
   private readonly tavusEnabled: boolean;
-  private readonly allowTestEmailOverride: boolean;
   private readonly env: string;
 
   constructor(
@@ -43,9 +59,8 @@ export class AiInterviewsService {
     private readonly configService: ConfigService,
   ) {
     this.frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
+    this.backendUrl = this.configService.get<string>('app.backendUrl') || 'http://localhost:3000';
     this.tavusEnabled = this.configService.get<boolean>('tavus.enabled') || false;
-    this.allowTestEmailOverride =
-      this.configService.get<boolean>('aiInterview.allowTestEmailOverride') || false;
     this.env = this.configService.get<string>('app.env') || 'development';
   }
 
@@ -219,11 +234,14 @@ export class AiInterviewsService {
     }
     if (
       interview.status === AiInterviewStatus.COMPLETED ||
-      interview.status === AiInterviewStatus.CANCELLED
+      interview.status === AiInterviewStatus.CANCELLED ||
+      interview.status === AiInterviewStatus.EXPIRED ||
+      interview.status === AiInterviewStatus.FAILED ||
+      interview.status === AiInterviewStatus.IN_PROGRESS
     ) {
       throw new BadRequestException({
         code: 'AI_INTERVIEW_TERMINAL',
-        message: 'Cannot regenerate code for a completed or cancelled interview',
+        message: 'Cannot regenerate the code for this interview state',
       });
     }
 
@@ -261,23 +279,51 @@ export class AiInterviewsService {
       });
     }
 
+    if (
+      interview.status === AiInterviewStatus.COMPLETED ||
+      interview.status === AiInterviewStatus.CANCELLED ||
+      interview.status === AiInterviewStatus.EXPIRED ||
+      interview.status === AiInterviewStatus.FAILED ||
+      interview.status === AiInterviewStatus.IN_PROGRESS
+    ) {
+      throw new BadRequestException({
+        code: 'AI_INTERVIEW_NOT_SENDABLE',
+        message: 'This interview cannot be sent in its current state.',
+      });
+    }
+
     const candidate = interview.application.candidate;
     const job = interview.application.job;
     const companyName = interview.application.company?.name || 'AI Recruiter Co';
 
-    // Verify raw code if provided
+    // Resolve the raw code that will be shown in the email.
+    // - When the recruiter UI still holds the raw code (creation/regeneration)
+    //   it is verified against the stored hash before use.
+    // - Otherwise (list page send after refresh) a fresh code is generated.
+    //   The database only ever stores the hash; the raw code is never persisted.
+    let emailCode: string;
     if (dto.rawCode) {
       const normalizedInput = this.codeService.normalize(dto.rawCode);
-      const inputHash = this.codeService.hash(normalizedInput);
-      if (inputHash !== interview.codeHash) {
+      if (!this.codesMatch(normalizedInput, interview.codeHash)) {
         throw new BadRequestException({
           code: 'CODE_MISMATCH',
           message: 'The interview code has changed. Please use the latest code.',
         });
       }
+      emailCode = this.codeService.format(normalizedInput);
+    } else {
+      const rawCode = this.codeService.generate();
+      emailCode = rawCode;
+      await this.prisma.aiInterview.update({
+        where: { id },
+        data: {
+          codeHash: this.codeService.hash(rawCode),
+          codeDisplayHint: this.codeService.displayHint(rawCode),
+        },
+      });
     }
 
-    // Derive email from application
+    // Derive email from the application's candidate record. No arbitrary recipient.
     const to = candidate.email;
     if (!to) {
       throw new BadRequestException({
@@ -286,20 +332,16 @@ export class AiInterviewsService {
       });
     }
 
-    // Allow override only in development/test with explicit flag
-    const effectiveTo: string = to;
-
-    const accessToken = this.tokenService.generate(interview.id, interview.codeHash);
     const interviewLink = `${this.frontendUrl}/interview/access`;
 
     try {
       await this.emailService.sendAiInterviewInvitationEmail(
-        effectiveTo,
+        to,
         `${candidate.firstName} ${candidate.lastName}`,
         job.title,
         companyName,
         interviewLink,
-        interview.codeDisplayHint || '',
+        emailCode,
         interview.estimatedDurationMinutes,
         interview.expiresAt,
         dto.note,
@@ -319,7 +361,7 @@ export class AiInterviewsService {
       data: {
         status: AiInterviewStatus.SENT,
         invitationSentAt: new Date(),
-        invitationEmail: effectiveTo,
+        invitationEmail: to,
       },
     });
 
@@ -358,7 +400,7 @@ export class AiInterviewsService {
     return { cancelled: true };
   }
 
-  // ─── PUBLIC ENDPOINTS ──────────────────────────────────────────────────────
+  // â”€â”€â”€ PUBLIC ENDPOINTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async verifyCode(dto: VerifyCodeDto): Promise<VerifyCodeResponseDto> {
     const normalized = this.codeService.normalize(dto.code);
@@ -387,7 +429,7 @@ export class AiInterviewsService {
     if (interview.status === AiInterviewStatus.EXPIRED) {
       throw new BadRequestException({
         code: 'INTERVIEW_EXPIRED',
-        message: 'This interview is no longer available.',
+        message: 'This interview invitation has expired.',
       });
     }
     if (
@@ -413,7 +455,7 @@ export class AiInterviewsService {
       });
       throw new BadRequestException({
         code: 'INTERVIEW_EXPIRED',
-        message: 'This interview is no longer available.',
+        message: 'This interview invitation has expired.',
       });
     }
 
@@ -473,6 +515,28 @@ export class AiInterviewsService {
       });
     }
 
+    if (interview.status === AiInterviewStatus.EXPIRED) {
+      throw new BadRequestException({
+        code: 'INTERVIEW_EXPIRED',
+        message: 'This interview invitation has expired.',
+      });
+    }
+    if (interview.status === AiInterviewStatus.COMPLETED) {
+      throw new BadRequestException({
+        code: 'INTERVIEW_COMPLETED',
+        message: 'This interview has already been completed.',
+      });
+    }
+    if (
+      interview.status === AiInterviewStatus.CANCELLED ||
+      interview.status === AiInterviewStatus.FAILED
+    ) {
+      throw new BadRequestException({
+        code: 'INTERVIEW_UNAVAILABLE',
+        message: 'This interview is no longer available.',
+      });
+    }
+
     const companyName = interview.application.company?.name || 'AI Recruiter Co';
 
     return {
@@ -528,6 +592,11 @@ export class AiInterviewsService {
     ];
 
     const now = new Date();
+    const accommodationRequested = dto.accommodationRequested === true;
+    const accommodationNotes =
+      accommodationRequested && dto.accommodationNotes
+        ? dto.accommodationNotes.trim().slice(0, 1000)
+        : null;
 
     // Try to atomically claim this interview for starting
     const updateResult = await this.prisma.aiInterview.updateMany({
@@ -538,6 +607,9 @@ export class AiInterviewsService {
       data: {
         status: AiInterviewStatus.IN_PROGRESS,
         startedAt: now,
+        consentAcceptedAt: now,
+        accommodationRequested,
+        accommodationNotes,
       },
     });
 
@@ -597,9 +669,29 @@ export class AiInterviewsService {
       include: {
         application: {
           include: {
-            candidate: true,
-            job: true,
+            candidate: {
+              include: {
+                skills: { include: { skill: true }, orderBy: { createdAt: 'asc' } },
+                employmentRecords: { orderBy: { startDate: 'desc' }, take: 5 },
+                educationRecords: { orderBy: { startDate: 'desc' }, take: 5 },
+              },
+            },
+            job: {
+              include: {
+                skills: { include: { skill: true }, orderBy: { createdAt: 'asc' } },
+              },
+            },
             company: { select: { name: true } },
+            resumeFiles: {
+              where: { deletedAt: null },
+              include: {
+                textExtractions: {
+                  orderBy: { createdAt: 'desc' },
+                  take: 1,
+                },
+              },
+              take: 1,
+            },
           },
         },
       },
@@ -633,14 +725,14 @@ export class AiInterviewsService {
       }
 
       const context = this.buildConversationContext(interview);
-      const greeting = `Hello ${interview.application.candidate.firstName}. Welcome to your interview for the ${interview.application.job.title} position. Before we begin, could you please confirm your full name?`;
-      const companyName = interview.application.company?.name || 'AI Recruiter Co';
+      const greeting = `Hello ${interview.application.candidate.firstName}. Welcome to your AI interview for the ${interview.application.job.title} position at ${interview.application.company?.name || 'this company'}. I understand we have you interviewing for the ${interview.application.job.title} role. Before we begin, could you confirm your full name and tell me briefly why you are interested in this role?`;
       const callbackBaseUrl =
-        this.configService.get<string>('tavus.callbackBaseUrl') || this.frontendUrl;
+        this.configService.get<string>('tavus.callbackBaseUrl') || this.backendUrl;
       const callbackSecret = this.configService.get<string>('tavus.callbackSecret') || '';
       const callbackUrl = callbackSecret
         ? `${callbackBaseUrl}/api/v1/ai-interviews/callback/${callbackSecret}`
         : `${callbackBaseUrl}/api/v1/ai-interviews/callback`;
+      const testMode = this.configService.get<boolean>('tavus.testMode') || false;
 
       try {
         const tavusResponse = await this.tavusClient.createConversation({
@@ -652,12 +744,13 @@ export class AiInterviewsService {
           callback_url: callbackUrl,
           require_auth: true,
           max_participants: 2,
-          max_call_duration_seconds:
-            this.configService.get<number>('tavus.maxCallDurationSeconds') || 600,
-          participant_absent_timeout_seconds:
-            this.configService.get<number>('tavus.participantAbsentTimeoutSeconds') || 120,
-          participant_left_timeout_seconds:
-            this.configService.get<number>('tavus.participantLeftTimeoutSeconds') || 60,
+          test_mode: testMode,
+          properties: {
+            participant_absent_timeout:
+              this.configService.get<number>('tavus.participantAbsentTimeoutSeconds') || 120,
+            participant_left_timeout:
+              this.configService.get<number>('tavus.participantLeftTimeoutSeconds') || 60,
+          },
         });
 
         await this.prisma.aiInterview.update({
@@ -667,6 +760,10 @@ export class AiInterviewsService {
             tavusConversationUrl: tavusResponse.conversation_url,
             tavusMeetingToken: tavusResponse.meeting_token || null,
             tavusStatus: tavusResponse.status,
+            transcriptStatus:
+              interview.transcriptStatus === AiInterviewTranscriptStatus.NOT_REQUESTED
+                ? AiInterviewTranscriptStatus.PENDING
+                : interview.transcriptStatus,
           },
         });
 
@@ -684,12 +781,13 @@ export class AiInterviewsService {
           data: {
             status: AiInterviewStatus.READY,
             startedAt: null,
+            consentAcceptedAt: null,
           },
         });
         this.logger.error(`Tavus conversation creation failed: ${error}`);
         throw new BadRequestException({
           code: 'TAVUS_CREATION_FAILED',
-          message: error instanceof Error ? error.message : 'Failed to create interview session.',
+          message: "We couldn't start your interview right now. Please try again shortly.",
         });
       }
     }
@@ -766,15 +864,10 @@ export class AiInterviewsService {
     return { completed: true, message: 'Your interview has been submitted.' };
   }
 
-  // ─── TAVUS CALLBACK ────────────────────────────────────────────────────────
+  // â”€â”€â”€ TAVUS CALLBACK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async handleTavusCallback(
-    payload: {
-      event: string;
-      conversation_id: string;
-      status?: string;
-      payload?: Record<string, unknown>;
-    },
+    payload: TavusCallbackPayload,
     callbackSecret?: string,
   ) {
     // Verify callback secret if configured
@@ -787,7 +880,7 @@ export class AiInterviewsService {
           message: 'Callback secret required',
         });
       }
-      if (callbackSecret !== expectedSecret) {
+      if (!this.secretsMatch(callbackSecret, expectedSecret)) {
         this.logger.warn('Tavus callback rejected: wrong secret');
         throw new BadRequestException({
           code: 'CALLBACK_SECRET_INVALID',
@@ -811,56 +904,191 @@ export class AiInterviewsService {
       return { received: true };
     }
 
-    switch (payload.event) {
+    const eventType = payload.event;
+    const properties = payload.properties || {};
+
+    switch (eventType) {
       case 'system.replica_joined':
+      case 'system.pal_joined':
         await this.prisma.aiInterview.update({
           where: { id: interview.id },
-          data: { tavusStatus: payload.status || 'replica_joined' },
+          data: { tavusStatus: eventType },
         });
         break;
 
       case 'system.shutdown': {
-        // Only update to COMPLETED if not already in a terminal state
+        // Idempotent completion: move to COMPLETED at most once and never from
+        // CANCELLED/FAILED. Duplicate shutdown callbacks are safe.
+        const data: Prisma.AiInterviewUpdateInput = {
+          tavusStatus: (properties.shutdown_reason as string) || 'shutdown',
+        };
         if (
           interview.status !== AiInterviewStatus.CANCELLED &&
           interview.status !== AiInterviewStatus.FAILED
         ) {
-          await this.prisma.aiInterview.update({
-            where: { id: interview.id },
-            data: {
-              tavusStatus: payload.status || 'shutdown',
-              status: AiInterviewStatus.COMPLETED,
-              completedAt: new Date(),
-            },
-          });
+          if (interview.status !== AiInterviewStatus.COMPLETED) {
+            data.status = AiInterviewStatus.COMPLETED;
+          }
+          if (!interview.completedAt) {
+            data.completedAt = new Date();
+          }
+          if (interview.transcriptStatus === AiInterviewTranscriptStatus.NOT_REQUESTED) {
+            data.transcriptStatus = AiInterviewTranscriptStatus.PENDING;
+          }
         }
+        await this.prisma.aiInterview.update({
+          where: { id: interview.id },
+          data,
+        });
+        // Pull transcript/recording artifacts from the provider when the
+        // webhook did not already carry them.
+        await this.syncTavusArtifacts(interview.id).catch((error) => {
+          this.logger.warn(`Tavus artifact sync failed for ${interview.id}: ${error}`);
+        });
         break;
       }
 
-      case 'application.transcription_ready':
+      case 'application.transcription_ready': {
+        const transcriptTurns = this.sanitizeTranscript(properties.transcript);
+        const transcriptUrl = (properties.transcript_url as string) || null;
         await this.prisma.aiInterview.update({
           where: { id: interview.id },
           data: {
             transcriptStatus: AiInterviewTranscriptStatus.READY,
-            transcriptUrl: (payload.payload?.transcript_url as string) || null,
+            transcriptUrl,
+            transcript: transcriptTurns.length
+              ? (transcriptTurns as unknown as Prisma.InputJsonValue)
+              : undefined,
+            tavusStatus: eventType,
+          },
+        });
+        break;
+      }
+
+      case 'application.recording_ready': {
+        const storageUri = (properties.storage_uri as string) || null;
+        const s3Key = (properties.s3_key as string) || null;
+        const recordingUrl = storageUri || s3Key;
+        await this.prisma.aiInterview.update({
+          where: { id: interview.id },
+          data: {
+            recordingStatus: 'READY',
+            recordingUrl,
+            tavusStatus: eventType,
+          },
+        });
+        break;
+      }
+
+      case 'application.recording_copy_failed':
+        await this.prisma.aiInterview.update({
+          where: { id: interview.id },
+          data: {
+            recordingStatus: 'FAILED',
+            tavusStatus: eventType,
           },
         });
         break;
 
       default:
         this.logger.log(
-          `Tavus unhandled event: ${payload.event} for conversation ${conversationId}`,
+          `Tavus unhandled event: ${eventType} for conversation ${conversationId}`,
         );
         await this.prisma.aiInterview.update({
           where: { id: interview.id },
-          data: { tavusStatus: payload.status || payload.event },
+          data: { tavusStatus: payload.status || eventType },
         });
     }
 
     return { received: true };
   }
 
-  // ─── HELPERS ───────────────────────────────────────────────────────────────
+  /**
+   * Fetches the conversation (verbose) from Tavus and persists transcript and
+   * recording artifacts that may have been missed by webhooks.
+   */
+  private async syncTavusArtifacts(interviewId: string): Promise<void> {
+    const interview = await this.prisma.aiInterview.findUnique({
+      where: { id: interviewId },
+      select: { tavusConversationId: true, transcriptStatus: true, recordingStatus: true },
+    });
+    if (!interview?.tavusConversationId) return;
+    if (!this.tavusClient.isEnabled) return;
+    if (
+      interview.transcriptStatus === AiInterviewTranscriptStatus.READY &&
+      interview.recordingStatus === 'READY'
+    ) {
+      return;
+    }
+
+    const conversation = await this.tavusClient.getConversation(
+      interview.tavusConversationId,
+      true,
+    );
+    const events = conversation.events || [];
+
+    const transcriptEvent = events.find((e) => e.event_type === 'application.transcription_ready');
+    if (transcriptEvent && interview.transcriptStatus !== AiInterviewTranscriptStatus.READY) {
+      const turns = this.sanitizeTranscript(transcriptEvent.properties?.transcript);
+      if (turns.length) {
+        await this.prisma.aiInterview.update({
+          where: { id: interviewId },
+          data: {
+            transcriptStatus: AiInterviewTranscriptStatus.READY,
+            transcript: turns as unknown as Prisma.InputJsonValue,
+            transcriptUrl: (transcriptEvent.properties?.transcript_url as string) || null,
+          },
+        });
+      }
+    }
+
+    const recordingEvent = events.find((e) => e.event_type === 'application.recording_ready');
+    if (recordingEvent && interview.recordingStatus !== 'READY') {
+      const props = recordingEvent.properties || {};
+      await this.prisma.aiInterview.update({
+        where: { id: interviewId },
+        data: {
+          recordingStatus: 'READY',
+          recordingUrl: (props.storage_uri as string) || (props.s3_key as string) || null,
+        },
+      });
+    }
+  }
+
+  private sanitizeTranscript(raw: unknown): TranscriptTurn[] {
+    if (!Array.isArray(raw)) return [];
+    const turns: TranscriptTurn[] = [];
+    for (const entry of raw) {
+      if (!entry || typeof entry !== 'object') continue;
+      const obj = entry as Record<string, unknown>;
+      const role = typeof obj.role === 'string' ? obj.role : undefined;
+      const content = typeof obj.content === 'string' ? obj.content : undefined;
+      if (!role && !content) continue;
+      turns.push({
+        role,
+        content,
+        timestamp: typeof obj.timestamp === 'number' ? obj.timestamp : undefined,
+        seconds_from_start:
+          typeof obj.seconds_from_start === 'number' ? obj.seconds_from_start : undefined,
+        duration: typeof obj.duration === 'number' ? obj.duration : undefined,
+      });
+    }
+    return turns;
+  }
+
+  private codesMatch(normalizedCode: string, storedHash: string): boolean {
+    const inputHash = this.codeService.hash(normalizedCode);
+    return this.secretsMatch(inputHash, storedHash);
+  }
+
+  private secretsMatch(a: string, b: string): boolean {
+    const bufA = Buffer.from(a, 'utf8');
+    const bufB = Buffer.from(b, 'utf8');
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  }
+
+  // â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   private resolveProvider(requested?: AiInterviewProvider): AiInterviewProvider {
     if (requested === AiInterviewProvider.MOCK) {
@@ -897,34 +1125,107 @@ export class AiInterviewsService {
   private buildConversationContext(interview: any): string {
     const candidate = interview.application.candidate;
     const job = interview.application.job;
+    const companyName = interview.application.company?.name || 'the company';
 
-    const parts: string[] = [
-      `Candidate: ${candidate.firstName} ${candidate.lastName}`,
-      `Position: ${job.title}`,
-      `Experience: ${candidate.totalExperienceYears || 'Not specified'} years`,
-    ];
+    const parts: string[] = [];
 
-    if (candidate.skills) {
-      try {
-        const skills =
-          typeof candidate.skills === 'string' ? JSON.parse(candidate.skills) : candidate.skills;
-        if (Array.isArray(skills) && skills.length > 0) {
-          parts.push(`Skills: ${skills.join(', ')}`);
-        }
-      } catch {
-        // skills field may not be parseable
-      }
+    // â”€â”€ Candidate professional context â”€â”€
+    parts.push('CANDIDATE PROFILE');
+    parts.push(`Name: ${candidate.firstName} ${candidate.lastName}`);
+    if (candidate.currentJobTitle) parts.push(`Current job title: ${candidate.currentJobTitle}`);
+    if (candidate.currentEmployer) parts.push(`Current employer: ${candidate.currentEmployer}`);
+    if (candidate.totalExperienceYears) {
+      parts.push(`Total experience: ${candidate.totalExperienceYears} years`);
+    }
+    if (candidate.summary) parts.push(`Summary: ${candidate.summary}`);
+
+    const skillNames = (candidate.skills || [])
+      .map((s: any) => s.skill?.displayName)
+      .filter(Boolean);
+    if (skillNames.length) parts.push(`Skills: ${skillNames.join(', ')}`);
+
+    const employment = (candidate.employmentRecords || [])
+      .slice(0, 3)
+      .map((r: any) => {
+        const years = r.startDate
+          ? `${r.startDate.getFullYear()}${r.endDate ? `-${r.endDate.getFullYear()}` : '-present'}`
+          : '';
+        const desc = r.description ? ` - ${r.description.slice(0, 300)}` : '';
+        return `${r.jobTitle} at ${r.companyName} (${years})${desc}`;
+      })
+      .filter(Boolean);
+    if (employment.length) {
+      parts.push('Recent experience:');
+      parts.push(...employment.map((line: string) => `- ${line}`));
     }
 
+    const education = (candidate.educationRecords || [])
+      .slice(0, 2)
+      .map((r: any) => `${r.fieldOfStudy || r.level} at ${r.institution}`)
+      .filter(Boolean);
+    if (education.length) {
+      parts.push(`Education: ${education.join('; ')}`);
+    }
+
+    const resumeText = interview.application.resumeFiles?.[0]?.textExtractions?.[0]?.extractedText;
+    if (resumeText && resumeText.length > 0) {
+      parts.push(`Resume excerpt: ${resumeText.slice(0, 5000)}`);
+    }
+
+    // â”€â”€ Job context â”€â”€
+    parts.push('');
+    parts.push('JOB');
+    parts.push(`Position: ${job.title}`);
+    parts.push(`Company: ${companyName}`);
+    if (job.description) parts.push(`Job description: ${job.description}`);
+    if (job.responsibilities) parts.push(`Responsibilities: ${job.responsibilities}`);
+    if (job.qualifications) parts.push(`Qualifications: ${job.qualifications}`);
+    const jobSkills = (job.skills || [])
+      .map((s: any) => s.skill?.displayName)
+      .filter(Boolean);
+    if (jobSkills.length) parts.push(`Required/preferred skills: ${jobSkills.join(', ')}`);
+    if (job.experienceLevel) parts.push(`Experience level: ${job.experienceLevel}`);
+
+    // â”€â”€ Interview setup â”€â”€
+    parts.push('');
+    parts.push('INTERVIEW SETUP');
+    parts.push(`Language: ${interview.language || 'en'}`);
     parts.push(
-      'Interview objectives: Assess technical competence, problem-solving ability, communication skills, and cultural fit for the role.',
+      `Target duration: approximately ${interview.estimatedDurationMinutes || 30} minutes`,
     );
-    parts.push("Ask natural follow-up questions based on the candidate's responses.");
-    parts.push('Remain professional and courteous throughout.');
+    if (interview.accommodationRequested && interview.accommodationNotes) {
+      parts.push(
+        `Accessibility note from the candidate: ${interview.accommodationNotes}. Accommodate this need without lowering the standard of the questions asked.`,
+      );
+    }
+
+    // â”€â”€ Interviewer instructions â”€â”€
+    parts.push('');
+    parts.push('INTERVIEWER INSTRUCTIONS');
     parts.push(
-      'Avoid discriminatory or unrelated questions about age, gender, religion, marital status, disability, or appearance.',
+      `Greet the candidate by their first name (${candidate.firstName}) and introduce yourself as an AI interviewer assistant conducting the interview on behalf of ${companyName}.`,
     );
-    parts.push('When the interview is complete, thank the candidate and end politely.');
+    parts.push(
+      `Confirm the role with the candidate: "We have you interviewing for the ${job.title} position. Is that correct?" Do not ask the candidate to identify the job from scratch.`,
+    );
+    parts.push(
+      'Ask job-specific questions based on the role requirements and the candidate resume context above.',
+    );
+    parts.push(
+      'Use the candidate resume, skills, and experience to ask meaningful, tailored follow-up questions.',
+    );
+    parts.push(
+      'Keep the interview within the target duration and maintain a professional, respectful tone.',
+    );
+    parts.push(
+      'Do not ask questions about age, gender, religion, marital status, disability, pregnancy, nationality, or appearance. Do not evaluate or comment on the candidate appearance or emotional state.',
+    );
+    parts.push(
+      'The AI interviewer supports the recruitment process. Final recruitment decisions are made by the employer. Do not claim to make hiring decisions.',
+    );
+    parts.push(
+      'When the interview is complete, thank the candidate, explain that their responses will be reviewed by the recruitment team, and close politely.',
+    );
 
     return parts.join('\n');
   }
