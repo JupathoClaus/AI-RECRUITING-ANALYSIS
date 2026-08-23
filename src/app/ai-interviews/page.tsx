@@ -349,6 +349,10 @@ export default function AIInterviewsPage() {
           onOpenChange={(o) => {
             if (!o) setDetailTarget(null)
           }}
+          onRefreshed={(updated) => {
+            setDetailTarget(updated)
+            setCreated((prev) => prev.map((i) => (i.id === updated.id ? updated : i)))
+          }}
         />
       )}
     </AppLayout>

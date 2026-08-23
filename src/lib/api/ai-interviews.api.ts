@@ -147,6 +147,24 @@ export async function cancelAiInterview(id: string): Promise<{ cancelled: boolea
   })
 }
 
+export interface ArtifactSyncResponse {
+  synced: boolean
+  error: string | null
+  status: AiInterviewStatus
+  transcriptStatus: AiInterviewTranscriptStatus
+  transcriptTurns: number
+  transcriptUrl: string | null
+  recordingStatus: string | null
+  recordingUrl: string | null
+  tavusStatus: string | null
+}
+
+export async function syncAiInterviewArtifacts(id: string): Promise<ArtifactSyncResponse> {
+  return apiRequest<ArtifactSyncResponse>(`/ai-interviews/${id}/sync-artifacts`, {
+    method: "POST",
+  })
+}
+
 // Public candidate API
 export async function verifyInterviewCode(code: string): Promise<{
   accessToken: string
