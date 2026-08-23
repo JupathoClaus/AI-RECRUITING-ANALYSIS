@@ -490,6 +490,33 @@ describe('AiInterviewsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('should not mark SENT on failure and retry succeeds on the same record', async () => {
+      codeService.normalize.mockReturnValue('ABCDEFGH');
+      codeService.hash.mockReturnValue(mockInterview.codeHash);
+      tokenService.generate.mockReturnValue('jwt-token');
+      prisma.aiInterview.findFirst.mockResolvedValue(sentInterview);
+      prisma.aiInterview.update.mockResolvedValue(sentInterview);
+
+      // First attempt fails at the provider
+      emailService.sendAiInterviewInvitationEmail.mockRejectedValueOnce(new Error('SMTP down'));
+      await expect(
+        service.sendInvitation('interview-1', { rawCode: 'ABCD-EFGH' }, 'company-1'),
+      ).rejects.toThrow(BadRequestException);
+
+      // No status update was applied for the failed attempt (record preserved)
+      const updatesAfterFailure = prisma.aiInterview.update.mock.calls;
+      expect(updatesAfterFailure.filter((c) => c[0].data.status === AiInterviewStatus.SENT)).toHaveLength(0);
+      prisma.aiInterview.update.mockClear();
+
+      // Second attempt succeeds on the same record
+      emailService.sendAiInterviewInvitationEmail.mockResolvedValueOnce(undefined);
+      const result = await service.sendInvitation('interview-1', { rawCode: 'ABCD-EFGH' }, 'company-1');
+      expect(result.sent).toBe(true);
+      const sentUpdate = prisma.aiInterview.update.mock.calls.find((c) => c[0].data.status === AiInterviewStatus.SENT);
+      expect(sentUpdate).toBeDefined();
+      expect(sentUpdate[0].data.invitationEmail).toBe('daniel@test.com');
+    });
+
     it('should reject candidate without email', async () => {
       const noEmailApplication = {
         ...mockApplication,
