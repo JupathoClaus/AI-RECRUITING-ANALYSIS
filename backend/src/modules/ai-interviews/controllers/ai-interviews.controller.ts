@@ -84,6 +84,14 @@ export class AiInterviewsController {
     return this.aiInterviewsService.sendInvitation(id, dto, user.activeCompanyId!);
   }
 
+  @Post(':id/sync-artifacts')
+  @RequirePermissions('interviews.update')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Synchronize Tavus transcript/recording artifacts' })
+  async syncArtifacts(@Param('id') id: string, @CurrentUser() user: AuthenticatedPrincipal) {
+    return this.aiInterviewsService.syncInterviewArtifacts(id, user.activeCompanyId!);
+  }
+
   @Post(':id/cancel')
   @RequirePermissions('interviews.cancel')
   @HttpCode(HttpStatus.OK)

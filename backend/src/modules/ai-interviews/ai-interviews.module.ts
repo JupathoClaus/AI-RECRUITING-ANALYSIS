@@ -11,6 +11,8 @@ import { AiInterviewsService } from './services/ai-interviews.service';
 import { AiInterviewCodeService } from './services/ai-interview-code.service';
 import { AiInterviewTokenService } from './services/ai-interview-token.service';
 import { TavusClientService } from './services/tavus-client.service';
+import { TavusArtifactSyncService } from './services/tavus-artifact-sync.service';
+import { TavusArtifactSyncScheduler } from './services/tavus-artifact-sync-scheduler.service';
 
 @Module({
   imports: [
@@ -33,6 +35,8 @@ import { TavusClientService } from './services/tavus-client.service';
     AiInterviewCodeService,
     AiInterviewTokenService,
     TavusClientService,
+    TavusArtifactSyncService,
+    TavusArtifactSyncScheduler,
   ],
   exports: [AiInterviewsService],
 })

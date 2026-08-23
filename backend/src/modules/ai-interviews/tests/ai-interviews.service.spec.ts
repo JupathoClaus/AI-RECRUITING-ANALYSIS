@@ -1152,6 +1152,96 @@ describe('AiInterviewsService', () => {
     });
   });
 
+  // ─── ARTIFACT SYNC ───────────────────────────────────────────────────────
+
+  describe('syncInterviewArtifacts', () => {
+    it('should reject cross-company sync', async () => {
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      await expect(
+        service.syncInterviewArtifacts('interview-1', 'other-company'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should sync artifacts and return the updated state', async () => {
+      const mockUpdated = {
+        status: AiInterviewStatus.COMPLETED,
+        transcriptStatus: AiInterviewTranscriptStatus.READY,
+        transcript: [{ role: 'user', content: 'Hello' }],
+        transcriptUrl: 'https://tavus.test/transcript/1',
+        recordingStatus: 'READY',
+        recordingUrl: 's3://recordings/1',
+        tavusStatus: 'ended',
+      };
+      prisma.aiInterview.findFirst.mockResolvedValue(mockInterview);
+      prisma.aiInterview.findUnique.mockResolvedValue(mockUpdated);
+      prisma.aiInterview.update.mockResolvedValue(mockUpdated);
+
+      const result = await service.syncInterviewArtifacts('interview-1', 'company-1');
+
+      expect(result.synced).toBe(true);
+      expect(result.transcriptStatus).toBe(AiInterviewTranscriptStatus.READY);
+      expect(result.recordingStatus).toBe('READY');
+      expect(result.status).toBe(AiInterviewStatus.COMPLETED);
+    });
+
+    it('should reconcile an ended provider conversation to COMPLETED', async () => {
+      const mockSyncTarget = {
+        id: 'interview-1',
+        status: AiInterviewStatus.IN_PROGRESS,
+        provider: AiInterviewProvider.TAVUS,
+        tavusConversationId: 'tavus-conv-1',
+        transcriptStatus: AiInterviewTranscriptStatus.NOT_REQUESTED,
+        recordingStatus: null,
+      };
+      prisma.aiInterview.findFirst.mockResolvedValue(mockInterview);
+      prisma.aiInterview.findUnique
+        .mockResolvedValueOnce(mockSyncTarget)
+        .mockResolvedValue({
+          status: AiInterviewStatus.COMPLETED,
+          transcriptStatus: AiInterviewTranscriptStatus.READY,
+          transcript: [],
+          transcriptUrl: null,
+          recordingStatus: null,
+          recordingUrl: null,
+          tavusStatus: 'ended',
+        });
+      mockTavusClient.isEnabled = true;
+      mockTavusClient.getConversation.mockResolvedValue({
+        conversation_id: 'tavus-conv-1',
+        status: 'ended',
+        events: [
+          {
+            event_type: 'application.transcription_ready',
+            properties: {
+              transcript: [
+                { role: 'user', content: 'Real spoken answer', timestamp: 123.4, seconds_from_start: 5.0, duration: 2.0 },
+                { role: 'assistant', content: 'Great, tell me more.', timestamp: 128.0, seconds_from_start: 10.0, duration: 1.5 },
+              ],
+            },
+          },
+          { event_type: 'system.shutdown', properties: { shutdown_reason: 'ended' } },
+        ],
+      });
+      prisma.aiInterview.update.mockResolvedValue(mockSyncTarget);
+
+      await service.syncInterviewArtifacts('interview-1', 'company-1');
+
+      const statusUpdate = prisma.aiInterview.update.mock.calls.find(
+        (c) => c[0].data.status === AiInterviewStatus.COMPLETED,
+      );
+      expect(statusUpdate).toBeDefined();
+      expect(statusUpdate[0].data.completedAt).toBeDefined();
+      const transcriptUpdate = prisma.aiInterview.update.mock.calls.find(
+        (c) => c[0].data.transcript !== undefined,
+      );
+      expect(transcriptUpdate).toBeDefined();
+      expect(transcriptUpdate[0].data.transcript).toHaveLength(2);
+      expect(transcriptUpdate[0].data.transcript[0].content).toBe('Real spoken answer');
+      expect(transcriptUpdate[0].data.transcriptStatus).toBe(AiInterviewTranscriptStatus.READY);
+      mockTavusClient.isEnabled = false;
+    });
+  });
+
   // ─── CANCEL ───────────────────────────────────────────────────────────────
 
   describe('cancel', () => {

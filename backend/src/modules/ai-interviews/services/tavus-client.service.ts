@@ -63,6 +63,7 @@ export interface TavusGetConversationResponse {
   status: string;
   meeting_token?: string;
   created_at?: string;
+  updated_at?: string;
   ended_at?: string;
   recordings?: unknown[];
   events?: TavusConversationEvent[];

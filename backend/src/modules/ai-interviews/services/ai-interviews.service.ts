@@ -733,8 +733,38 @@ export class AiInterviewsService {
         ? `${callbackBaseUrl}/api/v1/ai-interviews/callback/${callbackSecret}`
         : `${callbackBaseUrl}/api/v1/ai-interviews/callback`;
       const testMode = this.configService.get<boolean>('tavus.testMode') || false;
+      const recording = this.configService.get<Record<string, unknown>>('tavus.recording') || {};
+      const recordingEnabled = recording.enabled === true;
 
       try {
+        const properties: Record<string, unknown> = {
+          participant_absent_timeout:
+            this.configService.get<number>('tavus.participantAbsentTimeoutSeconds') || 120,
+          participant_left_timeout:
+            this.configService.get<number>('tavus.participantLeftTimeoutSeconds') || 60,
+        };
+
+        if (recordingEnabled) {
+          properties.auto_start_recording = true;
+          const storage: Record<string, string> = {
+            provider: (recording.provider as string) || 's3',
+          };
+          if (recording.provider === 'gcs') {
+            storage.workload_identity_provider =
+              (recording.workloadIdentityProvider as string) || '';
+            storage.service_account_email = (recording.serviceAccountEmail as string) || '';
+          } else if (recording.provider === 'azure_blob') {
+            storage.container_name = (recording.bucketName as string) || '';
+            storage.azure_resource_group = (recording.bucketRegion as string) || '';
+          } else {
+            storage.bucket_name = (recording.bucketName as string) || '';
+            storage.bucket_region = (recording.bucketRegion as string) || '';
+            storage.assume_role_arn = (recording.assumeRoleArn as string) || '';
+            storage.external_id = (recording.externalId as string) || '';
+          }
+          properties.recording_storage = storage;
+        }
+
         const tavusResponse = await this.tavusClient.createConversation({
           persona_id: personaId,
           replica_id: replicaId,
@@ -745,12 +775,7 @@ export class AiInterviewsService {
           require_auth: true,
           max_participants: 2,
           test_mode: testMode,
-          properties: {
-            participant_absent_timeout:
-              this.configService.get<number>('tavus.participantAbsentTimeoutSeconds') || 120,
-            participant_left_timeout:
-              this.configService.get<number>('tavus.participantLeftTimeoutSeconds') || 60,
-          },
+          properties,
         });
 
         await this.prisma.aiInterview.update({
@@ -764,6 +789,7 @@ export class AiInterviewsService {
               interview.transcriptStatus === AiInterviewTranscriptStatus.NOT_REQUESTED
                 ? AiInterviewTranscriptStatus.PENDING
                 : interview.transcriptStatus,
+            recordingStatus: recordingEnabled ? 'PROCESSING' : null,
           },
         });
 
@@ -845,6 +871,11 @@ export class AiInterviewsService {
     // For TAVUS, the callback marks completion; frontend exit does not force completion
     if (interview.provider === AiInterviewProvider.TAVUS) {
       this.logger.log(`Candidate left Tavus interview ${interviewId} before callback`);
+      // Kick a provider sync so transcript/recording and the ended status are
+      // pulled even if the shutdown webhook is delayed or cannot reach us.
+      this.syncTavusArtifacts(interviewId).catch((error) => {
+        this.logger.warn(`Tavus artifact sync after leave failed for ${interviewId}: ${error}`);
+      });
       return { completed: false, message: 'Your interview session has ended.' };
     }
 
@@ -1004,15 +1035,77 @@ export class AiInterviewsService {
   }
 
   /**
+   * Recruiter-facing artifact sync: pulls transcript/recording and the
+   * conversation status from the provider for one interview.
+   */
+  async syncInterviewArtifacts(id: string, companyId: string) {
+    const interview = await this.prisma.aiInterview.findFirst({
+      where: { id, companyId },
+    });
+    if (!interview) {
+      throw new NotFoundException({
+        code: 'AI_INTERVIEW_NOT_FOUND',
+        message: 'AI interview not found',
+      });
+    }
+
+    const synced = await this.syncTavusArtifacts(interview.id).catch((error) => {
+      this.logger.warn(`Tavus artifact sync failed for ${interview.id}: ${error}`);
+      return { error: error instanceof Error ? error.message : String(error) };
+    });
+
+    const updated = await this.prisma.aiInterview.findUnique({
+      where: { id: interview.id },
+      select: {
+        status: true,
+        transcriptStatus: true,
+        transcript: true,
+        transcriptUrl: true,
+        recordingStatus: true,
+        recordingUrl: true,
+        tavusStatus: true,
+      },
+    });
+
+    return {
+      synced: !synced || !(synced as { error?: string }).error,
+      error: (synced as { error?: string } | undefined)?.error ?? null,
+      status: updated?.status,
+      transcriptStatus: updated?.transcriptStatus,
+      transcriptTurns: Array.isArray(updated?.transcript) ? updated.transcript.length : 0,
+      transcriptUrl: updated?.transcriptUrl ?? null,
+      recordingStatus: updated?.recordingStatus ?? null,
+      recordingUrl: updated?.recordingUrl ?? null,
+      tavusStatus: updated?.tavusStatus ?? null,
+    };
+  }
+
+  /**
+   * Internal tenant-agnostic artifact sync used by the reconciler.
+   */
+  async syncInterviewArtifactsById(id: string): Promise<void> {
+    return this.syncTavusArtifacts(id);
+  }
+
+  /**
    * Fetches the conversation (verbose) from Tavus and persists transcript and
-   * recording artifacts that may have been missed by webhooks.
+   * recording artifacts that may have been missed by webhooks. Also reconciles
+   * the interview lifecycle: an ended provider conversation completes an
+   * interview that is still in progress.
    */
   private async syncTavusArtifacts(interviewId: string): Promise<void> {
     const interview = await this.prisma.aiInterview.findUnique({
       where: { id: interviewId },
-      select: { tavusConversationId: true, transcriptStatus: true, recordingStatus: true },
+      select: {
+        status: true,
+        provider: true,
+        tavusConversationId: true,
+        transcriptStatus: true,
+        recordingStatus: true,
+      },
     });
     if (!interview?.tavusConversationId) return;
+    if (interview.provider !== AiInterviewProvider.TAVUS) return;
     if (!this.tavusClient.isEnabled) return;
     if (
       interview.transcriptStatus === AiInterviewTranscriptStatus.READY &&
@@ -1053,6 +1146,46 @@ export class AiInterviewsService {
         },
       });
     }
+
+    // Lifecycle reconciliation: the provider conversation ended but the
+    // interview is still in progress (e.g. the shutdown webhook was missed).
+    if (
+      conversation.status === 'ended' &&
+      (interview.status === AiInterviewStatus.IN_PROGRESS ||
+        interview.status === AiInterviewStatus.READY ||
+        interview.status === AiInterviewStatus.ACCESSED ||
+        interview.status === AiInterviewStatus.SENT ||
+        interview.status === AiInterviewStatus.CREATED)
+    ) {
+      // Use the provider's own end timestamp when available so the recorded
+      // completion time reflects the real interview end, not the sync time.
+      const providerEndedAt = conversation.updated_at
+        ? new Date(conversation.updated_at)
+        : null;
+      const shutdownEvent = events.find((e) => e.event_type === 'system.shutdown');
+      const shutdownAt = shutdownEvent?.timestamp ? new Date(shutdownEvent.timestamp) : null;
+      const completedAt = providerEndedAt || shutdownAt || new Date();
+      if (isNaN(completedAt.getTime())) {
+        throw new Error('invalid conversation end time');
+      }
+      await this.prisma.aiInterview.update({
+        where: { id: interviewId },
+        data: {
+          status: AiInterviewStatus.COMPLETED,
+          completedAt,
+          tavusStatus: 'ended',
+          transcriptStatus:
+            interview.transcriptStatus === AiInterviewTranscriptStatus.NOT_REQUESTED
+              ? AiInterviewTranscriptStatus.PENDING
+              : interview.transcriptStatus,
+        },
+      });
+    }
+
+    await this.prisma.aiInterview.update({
+      where: { id: interviewId },
+      data: { artifactSyncAttemptedAt: new Date() },
+    });
   }
 
   private sanitizeTranscript(raw: unknown): TranscriptTurn[] {
