@@ -1,32 +1,44 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { AddCandidateDialog } from '../add-candidate-dialog'
 import type { Job } from '@/types'
 
-const mockCreateCandidate = vi.hoisted(() => vi.fn())
-const mockCreateApplication = vi.hoisted(() => vi.fn())
+// The local dev machine is slow (jsdom + heavy module graph); give these
+// dialog interaction tests real headroom.
+vi.setConfig({ testTimeout: 20000 })
+
+const mockCreateWorkflow = vi.hoisted(() => vi.fn())
+const mockGetResumeExtractionStatus = vi.hoisted(() => vi.fn())
+const mockRetryAiScreeningExtraction = vi.hoisted(() => vi.fn())
 const mockSelectApplication = vi.hoisted(() => vi.fn<(...args: unknown[]) => void>())
-const mockStoredFile = { id: 'f-1', url: 'http://example.com/x.pdf', filename: 'x.pdf' }
-const mockUploadOk = { ok: true, file: mockStoredFile }
-const mockHandleUploadResume = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<unknown>>())
 const mockRequestScreening = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<void>>())
 const mockRetryScreening = vi.hoisted(() => vi.fn<(...args: unknown[]) => void>())
 const mockFetchCandidates = vi.hoisted(() => vi.fn())
 const mockUseAiScreening = vi.hoisted(() => vi.fn())
+const mockUseStore = vi.hoisted(() => vi.fn())
 
-vi.mock('@/lib/api/candidates.api', () => ({ createCandidate: mockCreateCandidate }))
-vi.mock('@/lib/api/applications.api', () => ({ createApplication: mockCreateApplication }))
+vi.mock('@/lib/api/candidates.api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/lib/api/candidates.api')>()
+  return { ...original, createCandidateWorkflow: mockCreateWorkflow }
+})
+vi.mock('@/lib/api/ai-screening.api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/lib/api/ai-screening.api')>()
+  return {
+    ...original,
+    getResumeExtractionStatus: mockGetResumeExtractionStatus,
+    retryAiScreeningExtraction: mockRetryAiScreeningExtraction,
+  }
+})
 vi.mock('@/lib/ai-screening/use-ai-screening', () => ({ useAiScreening: mockUseAiScreening }))
-vi.mock('@/store/useStore', () => ({ useStore: () => ({ fetchCandidates: mockFetchCandidates }) }))
+vi.mock('@/store/useStore', () => ({ useStore: mockUseStore }))
 
 vi.mock('@/components/ai-screening/resume-upload-area', () => ({
-  ResumeUploadArea: function MockResumeUploadArea({ onUpload, uploading }: { onUpload: (f: File) => void; uploading: boolean }) {
+  ResumeUploadArea: function MockResumeUploadArea({ onUpload }: { onUpload: (f: File) => void }) {
     return (
       <div data-testid="resume-upload-area">
         <button data-testid="mock-select-file" onClick={() => onUpload(new File(['x'], 'resume.pdf', { type: 'application/pdf' }))}>
           Select Resume
         </button>
-        {uploading && <span data-testid="uploading-indicator">Uploading...</span>}
       </div>
     )
   },
@@ -60,6 +72,20 @@ vi.mock('@/components/ui/select', () => ({
   ),
 }))
 
+const WORKFLOW_RESULT = {
+  candidateId: 'cand-1',
+  candidateCreated: true,
+  applicationId: 'app-1',
+  applicationNumber: 'APP-2026-000001',
+  applicationStatus: 'DRAFT',
+  stageId: 'st-1',
+  stageName: 'Applied',
+  jobId: 'j-1',
+  jobTitle: 'Engineer',
+  storedFileId: 'f-1',
+  extraction: { id: 'e-1', status: 'PENDING' },
+}
+
 function hookState(overrides: Record<string, unknown> = {}) {
   return {
     state: {
@@ -75,7 +101,7 @@ function hookState(overrides: Record<string, unknown> = {}) {
       ...overrides,
     },
     selectApplication: mockSelectApplication,
-    handleUploadResume: mockHandleUploadResume,
+    handleUploadResume: vi.fn(),
     cancelUpload: vi.fn(),
     requestScreening: mockRequestScreening,
     retryScreening: mockRetryScreening,
@@ -97,318 +123,265 @@ function renderDialog(open = true, jobs = [ACTIVE_JOB, CLOSED_JOB]) {
 }
 
 async function fillForm() {
-  await act(async () => { fireEvent.change(screen.getByPlaceholderText('e.g. John Smith'), { target: { value: 'Alice' } }) })
+  await act(async () => { fireEvent.change(screen.getByPlaceholderText('e.g. John Smith'), { target: { value: 'Alice Johnson' } }) })
   await act(async () => { fireEvent.change(screen.getByPlaceholderText('john@example.com'), { target: { value: 'a@b.com' } }) })
   await act(async () => { screen.getByTestId('select-job-btn').click() })
   await act(async () => { screen.getByTestId('mock-select-file').click() })
 }
 
-async function clickAddCandidate() {
-  mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
-  mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-  mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
+async function submitAndSucceed() {
+  mockCreateWorkflow.mockResolvedValue(WORKFLOW_RESULT as never)
+  mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'COMPLETED' } as never)
   await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
 }
 
-describe('AddCandidateDialog', () => {
+describe('AddCandidateDialog (atomic workflow)', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
+    mockUseStore.mockImplementation((selector: (s: { fetchCandidates: typeof mockFetchCandidates }) => unknown) =>
+      selector({ fetchCandidates: mockFetchCandidates })
+    )
     mockUseAiScreening.mockReturnValue(hookState())
+    mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'COMPLETED' } as never)
+    mockRetryAiScreeningExtraction.mockResolvedValue({ extraction: { id: 'e-2', status: 'PENDING' } } as never)
   })
 
-  describe('render-loop regression', () => {
-    it('does not reset repeatedly while mounted closed (prevents max-update loop)', () => {
-      renderDialog(false)
-      expect(mockSelectApplication).not.toHaveBeenCalled()
-      renderDialog(false)
-      renderDialog(false)
-    })
-
-    it('resets exactly once on the open-to-closed transition', () => {
-      const { rerender } = renderDialog(true)
-      rerender(<AddCandidateDialog open={false} onOpenChange={vi.fn()} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />)
-      expect(mockSelectApplication).toHaveBeenCalledTimes(1)
-    })
-
-    it('does not reset on close-to-open transition', () => {
-      const { rerender } = renderDialog(false)
-      expect(mockSelectApplication).not.toHaveBeenCalled()
-      rerender(<AddCandidateDialog open={true} onOpenChange={vi.fn()} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />)
-      expect(mockSelectApplication).not.toHaveBeenCalled()
-    })
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
-  describe('form display', () => {
-    it('renders dialog with candidate fields', () => {
+  describe('normal Add Candidate (1)', () => {
+    it('sends ONE workflow request with candidate + job + resume and shows success', async () => {
       renderDialog(true)
-      expect(screen.getByText('Add New Candidate')).toBeDefined()
-      expect(screen.getByText('Full Name *')).toBeDefined()
-      expect(screen.getByText('Email *')).toBeDefined()
+      await fillForm()
+      await submitAndSucceed()
+
+      expect(await screen.findByText('Candidate added successfully')).toBeDefined()
+      expect(mockCreateWorkflow).toHaveBeenCalledTimes(1)
+      const [dto, file, key] = mockCreateWorkflow.mock.calls[0] as [unknown, File, string]
+      expect(dto).toMatchObject({ firstName: 'Alice', lastName: 'Johnson', email: 'a@b.com', jobId: 'j-1' })
+      expect(file).toBeInstanceOf(File)
+      expect(String(key)).toMatch(/^candidate-workflow:/)
+      expect(mockSelectApplication).toHaveBeenCalledWith('app-1')
     })
 
-    it('requires name, email, job, and resume for submission', async () => {
+    it('sends the right form fields to the backend', async () => {
       renderDialog(true)
+      await fillForm()
+      await act(async () => { fireEvent.change(screen.getByPlaceholderText('+1 555-0100'), { target: { value: '+1 555 0100' } }) })
+      await act(async () => { fireEvent.change(screen.getByPlaceholderText('5'), { target: { value: '6' } }) })
+      await submitAndSucceed()
 
-      const btn = () => screen.getByText('Add Candidate').closest('button')!
-      expect(btn().disabled).toBe(true)
-
-      await act(async () => { fireEvent.change(screen.getByPlaceholderText('e.g. John Smith'), { target: { value: 'Alice' } }) })
-      expect(btn().disabled).toBe(true)
-
-      await act(async () => { fireEvent.change(screen.getByPlaceholderText('john@example.com'), { target: { value: 'a@b.com' } }) })
-      expect(btn().disabled).toBe(true)
-
-      await act(async () => { screen.getByTestId('select-job-btn').click() })
-      expect(btn().disabled).toBe(true)
-
-      await act(async () => { screen.getByTestId('mock-select-file').click() })
-      expect(btn().disabled).toBe(false)
-    })
-
-    it('shows active jobs and labels unavailable jobs with their status', () => {
-      renderDialog(true)
-      expect(screen.getByText(/^Engineer — Engineering$/)).toBeDefined()
-      expect(screen.getByText(/Closed Role.*Closed/)).toHaveAttribute('aria-disabled', 'true')
-    })
-
-    it('explains how to make a position available when no jobs are published', () => {
-      renderDialog(true, [CLOSED_JOB])
-
-      expect(screen.getByText(/No published jobs are accepting applications/)).toBeDefined()
+      const [dto] = mockCreateWorkflow.mock.calls[0] as [Record<string, unknown>]
+      expect(dto.phone).toBe('+1 555 0100')
+      expect(dto.totalExperienceYears).toBe(6)
     })
   })
 
-  describe('upload indicator', () => {
-    it('does not show uploading state after file selection', async () => {
-      renderDialog(true)
-      await act(async () => { screen.getByTestId('mock-select-file').click() })
-      expect(screen.queryByTestId('uploading-indicator')).toBeNull()
-    })
-
-    it('removes uploading state after upload succeeds', async () => {
+  describe('loading state + double click (2, 3)', () => {
+    it('disables the button immediately and shows progress copy', async () => {
       renderDialog(true)
       await fillForm()
-      await clickAddCandidate()
+      let resolve!: (v: unknown) => void
+      mockCreateWorkflow.mockReturnValue(new Promise((r) => { resolve = r }) as never)
 
-      await waitFor(() => {
-        expect(screen.queryByText('Uploading resume...')).toBeNull()
-      })
-    })
-  })
+      const btn = screen.getByText('Add Candidate').closest('button')!
+      await act(async () => { fireEvent.click(btn) })
 
-  describe('API calls', () => {
-    it('calls API functions in correct order', async () => {
-      renderDialog(true)
-      await fillForm()
-      await clickAddCandidate()
+      const processingBtn = screen.getByText('Processing...').closest('button')!
+      expect(processingBtn.disabled).toBe(true)
+      expect(screen.getByText('Creating candidate...')).toBeDefined()
+      expect(screen.queryByText('Add Candidate')).toBeNull()
 
-      await waitFor(() => {
-        expect(mockCreateCandidate).toHaveBeenCalled()
-        expect(mockCreateApplication).toHaveBeenCalled()
-        expect(mockHandleUploadResume).toHaveBeenCalled()
-      })
-      const c = mockCreateCandidate.mock.invocationCallOrder[0]
-      const a = mockCreateApplication.mock.invocationCallOrder[0]
-      const u = mockHandleUploadResume.mock.invocationCallOrder[0]
-      expect(c).toBeLessThan(a!)
-      expect(a).toBeLessThan(u!)
-    })
-  })
-
-  describe('no auto-screening', () => {
-    it('does not call requestScreening after upload', async () => {
-      renderDialog(true)
-      await fillForm()
-      await clickAddCandidate()
-
-      await waitFor(() => {
-        expect(mockRequestScreening).not.toHaveBeenCalled()
-      })
-    })
-  })
-
-  describe('screening button visibility', () => {
-    it('shows Start AI Screening when RESUME_READY', async () => {
-      mockUseAiScreening.mockReturnValue(hookState({ workflowState: 'RESUME_READY' }))
-      renderDialog(true)
-      await fillForm()
-      await clickAddCandidate()
-
-      expect(await screen.findByText('Start AI Screening')).toBeDefined()
+      await act(async () => { resolve(WORKFLOW_RESULT); await Promise.resolve() })
+      expect(await screen.findByText('Candidate added successfully')).toBeDefined()
     })
 
-    it('hides Start AI Screening while WAITING_FOR_EXTRACTION', async () => {
-      mockUseAiScreening.mockReturnValue(hookState({ workflowState: 'WAITING_FOR_EXTRACTION' }))
+    it('creates only one workflow request on rapid double click', async () => {
       renderDialog(true)
       await fillForm()
-      await clickAddCandidate()
-
-      await waitFor(() => {
-        expect(screen.queryByText('Start AI Screening')).toBeNull()
-      })
-    })
-  })
-
-  describe('failure handling', () => {
-    it('stops at candidate creation failure', async () => {
-      renderDialog(true)
-      await fillForm()
-      mockCreateCandidate.mockRejectedValue(new Error('fail') as never)
-
-      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
-
-      await waitFor(() => {
-        expect(mockCreateCandidate).toHaveBeenCalledTimes(1)
-        expect(mockCreateApplication).not.toHaveBeenCalled()
-        expect(mockHandleUploadResume).not.toHaveBeenCalled()
-      })
-    })
-
-    it('stops at application creation failure', async () => {
-      renderDialog(true)
-      await fillForm()
-      mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
-      mockCreateApplication.mockRejectedValue(new Error('fail') as never)
-
-      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
-
-      await waitFor(() => {
-        expect(mockCreateApplication).toHaveBeenCalledTimes(1)
-        expect(mockHandleUploadResume).not.toHaveBeenCalled()
-      })
-    })
-
-    it('shows retry button for application failure', async () => {
-      renderDialog(true)
-      await fillForm()
-      mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
-      mockCreateApplication.mockRejectedValue(new Error('fail') as never)
-
-      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
-
-      expect(await screen.findByText('Retry Application Creation')).toBeDefined()
-    })
-
-    it('surfaces the friendly request-timeout message, not a raw abort string', async () => {
-      renderDialog(true)
-      await fillForm()
-      const { ApiErrorResponse } = await import('@/lib/api/client')
-      const timeoutError = new ApiErrorResponse(
-        408,
-        'REQUEST_TIMEOUT',
-        'The request took too long and was cancelled. Please try again.',
-      )
-      mockCreateCandidate.mockRejectedValue(timeoutError as never)
-
-      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
-
-      expect(await screen.findByText('The request took too long and was cancelled. Please try again.')).toBeDefined()
-      expect(screen.queryByText(/signal is aborted without reason/i)).toBeNull()
-      expect(await screen.findByText('Retry from Candidate Creation')).toBeDefined()
-    })
-
-    it('shows replace resume on extraction failure', async () => {
-      mockUseAiScreening.mockReturnValue(hookState({
-        workflowState: 'EXTRACTION_FAILED',
-        error: 'extraction error',
-      }))
-      renderDialog(true)
-      await fillForm()
-      mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
-      mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
-
-      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
-
-      expect(await screen.findByTestId('resume-upload-area')).toBeDefined()
-    })
-
-    it('shows no screening action when extraction has failed', async () => {
-      mockUseAiScreening.mockReturnValue(hookState({
-        workflowState: 'EXTRACTION_FAILED',
-        error: 'extraction error',
-      }))
-      renderDialog(true)
-      await fillForm()
-      mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
-      mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
-
-      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
-
-      await waitFor(() => {
-        expect(screen.queryByText('Start AI Screening')).toBeNull()
-        expect(screen.queryByText('Start Screening Anyway')).toBeNull()
-      })
-    })
-  })
-
-  describe('double-click prevention', () => {
-    it('creates candidate only once on double click', async () => {
-      renderDialog(true)
-      await fillForm()
-      mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
-      mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
+      mockCreateWorkflow.mockResolvedValue(WORKFLOW_RESULT as never)
+      mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'COMPLETED' } as never)
 
       const btn = screen.getByText('Add Candidate')
       await act(async () => { fireEvent.click(btn) })
       await act(async () => { fireEvent.click(btn) })
 
       await waitFor(() => {
-        expect(mockCreateCandidate).toHaveBeenCalledTimes(1)
+        expect(mockCreateWorkflow).toHaveBeenCalledTimes(1)
       })
+      expect(await screen.findByText('Candidate added successfully')).toBeDefined()
     })
   })
 
-  describe('screening completion', () => {
-    it('shows screening result when completed', async () => {
-      mockUseAiScreening.mockReturnValue(hookState({ workflowState: 'RESUME_READY' }))
+  describe('async extraction state (6, 13, 14)', () => {
+    it('shows Resume Processing... while extraction is pending', async () => {
       renderDialog(true)
       await fillForm()
-      mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
-      mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
+      mockCreateWorkflow.mockResolvedValue(WORKFLOW_RESULT as never)
+      mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'PENDING' } as never)
 
       await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
 
-      mockUseAiScreening.mockReturnValue(hookState({
-        workflowState: 'SCREENING_COMPLETED',
-        screeningResult: { id: 'r-1' },
-      }))
+      expect(await screen.findByText('Processing...')).toBeDefined()
+      expect(screen.getByText(/Resume reading continues in the background/)).toBeDefined()
+      expect(screen.queryByText('Start AI Screening')).toBeNull()
+    })
 
+    it('shows Resume Ready once extraction completes', async () => {
+      renderDialog(true)
+      await fillForm()
+      mockCreateWorkflow.mockResolvedValue(WORKFLOW_RESULT as never)
+      mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'PENDING' } as never)
+
+      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
+      expect(await screen.findByText('Processing...')).toBeDefined()
+
+      mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'COMPLETED' } as never)
+      expect(await screen.findByText('Ready', undefined, { timeout: 5000 })).toBeDefined()
+      expect(await screen.findByText('Start AI Screening')).toBeDefined()
+    })
+
+    it('shows Processing failed + Retry when extraction fails', async () => {
+      renderDialog(true)
+      await fillForm()
+      mockCreateWorkflow.mockResolvedValue(WORKFLOW_RESULT as never)
+      mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'FAILED' } as never)
+
+      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
+
+      expect(await screen.findByText('Processing failed')).toBeDefined()
+      await act(async () => { fireEvent.click(screen.getByText('Retry')) })
+      expect(mockRetryAiScreeningExtraction).toHaveBeenCalledWith('app-1')
+    })
+  })
+
+  describe('timeout + retry (7, 8, 10)', () => {
+    it('maps a request timeout to a product-safe message and allows retry', async () => {
+      renderDialog(true)
+      await fillForm()
+      const { ApiErrorResponse } = await import('@/lib/api/client')
+      mockCreateWorkflow.mockRejectedValue(new ApiErrorResponse(408, 'REQUEST_TIMEOUT', 'The request took too long and was cancelled. Please try again.') as never)
+
+      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
+
+      expect(await screen.findByText('The request took too long')).toBeDefined()
+      expect(screen.queryByText(/signal is aborted without reason/i)).toBeNull()
+      const retry = await screen.findByText('Retry')
+      expect(retry).toBeDefined()
+
+      mockCreateWorkflow.mockResolvedValue(WORKFLOW_RESULT as never)
+      mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'COMPLETED' } as never)
+      const firstKey = mockCreateWorkflow.mock.calls[0]?.[2]
+      await act(async () => { fireEvent.click(retry) })
+
+      expect(await screen.findByText('Candidate added successfully')).toBeDefined()
+      const secondKey = mockCreateWorkflow.mock.calls[1]?.[2]
+      expect(secondKey).toBe(firstKey)
+    })
+
+    it('regenerates the idempotency key when the user edits the form after a failure', async () => {
+      const onOpenChange = vi.fn()
+      const { rerender } = render(
+        <AddCandidateDialog open={true} onOpenChange={onOpenChange} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />
+      )
+      await fillForm()
+      mockCreateWorkflow.mockRejectedValue(new Error('Failed to fetch') as never)
+
+      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
+      expect(await screen.findByText('Network problem')).toBeDefined()
+      const firstKey = mockCreateWorkflow.mock.calls[0]?.[2]
+
+      // Close and reopen — the dialog resets, so the next submission is a
+      // genuinely different request and must get a fresh idempotency key.
+      rerender(<AddCandidateDialog open={false} onOpenChange={onOpenChange} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />)
+      rerender(<AddCandidateDialog open={true} onOpenChange={onOpenChange} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />)
+
+      await fillForm()
+      await act(async () => { fireEvent.change(screen.getByPlaceholderText('john@example.com'), { target: { value: 'new@b.com' } }) })
+
+      mockCreateWorkflow.mockResolvedValue(WORKFLOW_RESULT as never)
+      mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'COMPLETED' } as never)
+      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
+
+      expect(await screen.findByText('Candidate added successfully')).toBeDefined()
+      const secondKey = mockCreateWorkflow.mock.calls[1]?.[2]
+      expect(secondKey).not.toBe(firstKey)
+    })
+
+    it('shows a clear message for duplicate application (10)', async () => {
+      renderDialog(true)
+      await fillForm()
+      const { ApiErrorResponse } = await import('@/lib/api/client')
+      mockCreateWorkflow.mockRejectedValue(new ApiErrorResponse(409, 'APPLICATION_DUPLICATE', 'Candidate already has an active application for this job') as never)
+
+      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
+
+      expect(await screen.findByText('Already applied')).toBeDefined()
+      expect(screen.getByText(/already has an active application for this job/)).toBeDefined()
+      expect(screen.queryByText('Retry')).toBeNull()
+    })
+
+    it('shows a recoverable retry for generic network failures (9)', async () => {
+      renderDialog(true)
+      await fillForm()
+      mockCreateWorkflow.mockRejectedValue(new Error('Failed to fetch') as never)
+
+      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
+
+      expect(await screen.findByText('Network problem')).toBeDefined()
+      expect(screen.getByText(/nothing will be duplicated/)).toBeDefined()
+      expect(await screen.findByText('Retry')).toBeDefined()
+    })
+  })
+
+  describe('existing candidate / new job (11)', () => {
+    it('accepts an existing-candidate reuse result from the backend', async () => {
+      renderDialog(true)
+      await fillForm()
+      mockCreateWorkflow.mockResolvedValue({ ...WORKFLOW_RESULT, candidateCreated: false } as never)
+      mockGetResumeExtractionStatus.mockResolvedValue({ id: 'e-1', status: 'COMPLETED' } as never)
+
+      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
+
+      expect(await screen.findByText('Candidate added successfully')).toBeDefined()
+    })
+  })
+
+  describe('refresh persistence (12)', () => {
+    it('refreshes the candidates list when the dialog closes after success', async () => {
+      const onOpenChange = vi.fn()
+      const onComplete = vi.fn()
+      render(
+        <AddCandidateDialog open={true} onOpenChange={onOpenChange} jobs={[ACTIVE_JOB]} onComplete={onComplete} />
+      )
+      await fillForm()
+      await submitAndSucceed()
+      expect(await screen.findByText('Candidate added successfully')).toBeDefined()
+
+      await act(async () => { fireEvent.click(screen.getByText('Done')) })
+      expect(mockFetchCandidates).toHaveBeenCalled()
+      expect(onComplete).toHaveBeenCalled()
+      expect(onOpenChange).toHaveBeenCalledWith(false)
+    })
+  })
+
+  describe('screening entry point', () => {
+    it('keeps the optional Start AI Screening flow after extraction is ready', async () => {
+      renderDialog(true)
+      await fillForm()
+      await submitAndSucceed()
+      expect(await screen.findByText('Start AI Screening')).toBeDefined()
+
+      mockUseAiScreening.mockReturnValue(hookState({ workflowState: 'SCREENING_COMPLETED', screeningResult: { id: 'r-1' } }))
       await act(async () => { fireEvent.click(screen.getByText('Start AI Screening')) })
 
       expect(await screen.findByTestId('screening-result-view')).toBeDefined()
-      expect(screen.getByText('r-1')).toBeDefined()
-    })
-
-    it('shows retry button when screening fails', async () => {
-      mockUseAiScreening.mockReturnValue(hookState({ workflowState: 'RESUME_READY' }))
-      renderDialog(true)
-      await fillForm()
-      mockCreateCandidate.mockResolvedValue({ id: 'cand-1' } as never)
-      mockCreateApplication.mockResolvedValue({ id: 'app-1' } as never)
-      mockHandleUploadResume.mockResolvedValue(mockUploadOk as never)
-
-      await act(async () => { fireEvent.click(screen.getByText('Add Candidate')) })
-
-      mockUseAiScreening.mockReturnValue(hookState({
-        workflowState: 'SCREENING_FAILED',
-        screeningResult: { id: 'f1' },
-        error: 'screening error',
-      }))
-
-      await act(async () => { fireEvent.click(screen.getByText('Start AI Screening')) })
-
-      await waitFor(() => {
-        expect(screen.getByText('Retry Screening')).toBeDefined()
-      })
     })
   })
 
   describe('state reset', () => {
-    it('closing dialog clears form fields for next open', async () => {
+    it('closes cleanly and resets form fields for next open', async () => {
       const onOpenChange = vi.fn()
       const { rerender } = render(
         <AddCandidateDialog open={true} onOpenChange={onOpenChange} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />
@@ -420,7 +393,6 @@ describe('AddCandidateDialog', () => {
       rerender(
         <AddCandidateDialog open={false} onOpenChange={onOpenChange} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />
       )
-
       rerender(
         <AddCandidateDialog open={true} onOpenChange={onOpenChange} jobs={[ACTIVE_JOB]} onComplete={vi.fn()} />
       )

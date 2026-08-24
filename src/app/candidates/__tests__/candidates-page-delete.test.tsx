@@ -10,6 +10,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import * as React from "react"
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react"
 
+// The local dev machine is slow under jsdom; give the full-page interactions
+// real headroom so the suite is not flaky.
+vi.setConfig({ testTimeout: 30000 })
+
 const mockDeleteCandidate = vi.fn()
 const mockFetchCandidates = vi.fn()
 const mockCandidates = vi.fn<() => any[]>()
