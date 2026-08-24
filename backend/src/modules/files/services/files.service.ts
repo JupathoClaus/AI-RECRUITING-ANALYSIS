@@ -430,7 +430,11 @@ export class FilesService {
     return file;
   }
 
-  private validateAndGetExtension(originalName: string, mimeType: string, buffer: Buffer): string {
+  public validateAndGetExtension(
+    originalName: string,
+    mimeType: string,
+    buffer: Buffer,
+  ): string {
     const dotIdx = originalName.lastIndexOf('.');
     if (dotIdx === -1 || dotIdx === originalName.length - 1) {
       throw new BadRequestException('FILE_EXTENSION_MISSING');
@@ -462,7 +466,7 @@ export class FilesService {
     return extension;
   }
 
-  private sanitizeFilename(name: string): string {
+  public sanitizeFilename(name: string): string {
     return name.replace(/[/\\<>:"|?*\x00-\x1f]/g, '_').substring(0, 255);
   }
 

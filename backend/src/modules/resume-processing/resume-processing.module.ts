@@ -26,6 +26,11 @@ import { RESUME_EXTRACTION_QUEUE } from './queue/resume-extraction-queue.constan
     ExtractionDispatchReconcilerScheduler,
     ResumeExtractionProcessor,
   ],
-  exports: [ResumeTextExtractorService, ResumeFileReaderService, ResumeExtractionService],
+  exports: [
+    ResumeTextExtractorService,
+    ResumeFileReaderService,
+    ResumeExtractionService,
+    ExtractionDispatchReconcilerService,
+  ],
 })
 export class ResumeProcessingModule {}
