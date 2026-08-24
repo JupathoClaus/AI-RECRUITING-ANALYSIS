@@ -10,27 +10,21 @@ import { ModalHeader } from '@/components/ui/modal-header'
 import { ResumeUploadArea } from '@/components/ai-screening/resume-upload-area'
 import { ScreeningProgress } from '@/components/ai-screening/screening-progress'
 import { ScreeningResultView } from '@/components/ai-screening/screening-result-view'
-import { TickCircle, DocumentText, Warning2 } from 'iconsax-react'
+import { TickCircle, DocumentText, Warning2, Refresh } from 'iconsax-react'
 import { useAiScreening } from '@/lib/ai-screening/use-ai-screening'
-import { createCandidate } from '@/lib/api/candidates.api'
-import { createApplication } from '@/lib/api/applications.api'
-import { retryAiScreeningExtraction } from '@/lib/api/ai-screening.api'
+import {
+  createCandidateWorkflow,
+  describeWorkflowError,
+  type RecruiterWorkflowResult,
+  type WorkflowErrorCopy,
+} from '@/lib/api/candidates.api'
+import { getResumeExtractionStatus, retryAiScreeningExtraction } from '@/lib/api/ai-screening.api'
 import { useStore } from '@/store/useStore'
 import type { Job } from '@/types'
 
-type FlowPhase =
-  | 'idle'
-  | 'creating-candidate'
-  | 'creating-application'
-  | 'uploading-resume'
-  | 'resume-uploaded'
-  | 'waiting-extraction'
-  | 'ready-for-screening'
-  | 'screening-in-progress'
-  | 'screening-done'
-  | 'failed'
+type FlowPhase = 'idle' | 'submitting' | 'success' | 'screening-in-progress' | 'screening-done' | 'failed'
 
-type FailTarget = 'candidate' | 'application' | 'upload' | 'extraction' | 'screening' | null
+type ResumeStatus = 'checking' | 'processing' | 'ready' | 'failed' | 'none'
 
 interface Props {
   open: boolean
@@ -38,6 +32,8 @@ interface Props {
   jobs: Job[]
   onComplete: () => void
 }
+
+const EXTRACTION_POLL_INTERVAL_MS = 2000
 
 export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Props) {
   const fetchCandidates = useStore((s) => s.fetchCandidates)
@@ -48,34 +44,40 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
   const [selectedJobId, setSelectedJobId] = useState('')
   const [resumeFile, setResumeFile] = useState<File | null>(null)
   const [phase, setPhase] = useState<FlowPhase>('idle')
-  const [error, setError] = useState<string | null>(null)
-  const [candidateId, setCandidateId] = useState<string | null>(null)
-  const [applicationId, setApplicationId] = useState<string | null>(null)
-  const [failTarget, setFailTarget] = useState<FailTarget>(null)
-
-  const screening = useAiScreening()
-  const submitLock = useRef(false)
-  const screenLock = useRef(false)
-  const retryLock = useRef(false)
-  const extractionRetryLock = useRef(false)
+  const [error, setError] = useState<WorkflowErrorCopy | null>(null)
+  const [result, setResult] = useState<RecruiterWorkflowResult | null>(null)
+  const [resumeStatus, setResumeStatus] = useState<ResumeStatus>('none')
   const [retryPending, setRetryPending] = useState(false)
   const [extractionRetryPending, setExtractionRetryPending] = useState(false)
-  const stepRef = useRef({ candidate: false, application: false })
-  const workflowKeyRef = useRef<string>('')
-  const candidateCreateKeyRef = useRef<string>('')
-  const applicationCreateKeyRef = useRef<string>('')
+  const [progressStage, setProgressStage] = useState(0)
 
-  const generateWorkflowKeys = useCallback(() => {
-    const wid = crypto.randomUUID()
-    workflowKeyRef.current = wid
-    candidateCreateKeyRef.current = `candidate-create:${wid}`
-    applicationCreateKeyRef.current = `application-create:${wid}`
-  }, [])
+  const submitLock = useRef(false)
+  const screenLock = useRef(false)
+  const extractionRetryPendingRef = useRef(false)
+  const extractionPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const workflowKeyRef = useRef<string>('')
+  const pollActiveRef = useRef(false)
+
+  const screening = useAiScreening()
 
   const job = jobs.find((j) => j.id === selectedJobId)
   const activeJobs = React.useMemo(() => jobs.filter((item) => item.status === 'Active'), [jobs])
 
+  const clearTimers = useCallback(() => {
+    pollActiveRef.current = false
+    if (extractionPollTimerRef.current) {
+      clearTimeout(extractionPollTimerRef.current)
+      extractionPollTimerRef.current = null
+    }
+    if (progressTimerRef.current) {
+      clearTimeout(progressTimerRef.current)
+      progressTimerRef.current = null
+    }
+  }, [])
+
   const fullReset = useCallback(() => {
+    clearTimers()
     setName('')
     setEmail('')
     setPhone('')
@@ -84,21 +86,16 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
     setResumeFile(null)
     setPhase('idle')
     setError(null)
-    setCandidateId(null)
-    setApplicationId(null)
-    setFailTarget(null)
-    submitLock.current = false
-    screenLock.current = false
-    retryLock.current = false
-    extractionRetryLock.current = false
+    setResult(null)
+    setResumeStatus('none')
     setRetryPending(false)
     setExtractionRetryPending(false)
-    stepRef.current = { candidate: false, application: false }
+    setProgressStage(0)
+    submitLock.current = false
+    screenLock.current = false
     workflowKeyRef.current = ''
-    candidateCreateKeyRef.current = ''
-    applicationCreateKeyRef.current = ''
     screening.selectApplication('')
-  }, [screening])
+  }, [clearTimers, screening])
 
   const prevOpenRef = useRef<boolean>(open)
   React.useEffect(() => {
@@ -107,194 +104,145 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
     if (wasOpen && !open) startTransition(() => fullReset())
   }, [open, fullReset])
 
-  React.useEffect(() => {
-    if (phase !== 'waiting-extraction') return
-    const ws = screening.state.workflowState
-    startTransition(() => {
-      if (ws === 'RESUME_READY') {
-        setPhase('ready-for-screening')
-      } else if (ws === 'EXTRACTION_FAILED') {
-        setPhase('failed')
-        setFailTarget('extraction')
-        setError(screening.state.error || 'Resume extraction failed. Replace the file and try again.')
-      } else if (ws === 'ERROR' || ws === 'TIMED_OUT') {
-        setPhase('failed')
-        setFailTarget('extraction')
-        setError(screening.state.error || 'Resume extraction timed out.')
-      }
-    })
-  }, [phase, screening.state.workflowState, screening.state.error])
+  // Clear the workflow key whenever the user edits the form after a failed
+  // attempt: the retry button keeps the SAME key (safe idempotent replay),
+  // but a genuinely different submission must get a fresh key.
+  const invalidateKeyOnEdit = useCallback(() => {
+    if (workflowKeyRef.current) workflowKeyRef.current = ''
+  }, [])
 
+  const ensureWorkflowKey = useCallback(() => {
+    if (!workflowKeyRef.current) workflowKeyRef.current = `candidate-workflow:${crypto.randomUUID()}`
+  }, [])
+
+  // Staged progress copy while the single workflow request is in flight.
   React.useEffect(() => {
-    if (phase !== 'screening-in-progress') return
-    const ws = screening.state.workflowState
-    startTransition(() => {
-      if (ws === 'SCREENING_COMPLETED') {
-        setPhase('screening-done')
-      } else if (ws === 'SCREENING_FAILED') {
-        setPhase('screening-done')
-        setFailTarget('screening')
-        setError(screening.state.error || 'AI Screening failed.')
-      } else if (ws === 'ERROR' || ws === 'TIMED_OUT' || ws === 'EXTRACTION_FAILED') {
-        setPhase('failed')
-        setFailTarget('screening')
-        setError(screening.state.error || 'Screening could not continue.')
+    if (phase !== 'submitting') return
+    setProgressStage(0)
+    progressTimerRef.current = setTimeout(() => setProgressStage(1), 2000)
+    const t2 = setTimeout(() => setProgressStage(2), 6000)
+    const t3 = setTimeout(() => setProgressStage(3), 12000)
+    return () => { clearTimeout(t2); clearTimeout(t3) }
+  }, [phase])
+
+  // Poll the extraction status ONLY for display. Closing the dialog is always
+  // allowed; extraction continues in the background regardless.
+  const pollExtractionStatus = useCallback((applicationId: string) => {
+    pollActiveRef.current = true
+    const run = async () => {
+      if (!pollActiveRef.current) return
+      try {
+        const extraction = await getResumeExtractionStatus(applicationId)
+        if (!pollActiveRef.current) return
+        if (extraction.status === 'COMPLETED') {
+          setResumeStatus('ready')
+          return
+        }
+        if (extraction.status === 'FAILED') {
+          setResumeStatus('failed')
+          return
+        }
+        setResumeStatus('processing')
+      } catch {
+        if (!pollActiveRef.current) return
+        setResumeStatus('processing')
       }
-    })
-  }, [phase, screening.state.workflowState, screening.state.error])
+      if (!pollActiveRef.current) return
+      extractionPollTimerRef.current = setTimeout(() => run(), EXTRACTION_POLL_INTERVAL_MS)
+    }
+    void run()
+  }, [])
+
+  React.useEffect(() => () => clearTimers(), [clearTimers])
 
   const handleSubmit = async () => {
     if (!name.trim() || !email.trim() || !selectedJobId || !resumeFile || submitLock.current) return
     submitLock.current = true
     setError(null)
-    setFailTarget(null)
+    setPhase('submitting')
 
     try {
-      generateWorkflowKeys()
-      setPhase('creating-candidate')
+      ensureWorkflowKey()
       const parts = name.trim().split(/\s+/)
-      const cand = await createCandidate({
-        firstName: parts[0],
-        lastName: parts.length > 1 ? parts.slice(1).join(' ') : '',
-        email: email.trim(),
-        phone: phone || undefined,
-        source: 'RECRUITER_CREATED',
-        currentJobTitle: job?.title,
-        totalExperienceYears: experience ? Number(experience) : undefined,
-      }, candidateCreateKeyRef.current || undefined)
-      setCandidateId(cand.id)
-      stepRef.current.candidate = true
-
-      setPhase('creating-application')
-      const app = await createApplication({
-        candidateId: cand.id,
-        jobId: selectedJobId,
-        source: 'RECRUITER_CREATED',
-      }, applicationCreateKeyRef.current || undefined)
-      setApplicationId(app.id)
-      stepRef.current.application = true
-      screening.selectApplication(app.id)
-
-      setPhase('uploading-resume')
-      const uploadResult = await screening.handleUploadResume(resumeFile)
-      if (!uploadResult.ok) {
-        throw new Error(uploadResult.error)
-      }
-
-      setPhase('resume-uploaded')
-      setPhase('waiting-extraction')
+      const res = await createCandidateWorkflow(
+        {
+          firstName: parts[0],
+          lastName: parts.length > 1 ? parts.slice(1).join(' ') : '',
+          email: email.trim(),
+          phone: phone || undefined,
+          totalExperienceYears: experience ? Number(experience) : undefined,
+          jobId: selectedJobId,
+        },
+        resumeFile,
+        workflowKeyRef.current || undefined,
+      )
+      setResult(res)
+      screening.selectApplication(res.applicationId)
+      setResumeStatus('checking')
+      pollExtractionStatus(res.applicationId)
+      setPhase('success')
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Operation failed'
-      if (!stepRef.current.candidate) setFailTarget('candidate')
-      else if (!stepRef.current.application) setFailTarget('application')
-      else setFailTarget('upload')
-      setError(msg)
+      setError(describeWorkflowError(err))
       setPhase('failed')
     } finally {
       submitLock.current = false
     }
   }
 
-  const rebuildCandidateApp = async () => {
-    const parts = name.trim().split(/\s+/)
-    const cand = await createCandidate({
-      firstName: parts[0],
-      lastName: parts.length > 1 ? parts.slice(1).join(' ') : '',
-      email: email.trim(),
-      phone: phone || undefined,
-      source: 'RECRUITER_CREATED',
-      currentJobTitle: job?.title,
-      totalExperienceYears: experience ? Number(experience) : undefined,
-    }, candidateCreateKeyRef.current || undefined)
-    setCandidateId(cand.id)
-    const app = await createApplication({
-      candidateId: cand.id,
-      jobId: selectedJobId,
-      source: 'RECRUITER_CREATED',
-    }, applicationCreateKeyRef.current || undefined)
-    setApplicationId(app.id)
-    screening.selectApplication(app.id)
-    const u = await screening.handleUploadResume(resumeFile!)
-    if (!u.ok) throw new Error(u.error)
-  }
-
-  const buildAppOnly = async () => {
-    const app = await createApplication({
-      candidateId: candidateId!,
-      jobId: selectedJobId,
-      source: 'RECRUITER_CREATED',
-    }, applicationCreateKeyRef.current || undefined)
-    setApplicationId(app.id)
-    screening.selectApplication(app.id)
-    const u = await screening.handleUploadResume(resumeFile!)
-    if (!u.ok) throw new Error(u.error)
-  }
-
-  const uploadOnly = async () => {
-    const u = await screening.handleUploadResume(resumeFile!)
-    if (!u.ok) throw new Error(u.error)
-  }
-
   const handleRetry = async () => {
-    if (retryLock.current || !name.trim() || !email.trim() || !selectedJobId || !resumeFile) {
-      if (!name.trim() || !email.trim() || !selectedJobId || !resumeFile) {
-        setError('All required fields must be filled.')
-      }
+    if (submitLock.current) return
+    if (!name.trim() || !email.trim() || !selectedJobId || !resumeFile) {
+      setError({ title: 'Missing information', detail: 'All required fields must be filled.', retryable: true })
+      setPhase('failed')
       return
     }
-    retryLock.current = true
+    submitLock.current = true
     setRetryPending(true)
     setError(null)
-    setFailTarget(null)
-
+    setPhase('submitting')
     try {
-      if (failTarget === 'candidate') {
-        await rebuildCandidateApp()
-      } else if (failTarget === 'application') {
-        await buildAppOnly()
-      } else {
-        await uploadOnly()
-      }
-      setPhase('resume-uploaded')
-      setPhase('waiting-extraction')
+      ensureWorkflowKey()
+      const parts = name.trim().split(/\s+/)
+      const res = await createCandidateWorkflow(
+        {
+          firstName: parts[0],
+          lastName: parts.length > 1 ? parts.slice(1).join(' ') : '',
+          email: email.trim(),
+          phone: phone || undefined,
+          totalExperienceYears: experience ? Number(experience) : undefined,
+          jobId: selectedJobId,
+        },
+        resumeFile,
+        workflowKeyRef.current || undefined,
+      )
+      setResult(res)
+      screening.selectApplication(res.applicationId)
+      setResumeStatus('checking')
+      pollExtractionStatus(res.applicationId)
+      setPhase('success')
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Retry failed'
-      setError(msg)
+      setError(describeWorkflowError(err))
+      setPhase('failed')
     } finally {
-      retryLock.current = false
+      submitLock.current = false
       setRetryPending(false)
     }
   }
 
   const handleRetryExtraction = async () => {
-    if (extractionRetryLock.current || !applicationId) return
-    extractionRetryLock.current = true
+    if (extractionRetryPendingRef.current || !result?.applicationId) return
+    extractionRetryPendingRef.current = true
     setExtractionRetryPending(true)
-    setError(null)
+    setResumeStatus('processing')
     try {
-      await retryAiScreeningExtraction(applicationId)
-      setPhase('waiting-extraction')
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Retry failed'
-      setError(msg)
-    } finally {
-      extractionRetryLock.current = false
-      setExtractionRetryPending(false)
-    }
-  }
-
-  const handleReplaceResume = async (file: File) => {
-    setResumeFile(file)
-    setPhase('uploading-resume')
-    try {
-      const u = await screening.handleUploadResume(file)
-      if (!u.ok) throw new Error(u.error)
-      setPhase('resume-uploaded')
-      setPhase('waiting-extraction')
+      await retryAiScreeningExtraction(result.applicationId)
+      setResumeStatus('checking')
+      pollExtractionStatus(result.applicationId)
     } catch {
-      setError('Failed to upload resume. Please try again.')
-      setPhase('failed')
-      setFailTarget('upload')
+      setResumeStatus('failed')
+    } finally {
+      extractionRetryPendingRef.current = false
+      setExtractionRetryPending(false)
     }
   }
 
@@ -302,119 +250,61 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
     if (screenLock.current) return
     screenLock.current = true
     setPhase('screening-in-progress')
-    setFailTarget(null)
     setError(null)
     try {
       await screening.requestScreening()
     } catch {
       setPhase('failed')
-      setFailTarget('screening')
-      setError('Failed to start AI screening.')
+      setError({ title: 'AI screening could not start', detail: 'Try again from the candidate detail view.', retryable: false })
     } finally {
       screenLock.current = false
     }
   }
 
   const handleRetryScreening = async () => {
-    if (retryLock.current) return
-    retryLock.current = true
-    setRetryPending(true)
+    if (screenLock.current) return
+    screenLock.current = true
     setPhase('screening-in-progress')
-    setFailTarget(null)
     setError(null)
     try {
       await screening.requestScreening()
     } catch {
-      setPhase('failed')
-      setFailTarget('screening')
-      setError('AI Screening retry failed.')
+      setPhase('screening-done')
     } finally {
-      retryLock.current = false
-      setRetryPending(false)
+      screenLock.current = false
     }
   }
 
+  React.useEffect(() => {
+    if (phase !== 'screening-in-progress') return
+    const ws = screening.state.workflowState
+    startTransition(() => {
+      if (ws === 'SCREENING_COMPLETED' || ws === 'SCREENING_FAILED') {
+        setPhase('screening-done')
+      }
+    })
+  }, [phase, screening.state.workflowState])
+
   const handleClose = () => {
-    if (candidateId && failTarget) {
-      if (!window.confirm(
-        'The candidate was created but the full workflow did not complete.\n' +
-        'You can upload a resume and run AI screening from the candidate detail dialog.\n\nClose anyway?'
-      )) return
-    }
+    clearTimers()
     fetchCandidates()
     onComplete()
     onOpenChange(false)
   }
 
   const handleCancel = () => {
-    if (submitLock.current || screenLock.current || retryLock.current || extractionRetryLock.current) return
+    if (submitLock.current || screenLock.current) return
     onOpenChange(false)
   }
 
   const formValid = !!(name.trim() && email.trim() && selectedJobId && resumeFile)
-  const busy = phase === 'creating-candidate' || phase === 'creating-application' || phase === 'uploading-resume'
-  const showDone = phase === 'screening-done' || phase === 'ready-for-screening' || phase === 'waiting-extraction'
+  const busy = phase === 'submitting'
 
-  const pickRetryAction = () => {
-    switch (failTarget) {
-      case 'candidate':
-        return (
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-xs text-muted-foreground text-center">
-              Candidate and application will be recreated.
-            </p>
-            <Button onClick={handleRetry} size="sm" disabled={retryPending}>Retry from Candidate Creation</Button>
-          </div>
-        )
-      case 'application':
-        return (
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-xs text-muted-foreground text-center">
-              Candidate was created. Only the application will be retried.
-            </p>
-            <Button onClick={handleRetry} size="sm" disabled={retryPending}>Retry Application Creation</Button>
-          </div>
-        )
-      case 'upload':
-        return (
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-xs text-muted-foreground text-center">
-              Candidate and application were created. Only the resume upload will be retried.
-            </p>
-            <Button onClick={handleRetry} size="sm" disabled={retryPending}>Retry Resume Upload</Button>
-          </div>
-        )
-      case 'extraction':
-        return (
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-xs text-muted-foreground text-center">
-              Resume extraction did not complete.
-            </p>
-            <div className="flex gap-2">
-              <Button onClick={handleRetryExtraction} size="sm" disabled={extractionRetryPending}>
-                Retry Extraction
-              </Button>
-              <span className="text-xs text-muted-foreground self-center">or</span>
-              <ResumeUploadArea
-                onUpload={handleReplaceResume}
-                uploading={screening.state.uploadProgress}
-              />
-            </div>
-          </div>
-        )
-      case 'screening':
-        return (
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-xs text-muted-foreground text-center">
-              Screening did not complete successfully.
-            </p>
-            <Button onClick={handleRetryScreening} size="sm" disabled={retryPending}>Retry AI Screening</Button>
-          </div>
-        )
-      default:
-        return null
-    }
-  }
+  const progressLabel =
+    progressStage === 0 ? 'Creating candidate...' :
+    progressStage === 1 ? 'Uploading resume...' :
+    progressStage === 2 ? 'Saving resume and linking application...' :
+    'Finishing...'
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleCancel() }}>
@@ -422,13 +312,14 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
         <ModalHeader>
           <DialogTitle>Add New Candidate</DialogTitle>
           <DialogDescription>
-            Add a candidate, apply to a job, upload their resume, and optionally run AI screening.
+            Add a candidate, apply to a job, and upload their resume. The candidate appears in your list as soon as the resume is safely stored — resume reading continues in the background.
           </DialogDescription>
         </ModalHeader>
 
-        {error && (
+        {error && phase !== 'failed' && (
           <div className="rounded-lg border border-error/30 bg-error/5 text-error-foreground px-4 py-3 text-sm">
-            {error}
+            <p className="font-medium">{error.title}</p>
+            <p className="mt-1 text-xs text-error-foreground/90">{error.detail}</p>
           </div>
         )}
 
@@ -438,31 +329,31 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Full Name *</label>
                 <Input placeholder="e.g. John Smith" value={name}
-                  onChange={(e) => setName(e.target.value)} />
+                  onChange={(e) => { setName(e.target.value); invalidateKeyOnEdit() }} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Email *</label>
                 <Input type="email" placeholder="john@example.com" value={email}
-                  onChange={(e) => setEmail(e.target.value)} />
+                  onChange={(e) => { setEmail(e.target.value); invalidateKeyOnEdit() }} />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Phone</label>
                 <Input type="tel" placeholder="+1 555-0100" value={phone}
-                  onChange={(e) => setPhone(e.target.value)} />
+                  onChange={(e) => { setPhone(e.target.value); invalidateKeyOnEdit() }} />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Years of Experience</label>
                 <Input type="number" placeholder="5" min={0} value={experience}
-                  onChange={(e) => setExperience(e.target.value)} />
+                  onChange={(e) => { setExperience(e.target.value); invalidateKeyOnEdit() }} />
               </div>
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-foreground">
                 Applying For <span className="text-error">*</span>
               </label>
-              <Select value={selectedJobId} onValueChange={setSelectedJobId}>
+              <Select value={selectedJobId} onValueChange={(v) => { setSelectedJobId(v); invalidateKeyOnEdit() }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a position" />
                 </SelectTrigger>
@@ -491,10 +382,10 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
                 Candidate Resume / CV <span className="text-error">*</span>
               </label>
               <p className="text-xs text-muted-foreground mb-2">
-                Select the candidate&apos;s resume. TalentAI will extract experience and skills.
+                Select the candidate&apos;s resume. TalentAI will extract experience and skills in the background.
               </p>
               <ResumeUploadArea
-                onUpload={(f) => setResumeFile(f)}
+                onUpload={(f) => { setResumeFile(f); invalidateKeyOnEdit() }}
                 uploading={false}
                 disabled={false}
               />
@@ -505,59 +396,72 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
         {busy && (
           <div className="flex flex-col items-center justify-center py-8 gap-3">
             <div className="animate-spin h-8 w-8 border-4 border-primary/30 border-t-primary rounded-full" />
-            <p className="text-sm font-medium text-foreground">
-              {phase === 'creating-candidate' && 'Creating candidate...'}
-              {phase === 'creating-application' && 'Creating application...'}
-              {phase === 'uploading-resume' && 'Uploading resume...'}
+            <p className="text-sm font-medium text-foreground">{progressLabel}</p>
+            <p className="text-xs text-muted-foreground">
+              Resume reading starts automatically after the file is stored — no waiting needed.
             </p>
           </div>
         )}
 
-        {phase === 'resume-uploaded' && (
-          <div className="flex flex-col items-center justify-center py-8 gap-3">
-            <div className="animate-spin h-8 w-8 border-4 border-primary/30 border-t-primary rounded-full" />
-            <p className="text-sm font-medium text-foreground">Preparing extraction...</p>
-          </div>
-        )}
-
-        {phase === 'waiting-extraction' && (
+        {phase === 'success' && result && (
           <div className="space-y-4 py-4">
             <div className="flex items-center gap-3 p-4 rounded-lg border border-success/30 bg-success/5">
               <TickCircle className="h-6 w-6 text-success" />
               <div>
-                <p className="text-sm font-medium text-foreground">Resume uploaded successfully</p>
-                <p className="text-xs text-muted-foreground">{resumeFile?.name}</p>
-              </div>
-            </div>
-            <div className="flex flex-col items-center justify-center py-4 gap-2">
-              <div className="animate-pulse flex items-center gap-2 text-sm text-muted-foreground">
-                <DocumentText className="h-4 w-4" />
-                Extracting resume content...
-              </div>
-              <ScreeningProgress workflowState="WAITING_FOR_EXTRACTION" />
-            </div>
-          </div>
-        )}
-
-        {phase === 'ready-for-screening' && (
-          <div className="space-y-4 py-4">
-            <div className="flex items-center gap-3 p-4 rounded-lg border border-success/30 bg-success/5">
-              <TickCircle className="h-6 w-6 text-success" />
-              <div>
-                <p className="text-sm font-medium text-foreground">Ready for AI Screening</p>
+                <p className="text-sm font-medium text-foreground">Candidate added successfully</p>
                 <p className="text-xs text-muted-foreground">
-                  {resumeFile?.name} &mdash; Resume extracted successfully
+                  {result.applicationNumber} &middot; {result.jobTitle}
                 </p>
               </div>
             </div>
-            <div className="text-center pt-2">
-              <Button onClick={handleStartScreening} size="lg">
-                Start AI Screening
-              </Button>
-              <p className="text-xs text-muted-foreground mt-2">
-                AI will compare the candidate&apos;s resume against the job requirements
-              </p>
+
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-border bg-background">
+              <DocumentText className="h-5 w-5 text-muted" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground">Resume</p>
+                <p className="text-xs text-muted-foreground truncate">{resumeFile?.name}</p>
+              </div>
+              <div className="shrink-0">
+                {resumeStatus === 'checking' && <span className="text-xs text-muted-foreground animate-pulse">Checking...</span>}
+                {resumeStatus === 'processing' && (
+                  <span className="text-xs text-warning flex items-center gap-1.5">
+                    <span className="inline-block h-2 w-2 rounded-full bg-warning animate-pulse" />
+                    Processing...
+                  </span>
+                )}
+                {resumeStatus === 'ready' && (
+                  <span className="text-xs text-success flex items-center gap-1.5">
+                    <span className="inline-block h-2 w-2 rounded-full bg-success" />
+                    Ready
+                  </span>
+                )}
+                {resumeStatus === 'failed' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-error">Processing failed</span>
+                    <Button variant="outline" size="sm" onClick={handleRetryExtraction} disabled={extractionRetryPending}>
+                      <Refresh className="h-3 w-3 mr-1" />
+                      Retry
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {resumeStatus === 'ready' && (
+              <div className="text-center pt-1">
+                <Button onClick={handleStartScreening} size="lg">
+                  Start AI Screening
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2">
+                  AI will compare the candidate&apos;s resume against the job requirements
+                </p>
+              </div>
+            )}
+            {resumeStatus !== 'ready' && (
+              <p className="text-xs text-muted-foreground text-center">
+                The candidate is already in your list. Resume reading continues in the background — you can close this dialog now.
+              </p>
+            )}
           </div>
         )}
 
@@ -586,31 +490,20 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
             <div className="flex items-center gap-3 p-4 rounded-lg border border-error/30 bg-error/5">
               <Warning2 className="h-6 w-6 text-error" />
               <div>
-                <p className="text-sm font-medium text-foreground">Step Failed</p>
-                <p className="text-xs text-muted-foreground">
-                  {failTarget === 'candidate' && 'Candidate could not be created.'}
-                  {failTarget === 'application' && 'Application could not be created.'}
-                  {failTarget === 'upload' && 'Resume could not be uploaded.'}
-                  {failTarget === 'extraction' && 'Resume extraction did not complete.'}
-                  {failTarget === 'screening' && 'AI Screening did not complete.'}
-                  {!failTarget && 'The workflow could not continue.'}
+                <p className="text-sm font-medium text-foreground">{error?.title ?? 'Step Failed'}</p>
+                <p className="text-xs text-muted-foreground">{error?.detail}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Nothing was created unless this step fully completed — retrying is safe and will not create duplicates.
                 </p>
               </div>
             </div>
-            {pickRetryAction()}
-            {candidateId && (
-              <p className="text-xs text-muted-foreground text-center">
-                The candidate record exists. You can access it from the candidates table.
-              </p>
+            {error?.retryable && (
+              <div className="flex flex-col items-center gap-2">
+                <Button onClick={handleRetry} size="sm" disabled={retryPending || busy}>
+                  {retryPending ? 'Retrying...' : 'Retry'}
+                </Button>
+              </div>
             )}
-          </div>
-        )}
-
-        {phase !== 'idle' && phase !== 'creating-candidate' && phase !== 'creating-application' && phase !== 'uploading-resume' && phase !== 'resume-uploaded' && phase !== 'waiting-extraction' && phase !== 'ready-for-screening' && phase !== 'screening-in-progress' && phase !== 'screening-done' && phase !== 'failed' && (
-          <div className="py-6 text-center">
-            <p className="text-sm font-medium text-foreground">The workflow could not continue</p>
-            <p className="text-xs text-muted-foreground mt-1">An unexpected state was reached. Please close and try again.</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={handleClose}>Close</Button>
           </div>
         )}
 
@@ -624,16 +517,11 @@ export function AddCandidateDialog({ open, onOpenChange, jobs, onComplete }: Pro
             </div>
           )}
           {busy && <Button disabled>Processing...</Button>}
-          {showDone && <Button onClick={handleClose}>Done</Button>}
-          {phase === 'failed' && !['extraction', 'screening'].includes(failTarget ?? '') && (
-            <Button variant="outline" onClick={handleClose}>
-              {candidateId ? 'Close (Candidate Created)' : 'Close'}
-            </Button>
+          {(phase === 'success' || phase === 'screening-done') && (
+            <Button onClick={handleClose}>Done</Button>
           )}
-          {phase === 'failed' && (failTarget === 'extraction' || failTarget === 'screening') && (
-            <Button variant="outline" onClick={handleClose}>
-              Close and Continue Later
-            </Button>
+          {phase === 'failed' && (
+            <Button variant="outline" onClick={handleClose}>Close</Button>
           )}
         </DialogFooter>
       </DialogContent>

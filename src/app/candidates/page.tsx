@@ -35,6 +35,7 @@ import { ScreeningResultView } from "@/components/ai-screening/screening-result-
 import { useAiScreening } from "@/lib/ai-screening/use-ai-screening"
 import { getApplicationResume } from "@/lib/api/files.api"
 import type { StoredFileResponse } from "@/lib/api/files.api"
+import { getResumeExtractionStatus, retryAiScreeningExtraction } from "@/lib/api/ai-screening.api"
 import { deleteCandidate } from "@/lib/api/candidates.api"
 import {
   SearchNormal,
@@ -128,6 +129,8 @@ function TableSkeleton() {
 function DetailScreeningSection({ applicationId }: { applicationId: string }) {
   const [resumeInfo, setResumeInfo] = React.useState<StoredFileResponse | null>(null)
   const [resumeLoading, setResumeLoading] = React.useState(true)
+  const [extractionStatus, setExtractionStatus] = React.useState<'loading' | 'none' | 'processing' | 'ready' | 'failed'>('loading')
+  const [extractionRetryPending, setExtractionRetryPending] = React.useState(false)
   const screening = useAiScreening()
   const { selectApplication, loadLatestScreening, requestScreening, retryScreening } = screening
 
@@ -148,6 +151,27 @@ function DetailScreeningSection({ applicationId }: { applicationId: string }) {
 
   React.useEffect(() => {
     if (!applicationId) return
+    let active = true
+    const check = async () => {
+      try {
+        const extraction = await getResumeExtractionStatus(applicationId)
+        if (!active) return
+        if (extraction.status === 'COMPLETED') setExtractionStatus('ready')
+        else if (extraction.status === 'FAILED') setExtractionStatus('failed')
+        else setExtractionStatus('processing')
+      } catch {
+        if (!active) return
+        setExtractionStatus('none')
+        return
+      }
+      if (active) setTimeout(() => check(), 4000)
+    }
+    void check()
+    return () => { active = false }
+  }, [applicationId])
+
+  React.useEffect(() => {
+    if (!applicationId) return
     queueMicrotask(() => {
       selectApplication(applicationId)
       void loadLatestScreening(applicationId)
@@ -160,6 +184,27 @@ function DetailScreeningSection({ applicationId }: { applicationId: string }) {
 
   const handleRetryScreening = () => {
     retryScreening()
+  }
+
+  const handleRetryExtraction = async () => {
+    if (extractionRetryPending) return
+    setExtractionRetryPending(true)
+    setExtractionStatus('processing')
+    try {
+      await retryAiScreeningExtraction(applicationId)
+      setTimeout(async () => {
+        try {
+          const extraction = await getResumeExtractionStatus(applicationId)
+          setExtractionStatus(extraction.status === 'COMPLETED' ? 'ready' : extraction.status === 'FAILED' ? 'failed' : 'processing')
+        } catch {
+          setExtractionStatus('none')
+        }
+      }, 3000)
+    } catch {
+      setExtractionStatus('failed')
+    } finally {
+      setExtractionRetryPending(false)
+    }
   }
 
   const ws = screening.state.workflowState
@@ -184,6 +229,26 @@ function DetailScreeningSection({ applicationId }: { applicationId: string }) {
                 {(resumeInfo.sizeBytes / 1024).toFixed(0)} KB &middot; {resumeInfo.mimeType}
                 &nbsp;&middot; Uploaded {timeAgo(new Date(resumeInfo.createdAt))}
               </p>
+              {extractionStatus === 'processing' && (
+                <p className="text-xs text-warning flex items-center gap-1.5 mt-1">
+                  <span className="inline-block h-2 w-2 rounded-full bg-warning animate-pulse" />
+                  Processing...
+                </p>
+              )}
+              {extractionStatus === 'ready' && (
+                <p className="text-xs text-success flex items-center gap-1.5 mt-1">
+                  <span className="inline-block h-2 w-2 rounded-full bg-success" />
+                  Ready
+                </p>
+              )}
+              {extractionStatus === 'failed' && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-xs text-error">Processing failed</span>
+                  <Button variant="outline" size="sm" onClick={handleRetryExtraction} disabled={extractionRetryPending}>
+                    Retry
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           {!resumeLoading && !resumeInfo && (

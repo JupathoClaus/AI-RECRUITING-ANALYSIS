@@ -1,4 +1,4 @@
-import { apiRequest } from "./client"
+import { apiRequest, ApiErrorResponse } from "./client"
 import type { PaginationMeta } from "./types"
 import type {
   Candidate,
@@ -175,6 +175,176 @@ export async function createCandidate(dto: CreateCandidateRequest, idempotencyKe
     body: dto,
     headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
   })
+}
+
+// ── Atomic recruiter Add-Candidate workflow ──────────────────────────────
+// One request creates (or reuses) the candidate, creates the application,
+// stores the resume and queues resume extraction. Idempotent under the
+// Idempotency-Key header: retrying the exact same request is always safe.
+export interface RecruiterWorkflowRequest {
+  firstName: string
+  lastName: string
+  email: string
+  phone?: string
+  totalExperienceYears?: number
+  jobId: string
+}
+
+export interface RecruiterWorkflowResult {
+  candidateId: string
+  candidateCreated: boolean
+  applicationId: string
+  applicationNumber: string
+  applicationStatus: string
+  stageId: string | null
+  stageName: string | null
+  jobId: string
+  jobTitle: string
+  storedFileId: string | null
+  extraction: { id: string; status: string } | null
+}
+
+export async function createCandidateWorkflow(
+  dto: RecruiterWorkflowRequest,
+  resumeFile: File,
+  idempotencyKey?: string,
+): Promise<RecruiterWorkflowResult> {
+  const formData = new FormData()
+  formData.append("firstName", dto.firstName)
+  formData.append("lastName", dto.lastName)
+  formData.append("email", dto.email)
+  if (dto.phone) formData.append("phone", dto.phone)
+  if (dto.totalExperienceYears !== undefined) formData.append("totalExperienceYears", String(dto.totalExperienceYears))
+  formData.append("jobId", dto.jobId)
+  formData.append("file", resumeFile)
+  return apiRequest<RecruiterWorkflowResult>("/candidates/recruiter-workflow", {
+    method: "POST",
+    body: formData,
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    // Includes a binary resume upload through the dev proxy — needs more
+    // headroom than a JSON create, but never blocks on extraction.
+    timeoutMs: 120000,
+  })
+}
+
+// ── Product-safe error messages for the Add Candidate workflow ──────────
+
+export interface WorkflowErrorCopy {
+  title: string
+  detail: string
+  retryable: boolean
+}
+
+export function describeWorkflowError(err: unknown): WorkflowErrorCopy {
+  if (err instanceof ApiErrorResponse) {
+    const code = err.errorCode
+    const retryable = err.statusCode === 408 || err.statusCode === 429 || err.statusCode >= 500
+    switch (code) {
+      case "REQUEST_TIMEOUT":
+        return {
+          title: "The request took too long",
+          detail: "Retrying is safe — nothing will be duplicated. If the candidate was already created, the retry will simply return the existing candidate.",
+          retryable: true,
+        }
+      case "IDEMPOTENCY_IN_PROGRESS":
+        return {
+          title: "Still working",
+          detail: "The previous request for this candidate is still being processed. Wait a moment, then retry.",
+          retryable: true,
+        }
+      case "APPLICATION_DUPLICATE":
+        return {
+          title: "Already applied",
+          detail: "This candidate already has an active application for this job. No duplicate was created.",
+          retryable: false,
+        }
+      case "APPLICATION_JOB_NOT_ACCEPTING":
+        return {
+          title: "Job is not accepting applications",
+          detail: "This job is no longer accepting applications. Pick another position.",
+          retryable: false,
+        }
+      case "APPLICATION_DEADLINE_PASSED":
+        return {
+          title: "Application deadline passed",
+          detail: "This job's application deadline has passed. Pick another position.",
+          retryable: false,
+        }
+      case "APPLICATION_NOT_FOUND":
+        return {
+          title: "Job not found",
+          detail: "The selected job could not be found. Pick another position.",
+          retryable: false,
+        }
+      case "FILE_REQUIRED":
+      case "FILE_EMPTY":
+        return {
+          title: "Resume file is missing",
+          detail: "Select a resume file (PDF or DOCX) and try again.",
+          retryable: true,
+        }
+      case "FILE_TOO_LARGE":
+        return {
+          title: "Resume file is too large",
+          detail: "The maximum resume size is 10 MB. Use a smaller file and try again.",
+          retryable: true,
+        }
+      case "FILE_EXTENSION_MISSING":
+      case "FILE_EXTENSION_NOT_ALLOWED":
+        return {
+          title: "Unsupported file type",
+          detail: "Only PDF and DOCX resumes are accepted.",
+          retryable: true,
+        }
+      case "FILE_TYPE_NOT_ALLOWED":
+        return {
+          title: "Unsupported file format",
+          detail: "The file's format does not match a PDF or DOCX resume.",
+          retryable: true,
+        }
+      case "FILE_SIGNATURE_MISMATCH":
+        return {
+          title: "The file does not look like a valid document",
+          detail: "The file may be corrupted or renamed. Use a real PDF or DOCX resume.",
+          retryable: true,
+        }
+      case "FILE_TOO_SMALL":
+        return {
+          title: "The file is too small to be a resume",
+          detail: "The selected file looks empty. Choose a valid resume file.",
+          retryable: true,
+        }
+      default:
+        return {
+          title: "We couldn't finish adding this candidate",
+          detail: retryable
+            ? `${err.message} — Retrying is safe and will not create duplicates.`
+            : err.message,
+          retryable,
+        }
+    }
+  }
+  if (err instanceof Error) {
+    if (err.name === "AbortError") {
+      return {
+        title: "The request was cancelled",
+        detail: "Retrying is safe — nothing will be duplicated.",
+        retryable: true,
+      }
+    }
+    if (/failed to fetch|networkerror|load failed|err_internet/i.test(err.message)) {
+      return {
+        title: "Network problem",
+        detail: "We couldn't reach the server. Check your connection and retry — nothing will be duplicated.",
+        retryable: true,
+      }
+    }
+  }
+  return {
+    title: "We couldn't finish adding this candidate",
+    detail: "Retrying is safe and will not create duplicates.",
+    retryable: true,
+  }
 }
 
 export interface DeleteCandidateRequest {
