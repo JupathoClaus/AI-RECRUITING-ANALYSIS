@@ -630,6 +630,19 @@ export default function CandidatesPage() {
                 <SelectItem value="unrated">Unrated</SelectItem>
               </SelectContent>
             </Select>
+            {(searchQuery || statusFilter !== "all" || jobFilter !== "all" || ratingFilter !== "all") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-9 self-end text-muted-foreground"
+                onClick={() => { setSearchQuery(""); setStatusFilter("all"); setJobFilter("all"); setRatingFilter("all") }}
+                title="Clear all search and filter settings (does not remove candidates)"
+                aria-label="Clear Filters"
+              >
+                <CloseSquare className="h-4 w-4 mr-1" />
+                Clear Filters
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -772,8 +785,14 @@ export default function CandidatesPage() {
                   </Button>
                 </div>
                 <div className="flex-1" />
-                <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
-                  Clear
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedIds(new Set())}
+                  title="Clear Selection — unchecks the selected rows without removing any candidates"
+                  aria-label="Clear Selection"
+                >
+                  Clear Selection
                 </Button>
               </div>
             )}

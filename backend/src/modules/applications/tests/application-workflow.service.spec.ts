@@ -211,7 +211,9 @@ describe('ApplicationWorkflowService', () => {
   });
 
   it('prevents stage moves from terminal statuses', async () => {
-    prisma._tx.application.findFirst.mockResolvedValue(makeApp(ApplicationStatus.HIRED, 1, 'stage-1'));
+    prisma._tx.application.findFirst.mockResolvedValue(
+      makeApp(ApplicationStatus.HIRED, 1, 'stage-1'),
+    );
     await expect(
       service.transition({
         ...base,

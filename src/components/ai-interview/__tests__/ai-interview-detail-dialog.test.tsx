@@ -1,16 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+﻿import { describe, it, expect, vi, beforeEach } from "vitest"
 import * as React from "react"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import type { AiInterviewDetail } from "@/lib/api/ai-interviews.api"
 
-const { syncAiInterviewArtifacts, getAiInterview } = vi.hoisted(() => ({
+const { syncAiInterviewArtifacts, getAiInterview, getRecordingPlayback } = vi.hoisted(() => ({
   syncAiInterviewArtifacts: vi.fn(),
   getAiInterview: vi.fn(),
+  getRecordingPlayback: vi.fn(),
 }))
 
 vi.mock("@/lib/api/ai-interviews.api", () => ({
   syncAiInterviewArtifacts,
   getAiInterview,
+  getRecordingPlayback,
 }))
 
 function makeInterview(overrides: Partial<AiInterviewDetail> = {}): AiInterviewDetail {
@@ -149,7 +151,7 @@ describe("AiInterviewDetailDialog", () => {
       expect(onRefreshed).toHaveBeenCalled()
     })
     await waitFor(() => {
-      expect(screen.getByText("Open recording reference")).toBeTruthy()
+      expect(screen.getByText("Play Recording")).toBeTruthy()
     })
   })
 
@@ -163,5 +165,58 @@ describe("AiInterviewDetailDialog", () => {
       <AiInterviewDetailDialog interview={interview} open onOpenChange={() => {}} />,
     )
     expect(screen.getByText("Watch Recording")).toBeTruthy()
+  })
+
+  it("opens a branded player with a signed URL for s3 recordings", async () => {
+    const { AiInterviewDetailDialog } = await import("@/components/ai-interview/ai-interview-detail-dialog")
+    const interview = makeInterview({
+      recordingStatus: "READY",
+      recordingUrl: "s3://rec-bucket/tavus/conv-1/1787527151095",
+      recordingMetadata: {
+        storage_provider: "s3",
+        s3_key: "tavus/conv-1/1787527151095",
+        bucket_name: "rec-bucket",
+        duration: 202,
+      },
+    })
+    getRecordingPlayback.mockResolvedValue({
+      playbackUrl: "https://s3.example.com/signed?X-Amz-Signature=abc",
+      expiresAt: "2026-08-24T00:10:00.000Z",
+    })
+
+    render(
+      <AiInterviewDetailDialog interview={interview} open onOpenChange={() => {}} />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /Play Recording/i }))
+    await waitFor(() => {
+      expect(getRecordingPlayback).toHaveBeenCalledWith("int-1")
+    })
+    await waitFor(() => {
+      expect(screen.getAllByText("Interview Recording").length).toBeGreaterThan(0)
+    })
+    const video = screen.getAllByLabelText("Interview recording").find((el) => el.tagName === "VIDEO") as HTMLVideoElement
+    expect(video).toBeTruthy()
+    expect(video.getAttribute("src")).toContain("X-Amz-Signature=abc")
+    expect(video.controls).toBe(true)
+    expect(screen.getAllByText(/Ava Liu/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Backend Engineer/).length).toBeGreaterThan(0)
+  })
+
+  it("shows a safe error when playback cannot be prepared", async () => {
+    const { AiInterviewDetailDialog } = await import("@/components/ai-interview/ai-interview-detail-dialog")
+    const interview = makeInterview({
+      recordingStatus: "READY",
+      recordingUrl: "s3://rec-bucket/tavus/conv-1/1787527151095",
+      recordingMetadata: { storage_provider: "s3", s3_key: "tavus/conv-1/1787527151095" },
+    })
+    getRecordingPlayback.mockRejectedValue(new Error("The recording could not be prepared for playback."))
+
+    render(
+      <AiInterviewDetailDialog interview={interview} open onOpenChange={() => {}} />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /Play Recording/i }))
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("could not be prepared")
+    })
   })
 })

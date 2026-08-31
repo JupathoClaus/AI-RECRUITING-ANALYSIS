@@ -40,6 +40,12 @@ describe('FilesService', () => {
         updateMany: jest.fn(),
         update: jest.fn(),
       },
+      resumeTextExtraction: {
+        create: jest.fn().mockResolvedValue({ id: 'ex-new' }),
+      },
+      extractionDispatch: {
+        create: jest.fn().mockResolvedValue({ id: 'dispatch-new' }),
+      },
       $transaction: jest.fn((fn) => fn(prisma)),
     };
 
@@ -105,7 +111,10 @@ describe('FilesService', () => {
       expect(prisma.user.update).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { id: mockUserId },
-          data: expect.objectContaining({ avatarFileId: 'avatar-1', avatarUrl: '/api/v1/user/avatar' }),
+          data: expect.objectContaining({
+            avatarFileId: 'avatar-1',
+            avatarUrl: '/api/v1/user/avatar',
+          }),
         }),
       );
       expect(result.id).toBe('avatar-1');
@@ -127,7 +136,12 @@ describe('FilesService', () => {
 
     it('should reject an oversized avatar', async () => {
       await expect(
-        service.uploadUserAvatar(mockUserId, Buffer.alloc(2 * 1024 * 1024 + 1), 'big.png', 'image/png'),
+        service.uploadUserAvatar(
+          mockUserId,
+          Buffer.alloc(2 * 1024 * 1024 + 1),
+          'big.png',
+          'image/png',
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -139,7 +153,12 @@ describe('FilesService', () => {
 
     it('should reject a spoofed file whose signature does not match its MIME type', async () => {
       await expect(
-        service.uploadUserAvatar(mockUserId, Buffer.from('not-a-real-png!!'), 'fake.png', 'image/png'),
+        service.uploadUserAvatar(
+          mockUserId,
+          Buffer.from('not-a-real-png!!'),
+          'fake.png',
+          'image/png',
+        ),
       ).rejects.toThrow(BadRequestException);
     });
 

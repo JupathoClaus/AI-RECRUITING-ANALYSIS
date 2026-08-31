@@ -6,6 +6,7 @@ import { AiInterviewsService } from '../services/ai-interviews.service';
 import { AiInterviewCodeService } from '../services/ai-interview-code.service';
 import { AiInterviewTokenService } from '../services/ai-interview-token.service';
 import { TavusClientService } from '../services/tavus-client.service';
+import { RecordingPlaybackService } from '../services/recording-playback.service';
 import { EmailService } from '@modules/email/email.service';
 import {
   AiInterviewStatus,
@@ -41,6 +42,10 @@ describe('AiInterviewsService', () => {
     createConversation: jest.fn(),
     getConversation: jest.fn(),
     endConversation: jest.fn(),
+  };
+
+  const mockPlaybackService = {
+    getPlaybackUrl: jest.fn(),
   };
 
   const mockEmailService = {
@@ -82,6 +87,7 @@ describe('AiInterviewsService', () => {
         { provide: AiInterviewCodeService, useValue: mockCodeService },
         { provide: AiInterviewTokenService, useValue: mockTokenService },
         { provide: TavusClientService, useValue: mockTavusClient },
+        { provide: RecordingPlaybackService, useValue: mockPlaybackService },
         { provide: EmailService, useValue: mockEmailService },
         { provide: ConfigService, useValue: mockConfigService },
       ],
@@ -505,14 +511,22 @@ describe('AiInterviewsService', () => {
 
       // No status update was applied for the failed attempt (record preserved)
       const updatesAfterFailure = prisma.aiInterview.update.mock.calls;
-      expect(updatesAfterFailure.filter((c) => c[0].data.status === AiInterviewStatus.SENT)).toHaveLength(0);
+      expect(
+        updatesAfterFailure.filter((c) => c[0].data.status === AiInterviewStatus.SENT),
+      ).toHaveLength(0);
       prisma.aiInterview.update.mockClear();
 
       // Second attempt succeeds on the same record
       emailService.sendAiInterviewInvitationEmail.mockResolvedValueOnce(undefined);
-      const result = await service.sendInvitation('interview-1', { rawCode: 'ABCD-EFGH' }, 'company-1');
+      const result = await service.sendInvitation(
+        'interview-1',
+        { rawCode: 'ABCD-EFGH' },
+        'company-1',
+      );
       expect(result.sent).toBe(true);
-      const sentUpdate = prisma.aiInterview.update.mock.calls.find((c) => c[0].data.status === AiInterviewStatus.SENT);
+      const sentUpdate = prisma.aiInterview.update.mock.calls.find(
+        (c) => c[0].data.status === AiInterviewStatus.SENT,
+      );
       expect(sentUpdate).toBeDefined();
       expect(sentUpdate[0].data.invitationEmail).toBe('daniel@test.com');
     });
@@ -931,7 +945,7 @@ describe('AiInterviewsService', () => {
       );
     });
 
-    it('should not complete Tavus interview via frontend', async () => {
+    it('should end the Tavus conversation when candidate completes', async () => {
       tokenService.verify.mockReturnValue({
         sub: 'interview-1',
         cv: 'abcdef1234567890',
@@ -943,11 +957,38 @@ describe('AiInterviewsService', () => {
         ...mockInterview,
         status: AiInterviewStatus.IN_PROGRESS,
         provider: AiInterviewProvider.TAVUS,
+        tavusConversationId: 'tavus-conv-1',
       });
+      mockTavusClient.endConversation.mockResolvedValue(undefined);
+      mockTavusClient.isEnabled = false;
 
       const result = await service.completeInterview('token');
 
       expect(result.completed).toBe(false);
+      expect(mockTavusClient.endConversation).toHaveBeenCalledWith('tavus-conv-1');
+    });
+
+    it('should tolerate duplicate completion calls (idempotent end)', async () => {
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
+      prisma.aiInterview.findUnique.mockResolvedValue({
+        ...mockInterview,
+        status: AiInterviewStatus.COMPLETED,
+        provider: AiInterviewProvider.TAVUS,
+        tavusConversationId: 'tavus-conv-1',
+      });
+      mockTavusClient.endConversation.mockResolvedValue(undefined);
+
+      await service.completeInterview('token');
+      await service.completeInterview('token');
+
+      expect(mockTavusClient.endConversation).toHaveBeenCalledTimes(2);
+      expect(mockTavusClient.endConversation).toHaveBeenCalledWith('tavus-conv-1');
     });
 
     it('should reject completion of cancelled interview', async () => {
@@ -1156,6 +1197,41 @@ describe('AiInterviewsService', () => {
       const updateCall = prisma.aiInterview.update.mock.calls[0][0];
       expect(updateCall.data.recordingStatus).toBe('READY');
       expect(updateCall.data.recordingUrl).toBe('s3://recordings/tavus/conv-1/1234');
+      expect(updateCall.data.recordingMetadata).toEqual({
+        storage_provider: 's3',
+        storage_uri: 's3://recordings/tavus/conv-1/1234',
+        duration: 120,
+      });
+    });
+
+    it('should persist only safe recording metadata fields', async () => {
+      prisma.aiInterview.findFirst.mockResolvedValue(mockInterview);
+      prisma.aiInterview.update.mockResolvedValue(mockInterview);
+
+      await service.handleTavusCallback({
+        event: 'application.recording_ready',
+        conversation_id: 'tavus-conv-1',
+        properties: {
+          storage_provider: 's3',
+          storage_uri: 's3://recordings/tavus/conv-1/999',
+          s3_key: 'tavus/conv-1/999',
+          bucket_name: 'rec-bucket',
+          duration: 60,
+          signed_url: 'https://signed.example.com/secret-token',
+          api_key: 'should-never-be-persisted',
+        },
+      });
+
+      const updateCall = prisma.aiInterview.update.mock.calls[0][0];
+      expect(updateCall.data.recordingMetadata).toEqual({
+        storage_provider: 's3',
+        storage_uri: 's3://recordings/tavus/conv-1/999',
+        s3_key: 'tavus/conv-1/999',
+        bucket_name: 'rec-bucket',
+        duration: 60,
+      });
+      expect(JSON.stringify(updateCall.data.recordingMetadata)).not.toContain('signed_url');
+      expect(JSON.stringify(updateCall.data.recordingMetadata)).not.toContain('api_key');
     });
 
     it('should ignore events for unknown conversations', async () => {
@@ -1178,15 +1254,215 @@ describe('AiInterviewsService', () => {
       expect(result.received).toBe(true);
     });
   });
+  // ─── RECORDING CONFIGURATION ───────────────────────────────────────────
+
+  describe('recording conversation configuration', () => {
+    const enabledConfig =
+      (overrides: Record<string, any> = {}) =>
+      (key: string) => {
+        const config: Record<string, any> = {
+          'app.frontendUrl': 'http://localhost:3001',
+          'app.backendUrl': 'http://localhost:3000',
+          'tavus.enabled': true,
+          'tavus.personaId': 'persona-1',
+          'tavus.replicaId': 'replica-1',
+          'tavus.callbackBaseUrl': 'https://api.example.com',
+          'tavus.callbackSecret': 'cb-secret',
+          'tavus.participantAbsentTimeoutSeconds': 120,
+          'tavus.participantLeftTimeoutSeconds': 60,
+          'tavus.recording': {
+            enabled: true,
+            provider: 's3',
+            bucketName: 'rec-bucket',
+            bucketRegion: 'eu-west-1',
+            assumeRoleArn: 'arn:aws:iam::123456789012:role/TavusRecordingWriter',
+          },
+          ...overrides,
+        };
+        return config[key] ?? undefined;
+      };
+
+    beforeEach(() => {
+      tokenService.verify.mockReturnValue({
+        sub: 'interview-1',
+        cv: 'abcdef1234567890',
+        purpose: 'talentai-ai-interview-access',
+        iat: 1000000,
+        exp: 2000000,
+      });
+      prisma.aiInterview.findUnique.mockResolvedValueOnce(mockInterview);
+      prisma.aiInterview.updateMany.mockResolvedValue({ count: 1 });
+      prisma.aiInterview.findUnique.mockResolvedValue({
+        ...mockInterview,
+        provider: AiInterviewProvider.TAVUS,
+        application: {
+          ...mockApplication,
+          candidate: { ...mockApplication.candidate, firstName: 'Daniel', lastName: 'Kato' },
+          job: { ...mockApplication.job },
+          company: { name: 'Test Corp' },
+        },
+      });
+      mockTavusClient.isEnabled = true;
+      mockTavusClient.createConversation.mockResolvedValue({
+        conversation_id: 'tavus-conv-1',
+        conversation_url: 'https://tavus.daily.co/tavus-conv-1',
+        status: 'active',
+        meeting_token: 'mt-1',
+      });
+      prisma.aiInterview.update.mockResolvedValue(mockInterview);
+    });
+
+    afterEach(() => {
+      mockTavusClient.isEnabled = false;
+      mockConfigService.get.mockImplementation((key: string) => {
+        const config: Record<string, any> = {
+          'app.frontendUrl': 'http://localhost:3001',
+          'tavus.enabled': false,
+          'aiInterview.allowTestEmailOverride': false,
+          'app.env': 'test',
+        };
+        return config[key] ?? undefined;
+      });
+    });
+
+    it('includes auto_start_recording + s3 recording_storage when enabled', async () => {
+      mockConfigService.get.mockImplementation(enabledConfig());
+
+      await service.startInterview('token', { acknowledgementsAccepted: true });
+
+      const request = mockTavusClient.createConversation.mock.calls[0][0];
+      expect(request.properties).toEqual({
+        participant_absent_timeout: 120,
+        participant_left_timeout: 60,
+        auto_start_recording: true,
+        recording_storage: {
+          provider: 's3',
+          bucket_name: 'rec-bucket',
+          bucket_region: 'eu-west-1',
+          assume_role_arn: 'arn:aws:iam::123456789012:role/TavusRecordingWriter',
+        },
+      });
+    });
+
+    it('marks recordingStatus PROCESSING when recording enabled', async () => {
+      mockConfigService.get.mockImplementation(enabledConfig());
+
+      await service.startInterview('token', { acknowledgementsAccepted: true });
+
+      const updateCall = prisma.aiInterview.update.mock.calls.find(
+        (c) => c[0].data.tavusConversationId,
+      );
+      expect(updateCall[0].data.recordingStatus).toBe('PROCESSING');
+    });
+
+    it('omits recording configuration safely when disabled', async () => {
+      mockConfigService.get.mockImplementation(
+        enabledConfig({ 'tavus.recording': { enabled: false } }),
+      );
+
+      await service.startInterview('token', { acknowledgementsAccepted: true });
+
+      const request = mockTavusClient.createConversation.mock.calls[0][0];
+      expect(request.properties.auto_start_recording).toBeUndefined();
+      expect(request.properties.recording_storage).toBeUndefined();
+      const updateCall = prisma.aiInterview.update.mock.calls.find(
+        (c) => c[0].data.tavusConversationId,
+      );
+      expect(updateCall[0].data.recordingStatus).toBeNull();
+    });
+
+    it('uses gcs federation fields for provider gcs', async () => {
+      mockConfigService.get.mockImplementation(
+        enabledConfig({
+          'tavus.recording': {
+            enabled: true,
+            provider: 'gcs',
+            bucketName: 'gcs-bucket',
+            projectId: 'proj-1',
+            workloadIdentityProvider:
+              'projects/1/locations/global/workloadIdentityPools/p/providers/w',
+            serviceAccountEmail: 'writer@proj-1.iam.gserviceaccount.com',
+          },
+        }),
+      );
+
+      await service.startInterview('token', { acknowledgementsAccepted: true });
+
+      const request = mockTavusClient.createConversation.mock.calls[0][0];
+      expect(request.properties.recording_storage).toEqual({
+        provider: 'gcs',
+        bucket_name: 'gcs-bucket',
+        project_id: 'proj-1',
+        workload_identity_provider:
+          'projects/1/locations/global/workloadIdentityPools/p/providers/w',
+        service_account_email: 'writer@proj-1.iam.gserviceaccount.com',
+      });
+    });
+  });
+
+  // ─── RECORDING PLAYBACK ──────────────────────────────────────────────────
+
+  describe('getRecordingPlayback', () => {
+    const readyInterview = {
+      ...mockInterview,
+      recordingStatus: 'READY',
+      recordingMetadata: {
+        storage_provider: 's3',
+        bucket_name: 'rec-bucket',
+        s3_key: 'tavus/conv-1/1787527151095',
+      },
+    };
+
+    it('should return a signed playback URL for a READY s3 recording', async () => {
+      prisma.aiInterview.findFirst.mockResolvedValue(readyInterview);
+      mockPlaybackService.getPlaybackUrl.mockResolvedValue({
+        playbackUrl: 'https://s3.example.com/signed?X-Amz-Expires=600',
+        expiresAt: '2026-08-24T00:00:00.000Z',
+      });
+
+      const result = await service.getRecordingPlayback('interview-1', 'company-1');
+
+      expect(mockPlaybackService.getPlaybackUrl).toHaveBeenCalledWith({
+        recordingStatus: 'READY',
+        storageProvider: 's3',
+        bucketName: 'rec-bucket',
+        s3Key: 'tavus/conv-1/1787527151095',
+      });
+      expect(result.playbackUrl).toContain('signed');
+      expect(result.expiresAt).toBeDefined();
+    });
+
+    it('should reject cross-company playback with 404', async () => {
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      await expect(service.getRecordingPlayback('interview-1', 'other-company')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should forward non-READY recordings to the playback guard', async () => {
+      prisma.aiInterview.findFirst.mockResolvedValue({
+        ...readyInterview,
+        recordingStatus: 'PROCESSING',
+      });
+      mockPlaybackService.getPlaybackUrl.mockRejectedValue(
+        new (require('@nestjs/common').BadRequestException)({ code: 'RECORDING_NOT_READY' }),
+      );
+
+      await expect(service.getRecordingPlayback('interview-1', 'company-1')).rejects.toThrow();
+      expect(mockPlaybackService.getPlaybackUrl).toHaveBeenCalledWith(
+        expect.objectContaining({ recordingStatus: 'PROCESSING' }),
+      );
+    });
+  });
 
   // ─── ARTIFACT SYNC ───────────────────────────────────────────────────────
 
   describe('syncInterviewArtifacts', () => {
     it('should reject cross-company sync', async () => {
       prisma.aiInterview.findFirst.mockResolvedValue(null);
-      await expect(
-        service.syncInterviewArtifacts('interview-1', 'other-company'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.syncInterviewArtifacts('interview-1', 'other-company')).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('should sync artifacts and return the updated state', async () => {
@@ -1221,17 +1497,15 @@ describe('AiInterviewsService', () => {
         recordingStatus: null,
       };
       prisma.aiInterview.findFirst.mockResolvedValue(mockInterview);
-      prisma.aiInterview.findUnique
-        .mockResolvedValueOnce(mockSyncTarget)
-        .mockResolvedValue({
-          status: AiInterviewStatus.COMPLETED,
-          transcriptStatus: AiInterviewTranscriptStatus.READY,
-          transcript: [],
-          transcriptUrl: null,
-          recordingStatus: null,
-          recordingUrl: null,
-          tavusStatus: 'ended',
-        });
+      prisma.aiInterview.findUnique.mockResolvedValueOnce(mockSyncTarget).mockResolvedValue({
+        status: AiInterviewStatus.COMPLETED,
+        transcriptStatus: AiInterviewTranscriptStatus.READY,
+        transcript: [],
+        transcriptUrl: null,
+        recordingStatus: null,
+        recordingUrl: null,
+        tavusStatus: 'ended',
+      });
       mockTavusClient.isEnabled = true;
       mockTavusClient.getConversation.mockResolvedValue({
         conversation_id: 'tavus-conv-1',
@@ -1241,8 +1515,20 @@ describe('AiInterviewsService', () => {
             event_type: 'application.transcription_ready',
             properties: {
               transcript: [
-                { role: 'user', content: 'Real spoken answer', timestamp: 123.4, seconds_from_start: 5.0, duration: 2.0 },
-                { role: 'assistant', content: 'Great, tell me more.', timestamp: 128.0, seconds_from_start: 10.0, duration: 1.5 },
+                {
+                  role: 'user',
+                  content: 'Real spoken answer',
+                  timestamp: 123.4,
+                  seconds_from_start: 5.0,
+                  duration: 2.0,
+                },
+                {
+                  role: 'assistant',
+                  content: 'Great, tell me more.',
+                  timestamp: 128.0,
+                  seconds_from_start: 10.0,
+                  duration: 1.5,
+                },
               ],
             },
           },
@@ -1266,6 +1552,72 @@ describe('AiInterviewsService', () => {
       expect(transcriptUpdate[0].data.transcript[0].content).toBe('Real spoken answer');
       expect(transcriptUpdate[0].data.transcriptStatus).toBe(AiInterviewTranscriptStatus.READY);
       mockTavusClient.isEnabled = false;
+    });
+
+    it('should auto-end a stale active conversation after the bounded timeout', async () => {
+      const staleInterview = {
+        id: 'interview-1',
+        status: AiInterviewStatus.IN_PROGRESS,
+        provider: AiInterviewProvider.TAVUS,
+        startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        tavusConversationId: 'tavus-conv-1',
+        transcriptStatus: AiInterviewTranscriptStatus.NOT_REQUESTED,
+        recordingStatus: 'PROCESSING',
+      };
+      prisma.aiInterview.findFirst.mockResolvedValue(mockInterview);
+      prisma.aiInterview.findUnique.mockResolvedValueOnce(staleInterview).mockResolvedValue({
+        status: AiInterviewStatus.COMPLETED,
+        transcriptStatus: AiInterviewTranscriptStatus.READY,
+        transcript: [],
+        transcriptUrl: null,
+        recordingStatus: 'READY',
+        recordingUrl: 's3://rec-bucket/tavus/conv-1/1',
+        tavusStatus: 'ended',
+      });
+      mockTavusClient.isEnabled = true;
+      mockTavusClient.getConversation
+        .mockResolvedValueOnce({ conversation_id: 'tavus-conv-1', status: 'active', events: [] })
+        .mockResolvedValueOnce({
+          conversation_id: 'tavus-conv-1',
+          status: 'ended',
+          events: [
+            {
+              event_type: 'application.recording_ready',
+              properties: { storage_uri: 's3://rec-bucket/tavus/conv-1/1', duration: 202 },
+            },
+            { event_type: 'application.transcription_ready', properties: { transcript: [] } },
+          ],
+        });
+      mockTavusClient.endConversation.mockResolvedValue(undefined);
+      prisma.aiInterview.update.mockResolvedValue(staleInterview);
+      mockConfigService.get.mockImplementation((key: string) => {
+        const config: Record<string, any> = {
+          'app.frontendUrl': 'http://localhost:3001',
+          'tavus.enabled': false,
+          'aiInterview.allowTestEmailOverride': false,
+          'app.env': 'test',
+          'tavus.autoEndStaleAfterMinutes': 60,
+        };
+        return config[key] ?? undefined;
+      });
+
+      await service.syncInterviewArtifacts('interview-1', 'company-1');
+
+      expect(mockTavusClient.endConversation).toHaveBeenCalledWith('tavus-conv-1');
+      const statusUpdate = prisma.aiInterview.update.mock.calls.find(
+        (c) => c[0].data.status === AiInterviewStatus.COMPLETED,
+      );
+      expect(statusUpdate).toBeDefined();
+      mockTavusClient.isEnabled = false;
+      mockConfigService.get.mockImplementation((key: string) => {
+        const config: Record<string, any> = {
+          'app.frontendUrl': 'http://localhost:3001',
+          'tavus.enabled': false,
+          'aiInterview.allowTestEmailOverride': false,
+          'app.env': 'test',
+        };
+        return config[key] ?? undefined;
+      });
     });
   });
 

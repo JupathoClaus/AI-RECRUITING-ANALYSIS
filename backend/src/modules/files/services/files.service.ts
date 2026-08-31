@@ -14,16 +14,10 @@ import {
   ApplicationActorType,
 } from '@prisma/client';
 import { LocalStorageProvider } from '../providers/local-storage.provider';
+import { validateResumeFile, sanitizeFilename } from '../resume-file-validation';
+import { createPendingExtraction } from '@modules/resume-processing/services/pending-extraction.creator';
 import { ApplicationAuditService } from '../../applications/services/application-audit.service';
 
-const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx']);
-const ALLOWED_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-]);
-
-const PDF_HEADER = Buffer.from('%PDF');
-const DOCX_ZIP_MARKER = Buffer.from('PK');
 const MAX_LOGO_SIZE = 5 * 1024 * 1024;
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
 const IMAGE_TYPES: Record<string, { extension: string; signature: number[] }> = {
@@ -226,12 +220,7 @@ export class FilesService {
    * 2 MB, validated by MIME type AND file signature. The active avatar is
    * superseded and a new StoredFile row links to the user.
    */
-  async uploadUserAvatar(
-    userId: string,
-    buffer: Buffer,
-    originalName: string,
-    mimeType: string,
-  ) {
+  async uploadUserAvatar(userId: string, buffer: Buffer, originalName: string, mimeType: string) {
     if (!buffer?.length) throw new BadRequestException('FILE_EMPTY');
     if (buffer.length > MAX_AVATAR_SIZE) throw new BadRequestException('FILE_TOO_LARGE');
 
@@ -342,6 +331,16 @@ export class FilesService {
       ApplicationActorType.CANDIDATE,
     );
 
+    // Queue resume text extraction so the application is screening-ready
+    // without any recruiter action. Rows are created directly; the extraction
+    // dispatch reconciler (15s scheduler) picks them up and enqueues BullMQ.
+    await createPendingExtraction(this.prisma, {
+      storedFileId: file!.id,
+      companyId: application.companyId,
+      mimeType,
+      checksumSha256: file!.checksumSha256,
+    });
+
     return {
       uploaded: true,
       fileName: file!.originalName,
@@ -430,44 +429,12 @@ export class FilesService {
     return file;
   }
 
-  public validateAndGetExtension(
-    originalName: string,
-    mimeType: string,
-    buffer: Buffer,
-  ): string {
-    const dotIdx = originalName.lastIndexOf('.');
-    if (dotIdx === -1 || dotIdx === originalName.length - 1) {
-      throw new BadRequestException('FILE_EXTENSION_MISSING');
-    }
-
-    const extension = originalName.slice(dotIdx + 1).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(extension)) {
-      throw new BadRequestException('FILE_EXTENSION_NOT_ALLOWED');
-    }
-
-    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-      throw new BadRequestException('FILE_TYPE_NOT_ALLOWED');
-    }
-
-    if (buffer.length < 4) {
-      throw new BadRequestException('FILE_TOO_SMALL');
-    }
-
-    if (extension === 'pdf') {
-      if (buffer.slice(0, 4).compare(PDF_HEADER) !== 0) {
-        throw new BadRequestException('FILE_SIGNATURE_MISMATCH');
-      }
-    } else if (extension === 'docx') {
-      if (buffer.slice(0, 2).compare(DOCX_ZIP_MARKER) !== 0) {
-        throw new BadRequestException('FILE_SIGNATURE_MISMATCH');
-      }
-    }
-
-    return extension;
+  public validateAndGetExtension(originalName: string, mimeType: string, buffer: Buffer): string {
+    return validateResumeFile(originalName, mimeType, buffer);
   }
 
   public sanitizeFilename(name: string): string {
-    return name.replace(/[/\\<>:"|?*\x00-\x1f]/g, '_').substring(0, 255);
+    return sanitizeFilename(name);
   }
 
   private async hasExistingResume(applicationId: string): Promise<boolean> {

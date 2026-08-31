@@ -13,6 +13,7 @@ import { AiInterviewTokenService } from './services/ai-interview-token.service';
 import { TavusClientService } from './services/tavus-client.service';
 import { TavusArtifactSyncService } from './services/tavus-artifact-sync.service';
 import { TavusArtifactSyncScheduler } from './services/tavus-artifact-sync-scheduler.service';
+import { RecordingPlaybackService } from './services/recording-playback.service';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { TavusArtifactSyncScheduler } from './services/tavus-artifact-sync-sched
     TavusClientService,
     TavusArtifactSyncService,
     TavusArtifactSyncScheduler,
+    RecordingPlaybackService,
   ],
   exports: [AiInterviewsService],
 })

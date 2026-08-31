@@ -61,12 +61,23 @@ describe('RecruiterCandidateWorkflowService', () => {
     idempotencyService = {
       executeTransactional: jest.fn(async ({ execute }) => {
         const result = await execute(prisma);
-        return { status: 'COMPLETED', resourceType: result.resourceType, resourceId: result.resourceId, responseJson: result.responseJson };
+        return {
+          status: 'COMPLETED',
+          resourceType: result.resourceType,
+          resourceId: result.resourceId,
+          responseJson: result.responseJson,
+        };
       }),
     };
     storage = {
       generateStoredName: jest.fn().mockReturnValue('uuid-name.pdf'),
-      put: jest.fn().mockResolvedValue({ storageKey: `${COMPANY_ID}/uuid-name.pdf`, checksumSha256: 'sha-file', sizeBytes: PDF_BYTES.length }),
+      put: jest
+        .fn()
+        .mockResolvedValue({
+          storageKey: `${COMPANY_ID}/uuid-name.pdf`,
+          checksumSha256: 'sha-file',
+          sizeBytes: PDF_BYTES.length,
+        }),
       delete: jest.fn().mockResolvedValue(undefined),
     };
     filesService = {
@@ -118,13 +129,28 @@ describe('RecruiterCandidateWorkflowService', () => {
   });
 
   it('rejects a missing/empty file before touching the database', async () => {
-    await expect(service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, undefined)).rejects.toThrow(BadRequestException);
-    await expect(service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, { buffer: Buffer.alloc(0), originalName: '', mimeType: '' })).rejects.toThrow(BadRequestException);
+    await expect(
+      service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, undefined),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, {
+        buffer: Buffer.alloc(0),
+        originalName: '',
+        mimeType: '',
+      }),
+    ).rejects.toThrow(BadRequestException);
     expect(storage.put).not.toHaveBeenCalled();
   });
 
   it('creates candidate + application + file + extraction atomically and dispatches after commit', async () => {
-    const result = await service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile(), 'key-1');
+    const result = await service.create(
+      makeDto(),
+      COMPANY_ID,
+      USER_ID,
+      MEMBERSHIP_ID,
+      makeFile(),
+      'key-1',
+    );
 
     expect(result.candidateCreated).toBe(true);
     expect(result.candidateId).toBe('cand-new');
@@ -136,20 +162,44 @@ describe('RecruiterCandidateWorkflowService', () => {
 
     expect(storage.put).toHaveBeenCalled();
     expect(prisma.candidate.create).toHaveBeenCalledTimes(1);
-    expect(companyCandidateService.findOrCreate).toHaveBeenCalledWith(COMPANY_ID, 'cand-new', 'RECRUITER_CREATED', undefined, undefined, MEMBERSHIP_ID, USER_ID, prisma);
-    expect(prisma.application.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ jobId: JOB_ID, currentStageId: 'stage-1', status: 'DRAFT' }) }));
-    expect(prisma.extractionDispatch.create).toHaveBeenCalledWith({ data: { extractionId: 'ex-new', dispatchStatus: 'PENDING_DISPATCH' } });
+    expect(companyCandidateService.findOrCreate).toHaveBeenCalledWith(
+      COMPANY_ID,
+      'cand-new',
+      'RECRUITER_CREATED',
+      undefined,
+      undefined,
+      MEMBERSHIP_ID,
+      USER_ID,
+      prisma,
+    );
+    expect(prisma.application.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          jobId: JOB_ID,
+          currentStageId: 'stage-1',
+          status: 'DRAFT',
+        }),
+      }),
+    );
+    expect(prisma.extractionDispatch.create).toHaveBeenCalledWith({
+      data: { extractionId: 'ex-new', dispatchStatus: 'PENDING_DISPATCH' },
+    });
     expect(candidateAudit.record).toHaveBeenCalledTimes(1);
     expect(applicationAudit.record).toHaveBeenCalledTimes(1);
   });
 
   it('reuses an existing candidate by normalized email without creating a duplicate (multi-job)', async () => {
     prisma.candidate.findFirst.mockResolvedValue({ id: 'cand-existing' });
-    prisma.candidate.create.mockImplementation(() => { throw new Error('must not create a duplicate candidate'); });
+    prisma.candidate.create.mockImplementation(() => {
+      throw new Error('must not create a duplicate candidate');
+    });
 
     const result = await service.create(
       makeDto({ email: 'Jane@Example.com ' }),
-      COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile(),
+      COMPANY_ID,
+      USER_ID,
+      MEMBERSHIP_ID,
+      makeFile(),
     );
 
     expect(result.candidateCreated).toBe(false);
@@ -161,7 +211,9 @@ describe('RecruiterCandidateWorkflowService', () => {
 
   it('rejects duplicate active application for the same job with APPLICATION_DUPLICATE', async () => {
     prisma.application.findFirst.mockResolvedValue({ id: 'app-existing' });
-    await expect(service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile())).rejects.toMatchObject({
+    await expect(
+      service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile()),
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'APPLICATION_DUPLICATE' }),
     });
     expect(prisma.application.create).not.toHaveBeenCalled();
@@ -169,10 +221,22 @@ describe('RecruiterCandidateWorkflowService', () => {
 
   it('rejects jobs of other companies and non-published jobs', async () => {
     prisma.job.findFirst.mockResolvedValueOnce(null);
-    await expect(service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile())).rejects.toThrow(NotFoundException);
+    await expect(
+      service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile()),
+    ).rejects.toThrow(NotFoundException);
 
-    prisma.job.findFirst.mockResolvedValueOnce({ id: JOB_ID, companyId: COMPANY_ID, title: 'x', status: 'CLOSED', deletedAt: null, applicationDeadline: null, pipeline: null });
-    await expect(service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile())).rejects.toMatchObject({
+    prisma.job.findFirst.mockResolvedValueOnce({
+      id: JOB_ID,
+      companyId: COMPANY_ID,
+      title: 'x',
+      status: 'CLOSED',
+      deletedAt: null,
+      applicationDeadline: null,
+      pipeline: null,
+    });
+    await expect(
+      service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile()),
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'APPLICATION_JOB_NOT_ACCEPTING' }),
     });
     expect(prisma.application.create).not.toHaveBeenCalled();
@@ -180,7 +244,9 @@ describe('RecruiterCandidateWorkflowService', () => {
 
   it('deletes the stored file when the workflow fails before commit', async () => {
     prisma.application.create.mockRejectedValue(new Error('db down'));
-    await expect(service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile())).rejects.toThrow('db down');
+    await expect(
+      service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile()),
+    ).rejects.toThrow('db down');
     expect(storage.delete).toHaveBeenCalledWith(`${COMPANY_ID}/uuid-name.pdf`);
   });
 
@@ -189,26 +255,60 @@ describe('RecruiterCandidateWorkflowService', () => {
       status: 'COMPLETED',
       resourceType: 'candidate-workflow',
       resourceId: 'cand-original',
-      responseJson: { candidateId: 'cand-original', applicationId: 'app-original', extraction: { id: 'ex-original', status: 'PENDING' }, candidateCreated: true, applicationNumber: 'APP-2026-000009', applicationStatus: 'DRAFT', stageId: null, stageName: null, jobId: JOB_ID, jobTitle: 'Engineer', storedFileId: 'f1' },
+      responseJson: {
+        candidateId: 'cand-original',
+        applicationId: 'app-original',
+        extraction: { id: 'ex-original', status: 'PENDING' },
+        candidateCreated: true,
+        applicationNumber: 'APP-2026-000009',
+        applicationStatus: 'DRAFT',
+        stageId: null,
+        stageName: null,
+        jobId: JOB_ID,
+        jobTitle: 'Engineer',
+        storedFileId: 'f1',
+      },
     });
 
-    const result = await service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile(), 'same-key');
+    const result = await service.create(
+      makeDto(),
+      COMPANY_ID,
+      USER_ID,
+      MEMBERSHIP_ID,
+      makeFile(),
+      'same-key',
+    );
 
-    expect(idempotencyService.executeTransactional).toHaveBeenCalledWith(expect.objectContaining({ key: 'same-key', operation: 'RECRUITER_CANDIDATE_WORKFLOW' }));
+    expect(idempotencyService.executeTransactional).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'same-key', operation: 'RECRUITER_CANDIDATE_WORKFLOW' }),
+    );
     expect(result.candidateId).toBe('cand-original');
     expect(reconciler.dispatchOne).toHaveBeenCalledWith('ex-original');
   });
 
   it('surfaces IDEMPOTENCY_IN_PROGRESS while another request holds the key', async () => {
-    idempotencyService.executeTransactional.mockResolvedValue({ status: 'PROCESSING', resourceType: '', resourceId: '' });
-    await expect(service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile(), 'busy-key')).rejects.toMatchObject({
+    idempotencyService.executeTransactional.mockResolvedValue({
+      status: 'PROCESSING',
+      resourceType: '',
+      resourceId: '',
+    });
+    await expect(
+      service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile(), 'busy-key'),
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'IDEMPOTENCY_IN_PROGRESS' }),
     });
   });
 
   it('dispatch failure after commit does not fail the request', async () => {
     reconciler.dispatchOne.mockRejectedValue(new Error('redis down'));
-    const result = await service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile(), 'key-dispatch-fail');
+    const result = await service.create(
+      makeDto(),
+      COMPANY_ID,
+      USER_ID,
+      MEMBERSHIP_ID,
+      makeFile(),
+      'key-dispatch-fail',
+    );
     expect(result.candidateId).toBe('cand-new');
   });
 
@@ -216,7 +316,12 @@ describe('RecruiterCandidateWorkflowService', () => {
     const keys: string[] = [];
     idempotencyService.executeTransactional.mockImplementation(async (params: any) => {
       keys.push(params.requestHash);
-      return { status: 'COMPLETED', resourceId: 'x', resourceType: 'candidate-workflow', responseJson: {} as never };
+      return {
+        status: 'COMPLETED',
+        resourceId: 'x',
+        resourceType: 'candidate-workflow',
+        responseJson: {} as never,
+      };
     });
     await service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile('a.pdf'), 'k1');
     await service.create(makeDto(), COMPANY_ID, USER_ID, MEMBERSHIP_ID, makeFile('b.pdf'), 'k2');

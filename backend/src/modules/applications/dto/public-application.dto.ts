@@ -1,51 +1,84 @@
 import {
-  IsString,
-  IsOptional,
+  IsArray,
+  IsBoolean,
   IsEmail,
   IsEnum,
-  IsBoolean,
-  IsArray,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
   MaxLength,
   MinLength,
-  IsUUID,
-  ValidateNested,
+  Min,
   ArrayMaxSize,
+  ValidateNested,
   Matches,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CandidateSource } from '@prisma/client';
 import { ScreeningAnswerInputDto } from './create-application.dto';
 
-export class PublicApplicationDto {
+/**
+ * Public careers application fields. Accepts BOTH classic JSON bodies and
+ * multipart/form-data submissions (the careers site submits multipart so the
+ * CV travels with the application in one atomic request). String-coercible
+ * fields are transformed explicitly because multipart form fields are strings.
+ */
+export class PublicApplicationMultipartDto {
   @ApiProperty({ description: 'Idempotency key (UUID)' })
   @IsUUID()
   idempotencyKey: string;
 
-  @ApiProperty({ description: 'First name' })
+  @ApiProperty()
   @IsString()
   @MinLength(1)
   @MaxLength(100)
   firstName: string;
 
-  @ApiProperty({ description: 'Last name' })
+  @ApiProperty()
   @IsString()
   @MinLength(1)
   @MaxLength(100)
   lastName: string;
 
-  @ApiProperty({ description: 'Email address' })
+  @ApiProperty()
   @IsEmail()
   @MaxLength(320)
   email: string;
 
-  @ApiPropertyOptional({ description: 'Phone number' })
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MaxLength(30)
   phone?: string;
 
-  @ApiPropertyOptional({ description: 'Cover letter' })
+  @ApiPropertyOptional({ description: 'Current job title' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  currentJobTitle?: string;
+
+  @ApiPropertyOptional({ description: 'Years of professional experience' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  totalExperienceYears?: number;
+
+  @ApiPropertyOptional({ description: 'LinkedIn profile URL' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  linkedInUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Portfolio / personal site URL' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  portfolioUrl?: string;
+
+  @ApiPropertyOptional()
   @IsOptional()
   @IsString()
   @MaxLength(5000)
@@ -69,14 +102,33 @@ export class PublicApplicationDto {
   sourceDetail?: string;
 
   @ApiProperty({ description: 'Consent confirmed' })
+  @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   consentConfirmed: boolean;
 
-  @ApiPropertyOptional({ type: [ScreeningAnswerInputDto] })
+  @ApiPropertyOptional({
+    description: 'Screening answers as a JSON array string in multipart requests',
+    type: [ScreeningAnswerInputDto],
+  })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  })
   @IsArray()
   @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => ScreeningAnswerInputDto)
   screeningAnswers?: ScreeningAnswerInputDto[];
+
+  /** Honeypot — humans never see this field; bots that fill it are ignored. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  websiteUrl?: string;
 }

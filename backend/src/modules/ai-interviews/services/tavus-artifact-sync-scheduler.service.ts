@@ -3,9 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { TavusArtifactSyncService } from './tavus-artifact-sync.service';
 
 @Injectable()
-export class TavusArtifactSyncScheduler
-  implements OnApplicationBootstrap, OnModuleDestroy
-{
+export class TavusArtifactSyncScheduler implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(TavusArtifactSyncScheduler.name);
   private readonly intervalMs: number;
   private timer: ReturnType<typeof setInterval> | null = null;

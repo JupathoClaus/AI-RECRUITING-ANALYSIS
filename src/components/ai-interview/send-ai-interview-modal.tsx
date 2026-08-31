@@ -129,6 +129,7 @@ export function SendAiInterviewModal({
         transcript: null,
         recordingStatus: null,
         recordingUrl: null,
+        recordingMetadata: null,
         language: result.language,
         estimatedDurationMinutes: result.estimatedDurationMinutes,
         expiresAt: result.expiresAt,
@@ -312,6 +313,31 @@ export function SendAiInterviewModal({
               {sendSuccess && (
                 <div className="rounded-lg bg-success/10 p-3 text-sm text-success text-center">
                   Invitation sent successfully.
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === "sent" && interview && (
+            <div className="space-y-4">
+              <Separator />
+
+              <div className="text-center space-y-2">
+                <p className="text-sm text-muted">
+                  The invitation has been sent to the candidate.
+                </p>
+                <Button
+                  className="w-full"
+                  onClick={handleSend}
+                  disabled={sendLoading}
+                >
+                  {sendLoading ? "Resending..." : "Resend Interview Invitation"}
+                </Button>
+              </div>
+
+              {sendSuccess && (
+                <div className="rounded-lg bg-success/10 p-3 text-sm text-success text-center">
+                  Invitation resent successfully.
                 </div>
               )}
             </div>

@@ -314,6 +314,8 @@ export default function PipelinePage() {
 
   const stageCandidates = React.useMemo(() => {
     const map: Record<string, Candidate[]> = {}
+    // Add "Unassigned" column for candidates without a pipeline stage
+    map["__unassigned__"] = []
     for (const stage of stages) {
       map[stage.id] = []
     }
@@ -322,6 +324,9 @@ export default function PipelinePage() {
       const key = isAllPositions ? current?.stageName : current?.stageId
       if (key && map[key]) {
         map[key].push(c)
+      } else {
+        // Candidates without a stage or with unknown stage go to Unassigned
+        map["__unassigned__"].push(c)
       }
     }
     return map as Record<string, Candidate[]>
@@ -431,37 +436,80 @@ export default function PipelinePage() {
       )}
 
       <div className="animate-fade-in">
-        {jobs.length === 0 ? (
-          <EmptyState
-            icon={<Briefcase className="h-8 w-8 text-muted" />}
-            title="No jobs yet"
-            description="Create and publish a job to start building your recruitment pipeline."
-          />
-        ) : pipelineLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <p className="text-sm text-muted">Loading pipeline...</p>
-          </div>
-        ) : stages.length === 0 ? (
-          <EmptyState
-            icon={<People className="h-8 w-8 text-muted" />}
-            title="No pipeline stages"
-            description={
-              isAllPositions
-                ? "Published jobs get a default pipeline automatically. Publish a job to begin using the pipeline."
-                : "This job has no pipeline stages configured yet. Add a stage to get started."
-            }
-            action={
-              isAllPositions ? undefined : (
-                <Button size="sm" onClick={() => { setEditingStage(null); setStageForm({ name: "", description: "" }); setShowStageDialog(true) }}>
-                  <Add className="h-4 w-4 mr-1" />
-                  Add Stage
-                </Button>
-              )
-            }
-          />
-        ) : (
-          <div className="flex gap-4 overflow-x-auto pb-4 -mx-2 px-2 snap-x snap-mandatory">
-            {stages.map((stage, stageIdx) => {
+{jobs.length === 0 ? (
+            <EmptyState
+              icon={<Briefcase className="h-8 w-8 text-muted" />}
+              title="No jobs yet"
+              description="Create and publish a job to start building your recruitment pipeline."
+            />
+          ) : pipelineLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <p className="text-sm text-muted">Loading pipeline...</p>
+            </div>
+          ) : stages.length === 0 ? (
+            <EmptyState
+              icon={<People className="h-8 w-8 text-muted" />}
+              title="No pipeline stages"
+              description={
+                isAllPositions
+                  ? "Published jobs get a default pipeline automatically. Publish a job to begin using the pipeline."
+                  : "This job has no pipeline stages configured yet. Add a stage to get started."
+              }
+              action={
+                isAllPositions ? undefined : (
+                  <Button size="sm" onClick={() => { setEditingStage(null); setStageForm({ name: "", description: "" }); setShowStageDialog(true) }}>
+                    <Add className="h-4 w-4 mr-1" />
+                    Add Stage
+                  </Button>
+                )
+              }
+            />
+          ) : (
+            <div className="flex gap-4 overflow-x-auto pb-4 -mx-2 px-2 snap-x snap-mandatory">
+              {/* Unassigned column - candidates without a pipeline stage */}
+              <div
+                key="__unassigned__"
+                className={cn(
+                  "flex-shrink-0 w-[290px] flex flex-col rounded-xl bg-background overflow-hidden snap-start",
+                  "border-t-[3px]",
+                  "border-t-gray-500"
+                )}
+              >
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-2.5 w-2.5 rounded-full bg-gray-500" />
+                    <h3 className="text-sm font-semibold text-foreground">Unassigned</h3>
+                    <span className="flex items-center justify-center h-5 min-w-[20px] rounded-full bg-surface-hover px-1.5 text-[10px] font-medium text-muted-foreground">
+                      {stageCandidates["__unassigned__"]?.length || 0}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2.5 min-h-[120px] max-h-[calc(100vh-320px)] scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+                  {stageCandidates["__unassigned__"]?.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <div className="h-10 w-10 rounded-full bg-surface-hover flex items-center justify-center mb-2">
+                        <People className="h-4 w-4 text-muted" />
+                      </div>
+                      <p className="text-xs text-muted">No unassigned candidates</p>
+                    </div>
+                  ) : (
+                    stageCandidates["__unassigned__"]?.map((candidate) => (
+                      <CandidateCard
+                        key={candidate.id}
+                        candidate={candidate}
+                        stageIndex={-1}
+                        stageCount={stages.length + 1}
+                        onMove={handleMove}
+                        onOpenDetail={setSelectedCandidate}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Pipeline Stages */}
+              {stages.map((stage, stageIdx) => {
               const stageCands = stageCandidates[stage.id] || []
               return (
                 <div

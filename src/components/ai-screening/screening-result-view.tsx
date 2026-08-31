@@ -20,6 +20,7 @@ function RecommendationBadge({ recommendation }: { recommendation?: string }) {
 }
 
 export function ScreeningResultView({ result }: Props) {
+  const hasScore = result.overallScore !== null && result.overallScore !== undefined
   return (
     <div className="space-y-4">
       <Card>
@@ -30,13 +31,24 @@ export function ScreeningResultView({ result }: Props) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {result.overallScore !== undefined && (
+          {hasScore && (
             <div>
               <div className="flex justify-between text-sm mb-1">
                 <span>Overall Score</span>
                 <span className="font-medium">{result.overallScore}/100</span>
               </div>
               <Progress value={result.overallScore} className="h-2" />
+            </div>
+          )}
+
+          {!hasScore && (
+            <div className="text-center py-4">
+              <p className="text-sm text-muted-foreground">
+                AI screening could not produce a score.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                This job may not have sufficient structured requirements for scoring.
+              </p>
             </div>
           )}
 

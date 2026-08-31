@@ -215,4 +215,35 @@ describe("CandidatesPage delete workflow", () => {
     expect(mockDeleteCandidate).toHaveBeenCalledWith("c1", { expectedVersion: 3 })
     await waitFor(() => expect(mockFetchCandidates).toHaveBeenCalled())
   })
+
+  it('"Clear Selection" un-checks selected rows without deleting any candidate', async () => {
+    mockCandidates.mockReturnValue([
+      makeCandidate("c1", "Ada Loop"),
+      makeCandidate("c2", "Bo Ling"),
+    ])
+    render(<CandidatesPage />)
+    await waitFor(() => expect(screen.getByText("Ada Loop")).toBeTruthy())
+    await waitFor(() => expect(screen.getByText("Bo Ling")).toBeTruthy())
+
+    const rows = screen.getAllByRole("row").map((r) => r.closest("tr")!)
+    const clear = (n: string) =>
+      rows.find((r) => r.textContent?.includes(n))!.querySelector('input[type="checkbox"]')!
+
+    fireEvent.click(clear("Ada Loop"))
+    await waitFor(() => expect(screen.getByText(/1 selected/)).toBeTruthy())
+
+    // The bulk action bar must label the reset unambiguously ("Clear Selection"),
+    // not a bare ambiguous "Clear", so it cannot be mistaken for deleting candidates.
+    const clearSelection = screen.getByRole("button", { name: "Clear Selection" })
+    expect(clearSelection).toBeTruthy()
+    expect(screen.queryByRole("button", { name: /^Clear$/i })).toBeNull()
+
+    fireEvent.click(clearSelection)
+    await waitFor(() => expect(screen.queryByText(/selected/i)).toBeNull())
+
+    // Non-destructive: both candidates remain listed; delete API never called.
+    expect(screen.getByText("Ada Loop")).toBeTruthy()
+    expect(screen.getByText("Bo Ling")).toBeTruthy()
+    expect(mockDeleteCandidate).not.toHaveBeenCalled()
+  })
 })

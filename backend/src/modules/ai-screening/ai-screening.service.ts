@@ -107,6 +107,14 @@ export class AiScreeningService {
       throw new ConflictException('Job has no description or qualifications. Cannot screen.');
     }
 
+    // Check if the job has sufficient structured criteria for meaningful screening
+    if (!this.criterionBuilder.hasSufficientCriteria(application as never)) {
+      throw new ConflictException({
+        code: 'INSUFFICIENT_JOB_CRITERIA',
+        message: 'Add job requirements before running AI screening.',
+      });
+    }
+
     const resumeFile = application.resumeFiles[0];
     if (!resumeFile) {
       throw new ConflictException('No resume file found for this application.');

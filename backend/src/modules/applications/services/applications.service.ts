@@ -159,8 +159,10 @@ export class ApplicationsService {
         message: 'Candidate already has an active application for this job',
       });
 
-    // Get initial pipeline stage
-    const initialStage = job.pipeline?.stages[0];
+    // Get initial pipeline stage (lowest sortOrder)
+    const stages = job.pipeline?.stages ?? [];
+    const sortedStages = [...stages].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const initialStage = sortedStages[0];
 
     async function runInTransaction(t: Prisma.TransactionClient) {
       // Find or create CompanyCandidate

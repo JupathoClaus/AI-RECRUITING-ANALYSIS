@@ -14,7 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { useStore } from "@/store/useStore"
 import { createAiInterview, sendAiInterviewInvitation, cancelAiInterview, regenerateAiInterviewCode, getAiInterview, listAiInterviews, getAiInterviewsByApplication, type AiInterviewDetail, type AiInterviewStatus } from "@/lib/api/ai-interviews.api"
 import { AiInterviewDetailDialog } from "@/components/ai-interview/ai-interview-detail-dialog"
-import { MagicStar, DocumentText, Clock, Link2, Warning2, Send2, Refresh, Eye } from "iconsax-react"
+import { MagicStar, DocumentText, Clock, Link2, Warning2, Send2, Refresh, Eye, Calendar } from "iconsax-react"
 
 const STATUS_LABEL: Record<AiInterviewStatus, string> = {
   CREATED: "Created",
@@ -49,6 +49,7 @@ export default function AIInterviewsPage() {
   const [selectedApplicationId, setSelectedApplicationId] = useState("")
   const [language, setLanguage] = useState("en")
   const [durationMinutes, setDurationMinutes] = useState("30")
+  const [scheduledAt, setScheduledAt] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [detailTarget, setDetailTarget] = useState<AiInterviewDetail | null>(null)
@@ -90,7 +91,9 @@ export default function AIInterviewsPage() {
   const durationValue = Number(durationMinutes)
   const durationValid = Number.isFinite(durationValue) && durationValue >= 5 && durationValue <= 120
   const durationError = durationMinutes.trim() !== "" && !durationValid
-  const formValid = !!selectedApplicationId && durationValid
+  const scheduledValid = scheduledAt === "" || (new Date(scheduledAt) > new Date())
+  const scheduledError = scheduledAt !== "" && !scheduledValid
+  const formValid = !!selectedApplicationId && durationValid && scheduledValid
 
   const handleCreate = useCallback(async () => {
     if (!formValid) return
@@ -101,6 +104,7 @@ export default function AIInterviewsPage() {
         applicationId: selectedApplicationId,
         language,
         estimatedDurationMinutes: durationValue,
+        scheduledAt: scheduledAt || undefined,
       })
       // Load any existing interviews for the same application (tenant-scoped).
       const [detail, existing] = await Promise.all([getAiInterview(interview.id), getAiInterviewsByApplication(selectedApplicationId).catch(() => [])])
@@ -115,7 +119,7 @@ export default function AIInterviewsPage() {
     } finally {
       setCreating(false)
     }
-  }, [selectedApplicationId, language, durationValid, formValid, durationValue])
+  }, [selectedApplicationId, language, durationValid, formValid, durationValue, scheduledAt, scheduledValid])
 
   const handleSend = useCallback(async (interview: AiInterviewDetail) => {
     setBusyId(interview.id)
@@ -160,7 +164,7 @@ export default function AIInterviewsPage() {
   }, [])
 
   const canCancel = useCallback((status: AiInterviewStatus) => ["CREATED", "SENT", "ACCESSED", "READY", "IN_PROGRESS"].includes(status), [])
-  const canSend = useCallback((status: AiInterviewStatus) => status === "CREATED", [])
+  const canSend = useCallback((status: AiInterviewStatus) => ["CREATED", "SENT"].includes(status), [])
 
   return (
     <AppLayout
@@ -232,6 +236,18 @@ export default function AIInterviewsPage() {
                     <p className="text-xs text-error">Enter a duration between 5 and 120 minutes.</p>
                   )}
                 </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-muted-foreground">Schedule for (optional)</label>
+                <Input
+                  type="datetime-local"
+                  value={scheduledAt}
+                  onChange={(e) => setScheduledAt(e.target.value)}
+                  aria-invalid={scheduledError}
+                />
+                {scheduledError && (
+                  <p className="text-xs text-error">Scheduled time must be in the future.</p>
+                )}
               </div>
               {createError && (
                 <div className="rounded-lg border border-error/30 bg-error/5 px-4 py-3 text-sm text-error flex items-start gap-2">

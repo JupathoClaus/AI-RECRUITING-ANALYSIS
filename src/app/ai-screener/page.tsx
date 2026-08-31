@@ -184,6 +184,22 @@ export default function AiScreenerPage() {
                 </Button>
               </CardContent>
             </Card>
+          ) : state.workflowState === 'ERROR' && state.errorCode === 'INSUFFICIENT_JOB_CRITERIA' ? (
+            <Card>
+              <CardContent className="p-6 text-center space-y-3">
+                <p className="text-destructive font-medium">Unable to run AI screening</p>
+                <p className="text-sm text-muted-foreground">
+                  This job doesn't have enough structured requirements for AI screening.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Please add skills, experience requirements, education requirements, or set an experience level
+                  for this job, then try again.
+                </p>
+                <Button variant="outline" onClick={() => window.location.href = `/jobs/${state.selectedApplicationId}`}>
+                  Edit Job Requirements
+                </Button>
+              </CardContent>
+            </Card>
           ) : state.workflowState === 'ERROR' ? (
             <Card>
               <CardContent className="p-6 text-center space-y-3">

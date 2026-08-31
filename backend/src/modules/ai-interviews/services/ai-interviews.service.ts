@@ -1,9 +1,4 @@
-﻿import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+﻿import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -24,7 +19,8 @@ import {
 } from '../dto/public-response.dto';
 import { AiInterviewCodeService } from './ai-interview-code.service';
 import { AiInterviewTokenService } from './ai-interview-token.service';
-import { TavusClientService } from './tavus-client.service';
+import { TavusClientService, TavusConversationEvent } from './tavus-client.service';
+import { RecordingPlaybackService } from './recording-playback.service';
 import { EmailService } from '@modules/email/email.service';
 
 interface TavusCallbackPayload {
@@ -47,7 +43,6 @@ export class AiInterviewsService {
   private readonly logger = new Logger(AiInterviewsService.name);
   private readonly frontendUrl: string;
   private readonly backendUrl: string;
-  private readonly tavusEnabled: boolean;
   private readonly env: string;
 
   constructor(
@@ -56,11 +51,11 @@ export class AiInterviewsService {
     private readonly tokenService: AiInterviewTokenService,
     private readonly tavusClient: TavusClientService,
     private readonly emailService: EmailService,
+    private readonly playbackService: RecordingPlaybackService,
     private readonly configService: ConfigService,
   ) {
     this.frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
     this.backendUrl = this.configService.get<string>('app.backendUrl') || 'http://localhost:3000';
-    this.tavusEnabled = this.configService.get<boolean>('tavus.enabled') || false;
     this.env = this.configService.get<string>('app.env') || 'development';
   }
 
@@ -104,6 +99,8 @@ export class AiInterviewsService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
+    const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
+
     const interview = await this.prisma.aiInterview.create({
       data: {
         applicationId: dto.applicationId,
@@ -115,6 +112,7 @@ export class AiInterviewsService {
         language: dto.language || 'en',
         estimatedDurationMinutes: dto.estimatedDurationMinutes || 30,
         expiresAt,
+        scheduledAt,
         notes: dto.notes || null,
         createdByMembershipId: membershipId,
         transcriptStatus: AiInterviewTranscriptStatus.NOT_REQUESTED,
@@ -706,7 +704,7 @@ export class AiInterviewsService {
 
     // Create provider session
     if (interview.provider === AiInterviewProvider.TAVUS) {
-      if (!this.tavusEnabled) {
+      if (!this.isTavusEnabled()) {
         throw new BadRequestException({
           code: 'TAVUS_DISABLED',
           message:
@@ -750,17 +748,24 @@ export class AiInterviewsService {
             provider: (recording.provider as string) || 's3',
           };
           if (recording.provider === 'gcs') {
+            storage.bucket_name = (recording.bucketName as string) || '';
+            storage.project_id = (recording.projectId as string) || '';
             storage.workload_identity_provider =
               (recording.workloadIdentityProvider as string) || '';
             storage.service_account_email = (recording.serviceAccountEmail as string) || '';
           } else if (recording.provider === 'azure_blob') {
-            storage.container_name = (recording.bucketName as string) || '';
-            storage.azure_resource_group = (recording.bucketRegion as string) || '';
+            storage.storage_account = (recording.storageAccount as string) || '';
+            storage.container = (recording.container as string) || '';
+            storage.tenant_id = (recording.tenantId as string) || '';
+            storage.client_id = (recording.clientId as string) || '';
           } else {
             storage.bucket_name = (recording.bucketName as string) || '';
             storage.bucket_region = (recording.bucketRegion as string) || '';
             storage.assume_role_arn = (recording.assumeRoleArn as string) || '';
-            storage.external_id = (recording.externalId as string) || '';
+          }
+          const keyTemplate = (recording.keyTemplate as string) || '';
+          if (keyTemplate) {
+            storage.key_template = keyTemplate;
           }
           properties.recording_storage = storage;
         }
@@ -867,10 +872,15 @@ export class AiInterviewsService {
       });
     }
 
-    // For MOCK, completing is deliberate
-    // For TAVUS, the callback marks completion; frontend exit does not force completion
+    // For MOCK, completing is deliberate.
+    // For TAVUS, the candidate intentionally ends the interview: we ask the
+    // provider to end the conversation so Tavus finalizes shutdown, recording
+    // and transcription. The provider callbacks mark COMPLETED/artifacts.
     if (interview.provider === AiInterviewProvider.TAVUS) {
-      this.logger.log(`Candidate left Tavus interview ${interviewId} before callback`);
+      this.logger.log(`Candidate ended Tavus interview ${interviewId}`);
+      if (interview.tavusConversationId) {
+        await this.tavusClient.endConversation(interview.tavusConversationId);
+      }
       // Kick a provider sync so transcript/recording and the ended status are
       // pulled even if the shutdown webhook is delayed or cannot reach us.
       this.syncTavusArtifacts(interviewId).catch((error) => {
@@ -897,10 +907,7 @@ export class AiInterviewsService {
 
   // â”€â”€â”€ TAVUS CALLBACK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  async handleTavusCallback(
-    payload: TavusCallbackPayload,
-    callbackSecret?: string,
-  ) {
+  async handleTavusCallback(payload: TavusCallbackPayload, callbackSecret?: string) {
     // Verify callback secret if configured
     const expectedSecret = this.configService.get<string>('tavus.callbackSecret') || '';
     if (expectedSecret) {
@@ -1005,6 +1012,7 @@ export class AiInterviewsService {
           data: {
             recordingStatus: 'READY',
             recordingUrl,
+            recordingMetadata: this.sanitizeRecordingMetadata(properties) as Prisma.InputJsonValue,
             tavusStatus: eventType,
           },
         });
@@ -1022,9 +1030,7 @@ export class AiInterviewsService {
         break;
 
       default:
-        this.logger.log(
-          `Tavus unhandled event: ${eventType} for conversation ${conversationId}`,
-        );
+        this.logger.log(`Tavus unhandled event: ${eventType} for conversation ${conversationId}`);
         await this.prisma.aiInterview.update({
           where: { id: interview.id },
           data: { tavusStatus: payload.status || eventType },
@@ -1088,6 +1094,38 @@ export class AiInterviewsService {
   }
 
   /**
+   * Tenant-scoped secure recording playback: validates the interview's
+   * recording state and generates a short-lived signed S3 URL.
+   */
+  async getRecordingPlayback(id: string, companyId: string) {
+    const interview = await this.prisma.aiInterview.findFirst({
+      where: { id, companyId },
+      select: {
+        recordingStatus: true,
+        recordingMetadata: true,
+      },
+    });
+    if (!interview) {
+      throw new NotFoundException({
+        code: 'AI_INTERVIEW_NOT_FOUND',
+        message: 'AI interview not found',
+      });
+    }
+
+    const metadata =
+      interview.recordingMetadata && typeof interview.recordingMetadata === 'object'
+        ? (interview.recordingMetadata as Record<string, unknown>)
+        : {};
+
+    return this.playbackService.getPlaybackUrl({
+      recordingStatus: interview.recordingStatus,
+      storageProvider: (metadata.storage_provider as string) || undefined,
+      bucketName: (metadata.bucket_name as string) || undefined,
+      s3Key: (metadata.s3_key as string) || undefined,
+    });
+  }
+
+  /**
    * Fetches the conversation (verbose) from Tavus and persists transcript and
    * recording artifacts that may have been missed by webhooks. Also reconciles
    * the interview lifecycle: an ended provider conversation completes an
@@ -1099,6 +1137,7 @@ export class AiInterviewsService {
       select: {
         status: true,
         provider: true,
+        startedAt: true,
         tavusConversationId: true,
         transcriptStatus: true,
         recordingStatus: true,
@@ -1119,6 +1158,31 @@ export class AiInterviewsService {
       true,
     );
     const events = conversation.events || [];
+
+    // Stale-conversation auto-end: the candidate may have closed the tab or
+    // lost the connection without the provider firing participant-left
+    // shutdown. If the conversation is still active long after the interview
+    // started, end it so Tavus finalizes shutdown/recording/transcription.
+    if (
+      conversation.status === 'active' &&
+      interview.status === AiInterviewStatus.IN_PROGRESS &&
+      interview.startedAt
+    ) {
+      const staleAfterMs =
+        (this.configService.get<number>('tavus.autoEndStaleAfterMinutes') ?? 60) * 60 * 1000;
+      if (Date.now() - interview.startedAt.getTime() > staleAfterMs) {
+        this.logger.warn(
+          `Ending stale Tavus conversation ${interview.tavusConversationId} for interview ${interviewId}`,
+        );
+        await this.tavusClient.endConversation(interview.tavusConversationId);
+        // Refresh the conversation view so the ended state can be persisted below.
+        const ended = await this.tavusClient
+          .getConversation(interview.tavusConversationId, true)
+          .catch(() => ({ status: 'ended' as const, events: [] as never[] }));
+        conversation.status = ended.status;
+        conversation.events = (ended.events as TavusConversationEvent[]) || [];
+      }
+    }
 
     const transcriptEvent = events.find((e) => e.event_type === 'application.transcription_ready');
     if (transcriptEvent && interview.transcriptStatus !== AiInterviewTranscriptStatus.READY) {
@@ -1143,6 +1207,7 @@ export class AiInterviewsService {
         data: {
           recordingStatus: 'READY',
           recordingUrl: (props.storage_uri as string) || (props.s3_key as string) || null,
+          recordingMetadata: this.sanitizeRecordingMetadata(props) as Prisma.InputJsonValue,
         },
       });
     }
@@ -1159,9 +1224,7 @@ export class AiInterviewsService {
     ) {
       // Use the provider's own end timestamp when available so the recorded
       // completion time reflects the real interview end, not the sync time.
-      const providerEndedAt = conversation.updated_at
-        ? new Date(conversation.updated_at)
-        : null;
+      const providerEndedAt = conversation.updated_at ? new Date(conversation.updated_at) : null;
       const shutdownEvent = events.find((e) => e.event_type === 'system.shutdown');
       const shutdownAt = shutdownEvent?.timestamp ? new Date(shutdownEvent.timestamp) : null;
       const completedAt = providerEndedAt || shutdownAt || new Date();
@@ -1186,6 +1249,22 @@ export class AiInterviewsService {
       where: { id: interviewId },
       data: { artifactSyncAttemptedAt: new Date() },
     });
+  }
+
+  /**
+   * Extracts only safe, non-secret recording metadata from a provider
+   * recording event for persistence.
+   */
+  private sanitizeRecordingMetadata(properties: Record<string, unknown>): Record<string, unknown> {
+    const allowed: Record<string, unknown> = {};
+    const fields = ['storage_provider', 'storage_uri', 'bucket_name', 's3_key', 'duration'];
+    for (const field of fields) {
+      const value = properties[field];
+      if (typeof value === 'string' || typeof value === 'number') {
+        allowed[field] = value;
+      }
+    }
+    return allowed;
   }
 
   private sanitizeTranscript(raw: unknown): TranscriptTurn[] {
@@ -1223,12 +1302,16 @@ export class AiInterviewsService {
 
   // â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+  private isTavusEnabled(): boolean {
+    return this.configService.get<boolean>('tavus.enabled') || false;
+  }
+
   private resolveProvider(requested?: AiInterviewProvider): AiInterviewProvider {
     if (requested === AiInterviewProvider.MOCK) {
       return AiInterviewProvider.MOCK;
     }
     if (requested === AiInterviewProvider.TAVUS) {
-      if (!this.tavusEnabled) {
+      if (!this.isTavusEnabled()) {
         throw new BadRequestException({
           code: 'TAVUS_DISABLED',
           message:
@@ -1246,7 +1329,7 @@ export class AiInterviewsService {
       return AiInterviewProvider.TAVUS;
     }
     // Default to MOCK when Tavus is disabled
-    return this.tavusEnabled ? AiInterviewProvider.TAVUS : AiInterviewProvider.MOCK;
+    return this.isTavusEnabled() ? AiInterviewProvider.TAVUS : AiInterviewProvider.MOCK;
   }
 
   private stripMeetingToken(interview: any) {
@@ -1313,9 +1396,7 @@ export class AiInterviewsService {
     if (job.description) parts.push(`Job description: ${job.description}`);
     if (job.responsibilities) parts.push(`Responsibilities: ${job.responsibilities}`);
     if (job.qualifications) parts.push(`Qualifications: ${job.qualifications}`);
-    const jobSkills = (job.skills || [])
-      .map((s: any) => s.skill?.displayName)
-      .filter(Boolean);
+    const jobSkills = (job.skills || []).map((s: any) => s.skill?.displayName).filter(Boolean);
     if (jobSkills.length) parts.push(`Required/preferred skills: ${jobSkills.join(', ')}`);
     if (job.experienceLevel) parts.push(`Experience level: ${job.experienceLevel}`);
 

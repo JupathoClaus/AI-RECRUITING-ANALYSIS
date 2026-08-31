@@ -166,10 +166,8 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const stats = useMemo(() => {
+const stats = useMemo(() => {
     const activeJobs = jobs.filter((j) => j.status === "Active").length;
-    // Whole-company aggregate when available; falls back to the paged list.
-    const totalCandidates = candidatesScoreSummary?.totalCandidates ?? candidates.length;
 
     const now = new Date();
     const weekStart = new Date(now);
@@ -197,7 +195,10 @@ export default function DashboardPage() {
             : null;
         })();
 
-    return { activeJobs, totalCandidates, interviewsThisWeek, avgScore };
+    const screenedCandidates = candidatesScoreSummary?.scoredCandidates ?? 0;
+    const totalCandidates = candidates.length;
+
+    return { activeJobs, totalCandidates, screenedCandidates, interviewsThisWeek, avgScore };
   }, [jobs, candidates, candidatesScoreSummary, interviews]);
 
   const pipelineData = useMemo(() => {
@@ -253,7 +254,7 @@ export default function DashboardPage() {
 
   const kpiCards = [
     {
-      label: "Total Open Positions",
+      label: "Open Positions",
       value: stats.activeJobs.toString(),
       icon: <Briefcase className="h-5 w-5" />,
       color: "text-primary",
@@ -268,16 +269,16 @@ export default function DashboardPage() {
       color: "text-info",
       up: true,
       trend: "—",
-      trendLabel: "server-derived",
+      trendLabel: "all candidates",
     },
     {
-      label: "Interviews This Week",
-      value: stats.interviewsThisWeek.toString(),
-      icon: <Calendar className="h-5 w-5" />,
+      label: "Screened Candidates",
+      value: stats.screenedCandidates.toString(),
+      icon: <MagicStar className="h-5 w-5" />,
       color: "text-warning",
-      up: false,
+      up: true,
       trend: "—",
-      trendLabel: "server-derived",
+      trendLabel: "screened",
     },
     {
       label: "Avg AI Score",

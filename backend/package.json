@@ -55,6 +55,10 @@
     "docker:logs": "docker compose logs -f"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1116.0",
+    "@aws-sdk/client-sts": "^3.1116.0",
+    "@aws-sdk/credential-providers": "^3.1116.0",
+    "@aws-sdk/s3-request-presigner": "^3.1116.0",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/bullmq": "^10.2.0",
     "@nestjs/common": "^10.4.0",

@@ -2675,13 +2675,15 @@ model AiInterview {
   transcript       Json?
 
   // Recording
-  recordingStatus String?
-  recordingUrl    String?
+  recordingStatus    String?
+  recordingUrl       String?
+  recordingMetadata  Json?
 
   // Config
   language                 String    @default("en")
   estimatedDurationMinutes Int       @default(30)
   availableFrom            DateTime?
+  scheduledAt              DateTime?
   expiresAt                DateTime?
 
   // Notes

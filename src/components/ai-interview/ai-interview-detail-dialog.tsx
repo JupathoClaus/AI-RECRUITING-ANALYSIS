@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import {
   getAiInterview,
   syncAiInterviewArtifacts,
+  getRecordingPlayback,
   type AiInterviewDetail,
   type AiInterviewStatus,
   type TranscriptTurn,
@@ -96,8 +97,29 @@ export function AiInterviewDetailDialog({
   onOpenChange,
   onRefreshed,
 }: AiInterviewDetailDialogProps) {
-  const [syncing, setSyncing] = React.useState(false)
+const [syncing, setSyncing] = React.useState(false)
   const [syncError, setSyncError] = React.useState("")
+  const [playback, setPlayback] = React.useState<{
+    playbackUrl: string
+    expiresAt: string
+  } | null>(null)
+  const [playbackLoading, setPlaybackLoading] = React.useState(false)
+  const [playbackError, setPlaybackError] = React.useState("")
+  const [playerOpen, setPlayerOpen] = React.useState(false)
+
+  const handlePlay = React.useCallback(async () => {
+    setPlaybackLoading(true)
+    setPlaybackError("")
+    try {
+      const result = await getRecordingPlayback(interview.id)
+      setPlayback(result)
+      setPlayerOpen(true)
+    } catch (err) {
+      setPlaybackError(err instanceof Error ? err.message : "The recording could not be prepared for playback.")
+    } finally {
+      setPlaybackLoading(false)
+    }
+  }, [interview.id])
 
   const refresh = React.useCallback(
     async (silent = false) => {
@@ -320,7 +342,7 @@ export function AiInterviewDetailDialog({
               </Badge>
             </div>
 
-            {interview.recordingStatus === "READY" && interview.recordingUrl ? (
+{interview.recordingStatus === "READY" && interview.recordingUrl ? (
               <div className="space-y-2">
                 {/^https?:\/\//.test(interview.recordingUrl) ? (
                   <a
@@ -333,17 +355,30 @@ export function AiInterviewDetailDialog({
                     Watch Recording
                   </a>
                 ) : (
-                  <a
-                    href={interview.recordingUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-primary hover:bg-surface-hover"
+                  <Button
+                    size="sm"
+                    onClick={() => void handlePlay()}
+                    disabled={playbackLoading}
                   >
-                    <Video className="h-3.5 w-3.5" />
-                    Open recording reference
-                  </a>
+                    {playbackLoading ? (
+                      <Refresh className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Video className="h-3.5 w-3.5" />
+                    )}
+                    {playbackLoading ? "Preparing…" : "Play Recording"}
+                  </Button>
                 )}
-                <p className="text-[10px] text-muted break-all">{interview.recordingUrl}</p>
+                {playbackError && (
+                  <p className="text-xs text-error" role="alert">{playbackError}</p>
+                )}
+                {interview.recordingMetadata && (
+                  <p className="text-[11px] text-muted">
+                    {typeof interview.recordingMetadata.duration === "number"
+                      ? `Duration ${Math.round(interview.recordingMetadata.duration)}s · `
+                      : ""}
+                    Provider {interview.recordingMetadata.storage_provider ?? "storage"} · Secure storage
+                  </p>
+                )}
               </div>
             ) : (
               <p className="text-xs text-muted">
@@ -417,7 +452,7 @@ export function AiInterviewDetailDialog({
               </p>
             )}
 
-            {interview.transcriptUrl && (
+{interview.transcriptUrl && (
               <a
                 href={interview.transcriptUrl}
                 target="_blank"
@@ -431,6 +466,48 @@ export function AiInterviewDetailDialog({
           </section>
         </div>
       </DialogContent>
+
+      {playerOpen && playback && (
+        <Dialog open={playerOpen} onOpenChange={(o) => { if (!o) { setPlayerOpen(false); setPlayback(null) } }}>
+          <DialogContent className="sm:max-w-2xl">
+            <ModalHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Video className="h-5 w-5 text-primary" />
+                Interview Recording
+              </DialogTitle>
+              <DialogDescription>
+                {candidate ? `${candidate.firstName} ${candidate.lastName}` : "Candidate"}
+                {job ? ` · ${job.title}` : ""}
+              </DialogDescription>
+            </ModalHeader>
+            <div className="space-y-3 py-2">
+              <video
+                src={playback.playbackUrl}
+                controls
+                preload="metadata"
+                className="w-full rounded-lg bg-foreground/5 ring-1 ring-border"
+                aria-label="Interview recording"
+              />
+              <div className="flex items-center justify-between text-xs text-muted">
+                <span>
+                  {typeof interview.recordingMetadata?.duration === "number"
+                    ? `Duration ${Math.round(interview.recordingMetadata.duration)}s`
+                    : "Interview recording"}
+                </span>
+                <span>Signed access expires {new Date(playback.expiresAt).toLocaleTimeString()}</span>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => { setPlayerOpen(false); setPlayback(null) }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   )
 }

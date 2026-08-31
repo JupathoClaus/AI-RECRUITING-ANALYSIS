@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '@database/database.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { StorageModule } from '@modules/files/storage.module';
 import { ApplicationsController } from './controllers/applications.controller';
 import { CandidateTagsController } from './controllers/candidate-tags.controller';
 import { PublicApplicationsController } from './controllers/public-applications.controller';
@@ -15,9 +16,10 @@ import { ApplicationFlagsService } from './services/application-flags.service';
 import { ApplicationDecisionsService } from './services/application-decisions.service';
 import { ApplicationAssignmentsService } from './services/application-assignments.service';
 import { ScreeningAnswersService } from './services/screening-answers.service';
+import { PublicApplicationSubmissionService } from './services/public-application-submission.service';
 
 @Module({
-  imports: [DatabaseModule, NotificationsModule],
+  imports: [DatabaseModule, NotificationsModule, StorageModule],
   controllers: [ApplicationsController, CandidateTagsController, PublicApplicationsController],
   providers: [
     ApplicationsService,
@@ -31,6 +33,7 @@ import { ScreeningAnswersService } from './services/screening-answers.service';
     ApplicationDecisionsService,
     ApplicationAssignmentsService,
     ScreeningAnswersService,
+    PublicApplicationSubmissionService,
   ],
   exports: [
     ApplicationsService,

@@ -43,11 +43,15 @@ export function isExpectedNoScreeningError(err: ApiErrorResponse): boolean {
 }
 
 export function isExtractionPendingError(err: ApiErrorResponse): boolean {
-  return err.errorCode === 'RESUME_EXTRACTION_PENDING'
+  return err.errorCode === 'RESUME_EXTRACTION_PENDING' || err.statusCode === 404
 }
 
 export function isExtractionFailedError(err: ApiErrorResponse): boolean {
   return err.errorCode === 'RESUME_EXTRACTION_FAILED'
+}
+
+export function isInsufficientJobCriteriaError(err: ApiErrorResponse): boolean {
+  return err.errorCode === 'INSUFFICIENT_JOB_CRITERIA'
 }
 
 export function classifyScreeningError(err: unknown): {

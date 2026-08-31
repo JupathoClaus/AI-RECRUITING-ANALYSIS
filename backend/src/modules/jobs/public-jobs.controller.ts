@@ -85,6 +85,63 @@ export class PublicJobsController {
     };
   }
 
+  @Get(':companySlug/jobs/:jobSlug/screening-questions')
+  @Public()
+  @Throttle({ default: { ttl: 60000, limit: 30 } })
+  @ApiOperation({
+    summary: 'Screening questions for a published job (public, sanitized)',
+    description:
+      'Returns only candidate-facing fields. Scoring configuration (expected answers, weights, disqualifying flags) is never exposed.',
+  })
+  @ApiParam({ name: 'companySlug' })
+  @ApiParam({ name: 'jobSlug' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Sanitized screening questions' })
+  async getScreeningQuestions(
+    @Param('companySlug') companySlug: string,
+    @Param('jobSlug') jobSlug: string,
+  ) {
+    const company = await this.prisma.company.findFirst({
+      where: { slug: companySlug, status: 'ACTIVE', deletedAt: null },
+      select: { id: true },
+    });
+    if (!company) {
+      throw new NotFoundException('Company not found');
+    }
+
+    const job = await this.prisma.job.findFirst({
+      where: {
+        companyId: company.id,
+        slug: jobSlug,
+        status: JobStatus.PUBLISHED,
+        visibility: { in: [JobVisibility.PUBLIC, JobVisibility.UNLISTED] },
+        deletedAt: null,
+        archivedAt: null,
+        OR: [{ applicationDeadline: null }, { applicationDeadline: { gte: new Date() } }],
+      },
+      select: {
+        id: true,
+        screeningQuestions: {
+          where: { deletedAt: null },
+          orderBy: { sortOrder: 'asc' as const },
+          select: {
+            id: true,
+            question: true,
+            description: true,
+            type: true,
+            options: true,
+            required: true,
+            sortOrder: true,
+          },
+        },
+      },
+    });
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+
+    return { data: job.screeningQuestions };
+  }
+
   @Get(':companySlug/jobs/:jobSlug')
   @Public()
   @Throttle({ default: { ttl: 60000, limit: 30 } })

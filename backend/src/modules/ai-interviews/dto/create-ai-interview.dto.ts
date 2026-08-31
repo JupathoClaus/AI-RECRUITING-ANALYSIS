@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsInt, Min, Max, IsUUID, IsEnum } from 'class-validator';
+import { IsString, IsOptional, IsInt, Min, Max, IsUUID, IsEnum, IsDateString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AiInterviewProvider } from '@prisma/client';
 
@@ -28,4 +28,9 @@ export class CreateAiInterviewDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ description: 'ISO 8601 date string for scheduled interview time' })
+  @IsOptional()
+  @IsDateString()
+  scheduledAt?: string;
 }

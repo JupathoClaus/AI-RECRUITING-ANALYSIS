@@ -10,6 +10,7 @@ export interface CreateAiInterviewRequest {
   language?: string
   estimatedDurationMinutes?: number
   notes?: string
+  scheduledAt?: string
 }
 
 export interface AiInterviewCreatedResponse {
@@ -53,6 +54,13 @@ export interface AiInterviewDetail {
   transcript: TranscriptTurn[] | null
   recordingStatus: string | null
   recordingUrl: string | null
+  recordingMetadata: {
+    storage_provider?: string
+    storage_uri?: string
+    bucket_name?: string
+    s3_key?: string
+    duration?: number
+  } | null
   language: string
   estimatedDurationMinutes: number
   expiresAt: string | null
@@ -157,6 +165,15 @@ export interface ArtifactSyncResponse {
   recordingStatus: string | null
   recordingUrl: string | null
   tavusStatus: string | null
+}
+
+export interface RecordingPlaybackResponse {
+  playbackUrl: string
+  expiresAt: string
+}
+
+export async function getRecordingPlayback(id: string): Promise<RecordingPlaybackResponse> {
+  return apiRequest<RecordingPlaybackResponse>(`/ai-interviews/${id}/recording-playback`)
 }
 
 export async function syncAiInterviewArtifacts(id: string): Promise<ArtifactSyncResponse> {

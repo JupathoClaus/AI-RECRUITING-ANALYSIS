@@ -146,12 +146,18 @@ export class RecruiterCandidateWorkflowService {
     idempotencyKey?: string,
   ): Promise<RecruiterWorkflowResult> {
     if (!file || !file.buffer || file.buffer.length === 0) {
-      throw new BadRequestException({ code: 'FILE_REQUIRED', message: 'A resume file is required.' });
+      throw new BadRequestException({
+        code: 'FILE_REQUIRED',
+        message: 'A resume file is required.',
+      });
     }
 
     // ── 1. Validate the file up front (extension, mime, size, magic bytes) ──
     if (file.buffer.length > this.maxFileSize) {
-      throw new BadRequestException({ code: 'FILE_TOO_LARGE', message: 'The resume file is too large.' });
+      throw new BadRequestException({
+        code: 'FILE_TOO_LARGE',
+        message: 'The resume file is too large.',
+      });
     }
     const extension = this.filesService.validateAndGetExtension(
       file.originalName,
@@ -220,7 +226,12 @@ export class RecruiterCandidateWorkflowService {
     companyId: string,
     userId: string,
     membershipId: string,
-    file: RecruiterWorkflowResumeFile & { extension: string; storageKey: string; checksumSha256: string; sizeBytes: number },
+    file: RecruiterWorkflowResumeFile & {
+      extension: string;
+      storageKey: string;
+      checksumSha256: string;
+      sizeBytes: number;
+    },
     tx: Prisma.TransactionClient,
   ): Promise<{ resourceType: string; resourceId: string; responseJson: RecruiterWorkflowResult }> {
     const source = dto.source ?? CandidateSource.RECRUITER_CREATED;

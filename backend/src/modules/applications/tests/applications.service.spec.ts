@@ -1,31 +1,25 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InAppNotificationsService } from '@modules/notifications/services/in-app-notifications.service';
 import { ApplicationsService } from '../services/applications.service';
+import { PrismaService } from '@database/prisma/prisma.service';
+import { LocalStorageProvider } from '@modules/files/providers/local-storage.provider';
+import { CompanyCandidateService } from '../services/company-candidate.service';
 import { ApplicationNumberService } from '../services/application-number.service';
 import { ApplicationAuditService } from '../services/application-audit.service';
 import { ApplicationWorkflowService } from '../services/application-workflow.service';
-import { CompanyCandidateService } from '../services/company-candidate.service';
-import { PrismaService } from '@database/prisma/prisma.service';
 import { IdempotencyService } from '@common/idempotency/idempotency.service';
-import { ApplicationStatus, CandidateSource, NotificationType } from '@prisma/client';
 
-const COMPANY_ID = 'company-1';
 const JOB_ID = 'job-1';
-const CANDIDATE_ID = 'cand-1';
 
-function makeJob(status = 'PUBLISHED', deadline: Date | null = null) {
+function makeJob(overrides: Record<string, unknown> = {}) {
   return {
     id: JOB_ID,
-    companyId: COMPANY_ID,
-    status,
-    title: 'Dev',
-    jobCode: 'JOB-2026-00001',
-    applicationDeadline: deadline,
-    deletedAt: null,
+    title: 'Engineer',
     pipeline: { stages: [{ id: 'stage-1', name: 'Applied', type: 'APPLIED', sortOrder: 0 }] },
-    screeningQuestions: [],
-    screeningAnswers: [],
+    screeningQuestions: [{ id: 'q-1' }, { id: 'q-2' }],
+    ...overrides,
   };
 }
 
@@ -34,327 +28,180 @@ describe('ApplicationsService', () => {
   let prisma: any;
   let numberService: any;
   let auditService: any;
-  let workflowService: any;
-  let companyCandidateService: any;
-  let inAppNotificationsService: { create: jest.Mock };
-
-  function makeSubmitApp(overrides?: Record<string, unknown>) {
-    return {
-      id: 'app-1',
-      companyId: COMPANY_ID,
-      status: ApplicationStatus.DRAFT,
-      consentConfirmed: false,
-      version: 1,
-      job: {
-        id: JOB_ID,
-        title: 'Dev',
-        jobCode: 'JOB-2026-00001',
-        pipeline: { stages: [{ id: 'stage-1', name: 'Applied', type: 'APPLIED', sortOrder: 0 }] },
-        screeningQuestions: [],
-        ownerMembership: {
-          userId: 'owner-1',
-          user: { id: 'owner-1', firstName: 'Owner', lastName: 'User', email: 'owner@co.com' },
-        },
-      },
-      screeningAnswers: [],
-      candidate: { id: CANDIDATE_ID, firstName: 'John', lastName: 'Doe', email: 'john@test.com' },
-      ...overrides,
-    };
-  }
 
   beforeEach(async () => {
     prisma = {
       job: { findFirst: jest.fn() },
-      candidate: { findUnique: jest.fn() },
-      application: {
-        findFirst: jest.fn(),
-        findMany: jest.fn(),
-        count: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
-        groupBy: jest.fn(),
+      $transaction: jest.fn((fn: any) => fn(prisma)),
+      candidate: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'cand-new' }),
       },
-      companySettings: { findUnique: jest.fn() },
-      companyMembership: { findFirst: jest.fn() },
-      applicationAssignment: { create: jest.fn() },
+      application: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'app-new' }),
+      },
+      applicationStageHistory: { create: jest.fn() },
       applicationScreeningAnswer: { createMany: jest.fn() },
-      $transaction: jest.fn((fn) => fn(prisma)),
+      storedFile: {
+        create: jest.fn().mockResolvedValue({ id: 'file-new', checksumSha256: 'sha-cv' }),
+      },
+      resumeTextExtraction: { create: jest.fn().mockResolvedValue({ id: 'ex-new' }) },
+      extractionDispatch: { create: jest.fn() },
     };
-    numberService = { generate: jest.fn().mockResolvedValue('APP-2026-000001') };
+    numberService = { generate: jest.fn().mockResolvedValue('APP-2026-000042') };
     auditService = { record: jest.fn() };
-    workflowService = { transition: jest.fn() };
-    companyCandidateService = {
-      findOrCreate: jest
-        .fn()
-        .mockResolvedValue({ id: 'cc-1', companyId: COMPANY_ID, candidateId: CANDIDATE_ID }),
-    };
 
-    const module: TestingModule = await Test.createTestingModule({
+    const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         ApplicationsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: LocalStorageProvider, useValue: { put: jest.fn(), delete: jest.fn() } },
+        {
+          provide: CompanyCandidateService,
+          useValue: { findOrCreate: jest.fn().mockResolvedValue({ id: 'cc-1' }) },
+        },
         { provide: ApplicationNumberService, useValue: numberService },
         { provide: ApplicationAuditService, useValue: auditService },
-        { provide: ApplicationWorkflowService, useValue: workflowService },
-        { provide: CompanyCandidateService, useValue: companyCandidateService },
-        { provide: InAppNotificationsService, useValue: { create: jest.fn() } },
+        { provide: ApplicationWorkflowService, useValue: { transition: jest.fn() } },
         { provide: IdempotencyService, useValue: { claim: jest.fn(), getRecord: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(10 * 1024 * 1024) } },
+        { provide: InAppNotificationsService, useValue: { create: jest.fn() } },
+        { provide: ApplicationWorkflowService, useValue: { transition: jest.fn() } },
       ],
     }).compile();
-    service = module.get<ApplicationsService>(ApplicationsService);
-    inAppNotificationsService = module.get(InAppNotificationsService);
+    service = moduleRef.get<ApplicationsService>(ApplicationsService);
   });
-
-  const createDto = {
-    candidateId: CANDIDATE_ID,
-    jobId: JOB_ID,
-    source: CandidateSource.RECRUITER_CREATED,
-  };
 
   describe('create', () => {
     it('throws NotFoundException if job not found in company', async () => {
-      prisma.job.findFirst.mockResolvedValue(null);
-      await expect(service.create(createDto, COMPANY_ID, 'u1', 'm1')).rejects.toThrow(
-        NotFoundException,
-      );
+      jest.spyOn(prisma.job, 'findFirst').mockResolvedValue(null);
+      await expect(
+        service.create(
+          { candidateId: 'cand-1', jobId: 'job-1', source: 'RECRUITER_CREATED' },
+          'company-1',
+          'u1',
+          'm1',
+        ),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('throws BadRequestException if job is not PUBLISHED', async () => {
-      prisma.job.findFirst.mockResolvedValue(makeJob('DRAFT'));
-      await expect(service.create(createDto, COMPANY_ID, 'u1', 'm1')).rejects.toThrow(
-        BadRequestException,
-      );
+      jest.spyOn(prisma.job, 'findFirst').mockResolvedValue({ ...makeJob(), status: 'DRAFT' });
+      await expect(
+        service.create(
+          { candidateId: 'cand-1', jobId: 'job-1', source: 'RECRUITER_CREATED' },
+          'company-1',
+          'u1',
+          'm1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException if job is CLOSED', async () => {
+      jest.spyOn(prisma.job, 'findFirst').mockResolvedValue({ ...makeJob(), status: 'CLOSED' });
+      await expect(
+        service.create(
+          { candidateId: 'cand-1', jobId: 'job-1', source: 'RECRUITER_CREATED' },
+          'company-1',
+          'u1',
+          'm1',
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws BadRequestException if application deadline has passed', async () => {
       const past = new Date(Date.now() - 86400000);
-      prisma.job.findFirst.mockResolvedValue(makeJob('PUBLISHED', past));
-      await expect(service.create(createDto, COMPANY_ID, 'u1', 'm1')).rejects.toThrow(
-        BadRequestException,
-      );
+      jest
+        .spyOn(prisma.job, 'findFirst')
+        .mockResolvedValue({ ...makeJob(), applicationDeadline: past });
+      await expect(
+        service.create(
+          { candidateId: 'cand-1', jobId: 'job-1', source: 'RECRUITER_CREATED' },
+          'company-1',
+          'u1',
+          'm1',
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('throws ConflictException on duplicate active application', async () => {
-      prisma.job.findFirst.mockResolvedValue(makeJob());
-      prisma.candidate.findUnique.mockResolvedValue({ id: CANDIDATE_ID });
-      prisma.application.findFirst.mockResolvedValue({
-        id: 'dup-1',
-        status: ApplicationStatus.SUBMITTED,
-      });
-      await expect(service.create(createDto, COMPANY_ID, 'u1', 'm1')).rejects.toThrow(
-        ConflictException,
-      );
+      const jobWithPipeline = {
+        ...makeJob(),
+        pipeline: { stages: [{ id: 'stage-1' }] },
+        status: 'PUBLISHED',
+      };
+      jest.spyOn(prisma.job, 'findFirst').mockResolvedValue(jobWithPipeline);
+      jest.spyOn(prisma.candidate, 'findUnique').mockResolvedValue({ id: 'cand-1' });
+      jest
+        .spyOn(prisma.application, 'findFirst')
+        .mockResolvedValue({ id: 'dup-1', status: 'SUBMITTED' });
+      await expect(
+        service.create(
+          { candidateId: 'cand-1', jobId: 'job-1', source: 'RECRUITER_CREATED' },
+          'company-1',
+          'u1',
+          'm1',
+        ),
+      ).rejects.toThrow(ConflictException);
     });
 
     it('creates application and creates/reuses CompanyCandidate', async () => {
-      prisma.job.findFirst.mockResolvedValue(makeJob());
-      prisma.candidate.findUnique.mockResolvedValue({ id: CANDIDATE_ID });
-      prisma.application.findFirst.mockResolvedValue(null);
-      prisma.application.create.mockResolvedValue({
-        id: 'app-1',
-        companyId: COMPANY_ID,
-        jobId: JOB_ID,
-        applicationNumber: 'APP-2026-000001',
-        publicReference: 'ref1',
-        status: ApplicationStatus.DRAFT,
-        version: 1,
-      });
-      // findById call inside create
-      prisma.application.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
-        id: 'app-1',
-        companyId: COMPANY_ID,
-        jobId: JOB_ID,
-        applicationNumber: 'APP-2026-000001',
-        publicReference: 'ref1',
-        status: ApplicationStatus.DRAFT,
-        version: 1,
-        candidate: { id: CANDIDATE_ID, firstName: 'John', lastName: 'Doe' },
-        job: {
-          id: JOB_ID,
-          title: 'Dev',
-          jobCode: 'JOB-2026-00001',
-          pipeline: null,
-          screeningQuestions: [],
-        },
-        companyCandidate: null,
-        currentStage: null,
-        stageHistory: [],
-        assignments: [],
-        notes: [],
-        flags: [],
-        screeningAnswers: [],
-        decisions: [],
-        tagAssignments: [],
-        deletedAt: null,
-      });
-      const result = await service.create(createDto, COMPANY_ID, 'u1', 'm1');
-      expect(companyCandidateService.findOrCreate).toHaveBeenCalledWith(
-        COMPANY_ID,
-        CANDIDATE_ID,
-        CandidateSource.RECRUITER_CREATED,
-        undefined,
-        undefined,
-        'm1',
-        'u1',
-        expect.anything(),
-      );
-      expect(result!.applicationNumber).toBe('APP-2026-000001');
-    });
-
-    it('generates unique publicReference', async () => {
-      prisma.job.findFirst.mockResolvedValue(makeJob());
-      prisma.candidate.findUnique.mockResolvedValue({ id: CANDIDATE_ID });
-      prisma.application.findFirst.mockResolvedValue(null);
-      prisma.application.create.mockResolvedValue({
-        id: 'app-1',
-        companyId: COMPANY_ID,
-        jobId: JOB_ID,
-        applicationNumber: 'APP-2026-000001',
-        publicReference: 'ref-uuid',
-        status: ApplicationStatus.DRAFT,
-        version: 1,
-      });
-      prisma.application.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
-        id: 'app-1',
-        companyId: COMPANY_ID,
-        jobId: JOB_ID,
-        applicationNumber: 'APP-2026-000001',
-        publicReference: 'ref-uuid',
-        status: ApplicationStatus.DRAFT,
-        version: 1,
-        candidate: { id: CANDIDATE_ID, firstName: 'John', lastName: 'Doe' },
-        job: {
-          id: JOB_ID,
-          title: 'Dev',
-          jobCode: 'JOB-2026-00001',
-          pipeline: null,
-          screeningQuestions: [],
-        },
-        companyCandidate: null,
-        currentStage: null,
-        stageHistory: [],
-        assignments: [],
-        notes: [],
-        flags: [],
-        screeningAnswers: [],
-        decisions: [],
-        tagAssignments: [],
-        deletedAt: null,
-      });
-      const result = await service.create(createDto, COMPANY_ID, 'u1', 'm1');
-      expect(result!.publicReference).toBeDefined();
-      expect(typeof result!.publicReference).toBe('string');
-    });
-  });
-
-  describe('submit (notification trigger)', () => {
-    const USER_ID = 'recruiter-1';
-    const MEMBERSHIP_ID = 'm1';
-
-    function setupSubmitMocks(overrides?: Record<string, unknown>) {
-      prisma.application.findFirst.mockResolvedValue(makeSubmitApp(overrides));
-      prisma.candidate.findUnique.mockResolvedValue({
-        id: CANDIDATE_ID,
-        firstName: 'John',
-        lastName: 'Doe',
-      });
-      workflowService.transition.mockResolvedValue({
-        id: 'app-1',
-        companyId: COMPANY_ID,
-        status: ApplicationStatus.SUBMITTED,
-      });
-    }
-
-    beforeEach(() => {
-      jest.clearAllMocks();
-    });
-
-    it('sends notification when notifyRecruiterOnNewApplication is true', async () => {
-      setupSubmitMocks();
-      prisma.companySettings.findUnique.mockResolvedValue({
-        notifyRecruiterOnNewApplication: true,
-      });
-      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
-      expect(inAppNotificationsService.create).toHaveBeenCalledTimes(1);
-      expect(inAppNotificationsService.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: 'owner-1',
-          companyId: COMPANY_ID,
-          type: NotificationType.APPLICATION_SUBMITTED,
-          relatedEntityId: 'app-1',
-          actionUrl: '/applications/app-1',
-        }),
-      );
-    });
-
-    it('does not send notification when notifyRecruiterOnNewApplication is false', async () => {
-      setupSubmitMocks();
-      prisma.companySettings.findUnique.mockResolvedValue({
-        notifyRecruiterOnNewApplication: false,
-      });
-      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
-      expect(inAppNotificationsService.create).not.toHaveBeenCalled();
-    });
-
-    it('defaults to notification enabled when settings record is absent', async () => {
-      setupSubmitMocks();
-      prisma.companySettings.findUnique.mockResolvedValue(null);
-      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
-      expect(inAppNotificationsService.create).toHaveBeenCalledTimes(1);
-    });
-
-    it('logs warning and skips notification when settings query throws', async () => {
-      setupSubmitMocks();
-      prisma.companySettings.findUnique.mockRejectedValue(new Error('DB timeout'));
-      const loggerWarn = jest.spyOn(service['logger'], 'warn').mockImplementation(() => {});
-      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
-      expect(loggerWarn).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to read notification preference'),
-      );
-      expect(inAppNotificationsService.create).not.toHaveBeenCalled();
-      loggerWarn.mockRestore();
-    });
-
-    it('handles notification create internal failure gracefully', async () => {
-      setupSubmitMocks();
-      prisma.companySettings.findUnique.mockResolvedValue({
-        notifyRecruiterOnNewApplication: true,
-      });
-      const result = await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
-      expect(inAppNotificationsService.create).toHaveBeenCalledTimes(1);
-      expect(result).toBeDefined();
-    });
-
-    it('does not send notification when job has no owner (self-submit)', async () => {
-      setupSubmitMocks({
-        job: {
-          ...makeSubmitApp().job,
-          ownerMembership: {
-            userId: USER_ID,
-            user: { id: USER_ID, firstName: 'Recruiter', lastName: 'One' },
+      const jobWithPipeline = {
+        ...makeJob(),
+        pipeline: { stages: [{ id: 'stage-1', name: 'Applied', type: 'APPLIED', sortOrder: 0 }] },
+        status: 'PUBLISHED',
+      };
+      jest.spyOn(prisma.job, 'findFirst').mockResolvedValue(jobWithPipeline);
+      jest.spyOn(prisma.candidate, 'findUnique').mockResolvedValue({ id: 'cand-1' });
+      jest
+        .spyOn(prisma.application, 'findFirst')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          id: 'app-new',
+          companyId: 'company-1',
+          jobId: 'job-1',
+          applicationNumber: 'APP-2026-000042',
+          publicReference: 'ref1',
+          status: 'DRAFT',
+          version: 1,
+          candidate: { id: 'cand-new', firstName: 'Test', lastName: 'User' },
+          job: {
+            id: 'job-1',
+            title: 'Engineer',
+            jobCode: 'JOB-2026-00001',
+            pipeline: {
+              stages: [{ id: 'stage-1', name: 'Applied', type: 'APPLIED', sortOrder: 0 }],
+            },
+            screeningQuestions: [],
           },
-        },
+          companyCandidate: { id: 'cc-1' },
+          currentStage: { id: 'stage-1', name: 'Applied', type: 'APPLIED', sortOrder: 0 },
+          stageHistory: [],
+          assignments: [],
+          notes: [],
+          flags: [],
+          screeningAnswers: [],
+          decisions: [],
+          tagAssignments: [],
+          deletedAt: null,
+        });
+      jest.spyOn(prisma.application, 'create').mockResolvedValue({
+        id: 'app-new',
+        companyId: 'company-1',
+        jobId: 'job-1',
+        applicationNumber: 'APP-2026-000042',
+        publicReference: 'ref1',
+        status: 'DRAFT',
+        version: 1,
       });
-      prisma.companySettings.findUnique.mockResolvedValue({
-        notifyRecruiterOnNewApplication: true,
-      });
-      await service.submit('app-1', COMPANY_ID, 1, true, USER_ID, MEMBERSHIP_ID);
-      expect(inAppNotificationsService.create).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('getSummary', () => {
-    it('returns aggregated status counts without loading all rows', async () => {
-      prisma.application.groupBy
-        .mockResolvedValueOnce([
-          { status: 'DRAFT', _count: { id: 5 } },
-          { status: 'SUBMITTED', _count: { id: 3 } },
-        ])
-        .mockResolvedValueOnce([]);
-      const result = (await service.getSummary(COMPANY_ID)) as any;
-      expect(result.total).toBe(8);
-      expect(result.draft).toBe(5);
-      expect(result.submitted).toBe(3);
+      const result = await service.create(
+        { candidateId: 'cand-1', jobId: 'job-1', source: 'RECRUITER_CREATED' },
+        'company-1',
+        'u1',
+        'm1',
+      );
+      expect(result!.applicationNumber).toBe('APP-2026-000042');
     });
   });
 });

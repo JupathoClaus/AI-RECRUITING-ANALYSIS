@@ -105,9 +105,7 @@ describe('TavusArtifactSyncService', () => {
     await service.reconcile();
 
     const where = prisma.aiInterview.findMany.mock.calls[0][0].where;
-    expect(where.OR).toEqual([
-      { transcriptStatus: { in: ['NOT_REQUESTED', 'PENDING'] } },
-    ]);
+    expect(where.OR).toEqual([{ transcriptStatus: { in: ['NOT_REQUESTED', 'PENDING'] } }]);
     mockConfigService.get.mockImplementation((key: string) => {
       const config: Record<string, any> = {
         'tavus.artifactSyncCooldownMs': 60000,

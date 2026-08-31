@@ -83,6 +83,7 @@ export default function InterviewSessionPage() {
   const [joining, setJoining] = React.useState(true)
   const [isOnline, setIsOnline] = React.useState(true)
   const [leaving, setLeaving] = React.useState(false)
+  const [confirmEnd, setConfirmEnd] = React.useState(false)
   const elapsed = useElapsed()
 
   React.useEffect(() => {
@@ -102,7 +103,7 @@ export default function InterviewSessionPage() {
     }
   }, [accessToken, router])
 
-  const handleLeave = async () => {
+  const handleEndInterview = async () => {
     if (leaving) return
     setLeaving(true)
     try {
@@ -158,7 +159,7 @@ export default function InterviewSessionPage() {
               variant="outline"
               size="sm"
               className="h-8"
-              onClick={handleLeave}
+              onClick={() => setConfirmEnd(true)}
               disabled={leaving}
             >
               {leaving ? (
@@ -166,7 +167,7 @@ export default function InterviewSessionPage() {
               ) : (
                 <LogOut className="h-3.5 w-3.5" />
               )}
-              Leave
+              End Interview
             </Button>
           </div>
         </div>
@@ -179,7 +180,7 @@ export default function InterviewSessionPage() {
               <p className="text-sm text-error" role="alert">
                 {sessionError}
               </p>
-              <Button variant="outline" className="mt-5" onClick={handleLeave}>
+              <Button variant="outline" className="mt-5" onClick={handleEndInterview}>
                 Return to start
               </Button>
             </Card>
@@ -203,7 +204,7 @@ export default function InterviewSessionPage() {
                   </p>
                   <p className="max-w-md text-sm leading-relaxed text-muted">
                     You are connected to your AI interviewer. The interview is being conducted
-                    now â€” answer naturally, and press <strong>Leave</strong> when you are done.
+                    now â€” answer naturally, and press <strong>End Interview</strong> when you are done.
                   </p>
                 </div>
               ) : (
@@ -256,6 +257,34 @@ export default function InterviewSessionPage() {
           </>
         )}
       </main>
+
+      {confirmEnd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 p-4" role="dialog" aria-modal="true" aria-labelledby="end-interview-title">
+          <div className="w-full max-w-sm rounded-xl bg-surface p-6 shadow-xl ring-1 ring-border">
+            <h2 id="end-interview-title" className="text-lg font-semibold text-foreground">
+              End Interview?
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              Are you sure you want to finish your interview? Once ended, you may not be able to continue.
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button variant="outline" onClick={() => setConfirmEnd(false)} disabled={leaving}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={() => { setConfirmEnd(false); void handleEndInterview() }} disabled={leaving}>
+                {leaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Ending…
+                  </>
+                ) : (
+                  "End Interview"
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

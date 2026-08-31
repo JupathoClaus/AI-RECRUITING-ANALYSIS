@@ -64,6 +64,14 @@ export class AiInterviewsController {
     return this.aiInterviewsService.previewInvitation(id, user.activeCompanyId!);
   }
 
+  @Get(':id/recording-playback')
+  @RequirePermissions('interviews.read')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get short-lived signed recording playback URL' })
+  async recordingPlayback(@Param('id') id: string, @CurrentUser() user: AuthenticatedPrincipal) {
+    return this.aiInterviewsService.getRecordingPlayback(id, user.activeCompanyId!);
+  }
+
   @Post(':id/regenerate-code')
   @RequirePermissions('interviews.update')
   @HttpCode(HttpStatus.OK)

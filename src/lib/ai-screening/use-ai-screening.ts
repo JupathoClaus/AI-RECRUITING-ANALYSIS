@@ -5,7 +5,7 @@ import type { ScreeningWorkflowState } from './screening-state'
 import {
   POLLING_INTERVAL_MS, MAX_POLLING_DURATION_MS, EXTRACTION_RETRY_INTERVAL_MS, MAX_EXTRACTION_WAIT_MS,
   workflowStateForStatus, screeningResultStateUpdate, isRetryablePollingError, isExpectedNoScreeningError,
-  isExtractionPendingError, isExtractionFailedError, classifyScreeningError,
+  isExtractionPendingError, isExtractionFailedError, isInsufficientJobCriteriaError, classifyScreeningError,
 } from './screening-helpers'
 import { AiScreeningResultDto, requestAiScreening, getLatestAiScreening, getAiScreeningById, getResumeExtractionStatus } from '@/lib/api/ai-screening.api'
 import { uploadResume, StoredFileResponse } from '@/lib/api/files.api'
@@ -302,6 +302,12 @@ export function useAiScreening() {
         waitForExtractionRef.current(Date.now())
       } else if (apiErr && isExtractionFailedError(apiErr)) {
         setWorkflow({ workflowState: 'EXTRACTION_FAILED', error: apiErr.message, errorCode: 'RESUME_EXTRACTION_FAILED' })
+      } else if (apiErr && isInsufficientJobCriteriaError(apiErr)) {
+        setWorkflow({
+          workflowState: 'ERROR',
+          error: apiErr.message || 'Add job requirements before running AI screening.',
+          errorCode: 'INSUFFICIENT_JOB_CRITERIA',
+        })
       } else {
         setWorkflow({
           workflowState: 'ERROR',

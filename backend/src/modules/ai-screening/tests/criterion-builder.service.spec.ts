@@ -122,14 +122,18 @@ describe('CriterionBuilderService', () => {
     expect(uniqueIds.size).toBe(ids.length);
   });
 
-  it('returns empty array when job has no data', () => {
+  it('returns empty array when job has no structured data or extractable criteria', () => {
     const app = makeApp({
       skills: [],
       educationRequirements: [],
       experienceRequirements: [],
       experienceLevel: 'NOT_SPECIFIED',
+      description: '',
+      qualifications: null,
+      responsibilities: null,
     });
     const criteria = svc.build(app);
+    // Should return empty array - no fabricated criteria
     expect(criteria).toHaveLength(0);
   });
 

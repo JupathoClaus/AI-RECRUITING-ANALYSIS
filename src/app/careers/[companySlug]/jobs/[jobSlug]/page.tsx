@@ -2,128 +2,182 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { ArrowLeft, CheckCircle2, FileText, MapPin } from "lucide-react"
+import { ArrowLeft, Briefcase, CalendarClock, Clock3, GraduationCap, MapPin, Wallet, Users } from "lucide-react"
+import { getPublicJob, type PublicJob } from "@/lib/api/public-careers.api"
 import { Button } from "@/components/ui/button"
-import {
-  getPublicJob,
-  submitPublicApplication,
-  uploadPublicResume,
-  type PublicJob,
-} from "@/lib/api/public-careers.api"
+import { Badge } from "@/components/ui/badge"
+
+function formatEmploymentType(value: string): string {
+  return value.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function formatSalary(job: PublicJob): string | null {
+  if (!job.salaryMin && !job.salaryMax) return null
+  const currency = job.salaryCurrency || ""
+  if (job.salaryMin && job.salaryMax) return `${currency}${job.salaryMin.toLocaleString()} – ${currency}${job.salaryMax.toLocaleString()}`
+  const value = job.salaryMin || job.salaryMax
+  return `${currency}${value?.toLocaleString()}+`
+}
 
 export default function PublicJobPage({ params }: { params: Promise<{ companySlug: string; jobSlug: string }> }) {
   const { companySlug, jobSlug } = React.use(params)
+  const companyName = React.useMemo(() => companySlug.replace(/-/g, " "), [companySlug])
   const [job, setJob] = React.useState<PublicJob | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
-  const [submitting, setSubmitting] = React.useState(false)
-  const [reference, setReference] = React.useState<string | null>(null)
-  const [resumePending, setResumePending] = React.useState(false)
-  const [file, setFile] = React.useState<File | null>(null)
 
   React.useEffect(() => {
+    let active = true
     getPublicJob(companySlug, jobSlug)
-      .then(setJob)
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Unable to load this role."))
-      .finally(() => setLoading(false))
+      .then((result) => active && setJob(result))
+      .catch((cause: unknown) =>
+        active && setError(cause instanceof Error ? cause.message : "This role is no longer available."),
+      )
+      .finally(() => active && setLoading(false))
+    return () => { active = false }
   }, [companySlug, jobSlug])
 
-  const uploadResumeFor = async (publicReference: string, resume: File) => {
-    await uploadPublicResume(publicReference, resume)
-    setResumePending(false)
-  }
-
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!file) { setError("Please select a PDF or DOCX CV."); return }
-    setSubmitting(true)
-    setError(null)
-    const form = new FormData(event.currentTarget)
-    try {
-      const result = await submitPublicApplication(companySlug, jobSlug, {
-        idempotencyKey: crypto.randomUUID(),
-        firstName: String(form.get("firstName") || ""),
-        lastName: String(form.get("lastName") || ""),
-        email: String(form.get("email") || ""),
-        phone: String(form.get("phone") || "") || undefined,
-        coverLetter: String(form.get("coverLetter") || "") || undefined,
-        preferredLanguage: "en",
-        consentConfirmed: form.get("consentConfirmed") === "on",
-      })
-      setReference(result.publicReference)
-      setResumePending(true)
-      await uploadResumeFor(result.publicReference, file)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Application could not be submitted.")
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  if (loading) return <main className="min-h-screen p-10 text-muted">Loading role…</main>
-  if (!job) return <main className="min-h-screen p-10 text-error">{error || "Role not found."}</main>
-
-  if (reference && !resumePending) {
+  if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background px-5">
-        <div className="w-full max-w-lg rounded-3xl border border-border bg-surface p-8 text-center shadow-xl">
-          <CheckCircle2 className="mx-auto h-12 w-12 text-success" />
-          <h1 className="mt-5 text-2xl font-bold text-foreground">Application received</h1>
-          <p className="mt-2 text-muted">Your application and CV were submitted successfully.</p>
-          <div className="mt-5 rounded-xl bg-surface-elevated p-3 font-mono text-sm text-foreground">{reference}</div>
-          <p className="mt-2 text-xs text-muted">Save this reference to check your application status.</p>
+      <main className="min-h-screen bg-background">
+        <div className="mx-auto max-w-4xl px-5 py-16" role="status" aria-live="polite">
+          <div className="h-8 w-64 animate-pulse rounded-lg bg-surface" />
+          <div className="mt-6 h-40 w-full animate-pulse rounded-2xl bg-surface" />
         </div>
       </main>
     )
   }
 
+  if (!job) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-5 text-center">
+        <Briefcase className="h-10 w-10 text-muted" />
+        <h1 className="text-xl font-semibold text-foreground">Role not available</h1>
+        <p className="max-w-md text-sm text-muted">{error || "This role may have been closed or filled."}</p>
+        <Link href={`/careers/${encodeURIComponent(companySlug)}`}>
+          <Button variant="outline">Browse all open roles</Button>
+        </Link>
+      </main>
+    )
+  }
+
+  const salary = formatSalary(job)
+
   return (
     <main className="min-h-screen bg-background">
-      <div className="mx-auto grid max-w-6xl gap-8 px-5 py-10 lg:grid-cols-[1.15fr_0.85fr]">
-        <section>
-          <Link href={`/careers/${encodeURIComponent(companySlug)}`} className="inline-flex items-center gap-2 text-sm text-primary"><ArrowLeft className="h-4 w-4" />All roles</Link>
-          <h1 className="mt-6 text-3xl font-bold text-foreground">{job.title}</h1>
-          <div className="mt-3 flex flex-wrap gap-4 text-sm text-muted">
-            {job.location && <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" />{job.location.city || job.location.name}</span>}
-            <span>{job.employmentType.replace(/_/g, " ")}</span><span>{job.workplaceType.replace(/_/g, " ")}</span>
-          </div>
-          <div className="mt-8 space-y-7 text-sm leading-7 text-foreground/80">
-            <JobSection title="About the role" value={job.description} />
-            <JobSection title="Responsibilities" value={job.responsibilities} />
-            <JobSection title="Qualifications" value={job.qualifications} />
-            <JobSection title="Benefits" value={job.benefits} />
-          </div>
-        </section>
+      {/* Header */}
+      <header className="border-b border-border bg-surface">
+        <div className="mx-auto max-w-4xl px-5 py-8">
+          <Link
+            href={`/careers/${encodeURIComponent(companySlug)}`}
+            className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-primary-hover"
+          >
+            <ArrowLeft className="h-4 w-4" />All open roles
+          </Link>
+        </div>
+      </header>
 
-        <aside className="h-fit rounded-3xl border border-border bg-surface p-6 shadow-lg">
-          <h2 className="text-xl font-semibold text-foreground">Apply for this role</h2>
-          <p className="mt-1 text-sm text-muted">Fields marked required must be completed.</p>
-          <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-            <div className="grid grid-cols-2 gap-3"><Field name="firstName" label="First name" /><Field name="lastName" label="Last name" /></div>
-            <Field name="email" label="Email" type="email" />
-            <Field name="phone" label="Phone" required={false} />
-            <label className="block text-sm font-medium text-foreground">Cover letter<textarea name="coverLetter" rows={5} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2" /></label>
-            <label className="block text-sm font-medium text-foreground">CV (PDF or DOCX, max 10MB)
-              <span className="mt-1.5 flex items-center gap-2 rounded-xl border border-dashed border-border bg-background p-3"><FileText className="h-5 w-5 text-primary" /><input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required onChange={(e) => setFile(e.target.files?.[0] || null)} /></span>
-            </label>
-            <label className="flex items-start gap-2 text-sm text-muted"><input name="consentConfirmed" type="checkbox" required className="mt-1" /><span>I consent to the processing of my application data for recruitment.</span></label>
-            {error && <div className="rounded-xl border border-error/20 bg-error/5 p-3 text-sm text-error">{error}</div>}
-            {reference && resumePending && file && (
-              <Button type="button" variant="outline" className="w-full" onClick={() => uploadResumeFor(reference, file).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "CV upload failed."))}>Retry CV upload</Button>
+      <article className="mx-auto max-w-4xl px-5 py-10">
+        {/* Title block */}
+        <div className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
+          <p className="flex items-center gap-2 text-sm font-medium capitalize text-primary">
+            <Briefcase className="h-4 w-4" />{companyName}
+          </p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-foreground">{job.title}</h1>
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted">
+            {job.location && (
+              <span className="flex items-center gap-1.5">
+                <MapPin className="h-4 w-4" />{job.location.city || job.location.name}
+              </span>
             )}
-            <Button type="submit" className="w-full" disabled={submitting}>{submitting ? "Submitting…" : "Submit application"}</Button>
-          </form>
-        </aside>
-      </div>
+            <span className="flex items-center gap-1.5">
+              <Clock3 className="h-4 w-4" />{formatEmploymentType(job.employmentType)}
+            </span>
+            <span>{formatEmploymentType(job.workplaceType)}</span>
+            {job.experienceLevel && <Badge variant="secondary">{job.experienceLevel}</Badge>}
+          </div>
+
+          {(salary || job.applicationDeadline || job.numberOfOpenings) && (
+            <dl className="mt-6 grid grid-cols-1 gap-4 border-t border-border-subtle pt-6 sm:grid-cols-3">
+              {salary && (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Salary</dt>
+                  <dd className="mt-1 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                    <Wallet className="h-4 w-4 text-muted" />{salary}
+                  </dd>
+                </div>
+              )}
+              {job.numberOfOpenings ? (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Openings</dt>
+                  <dd className="mt-1 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                    <Users className="h-4 w-4 text-muted" />
+                    {job.numberOfOpenings} position{job.numberOfOpenings === 1 ? "" : "s"}
+                  </dd>
+                </div>
+              ) : null}
+              {job.applicationDeadline ? (
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Apply before</dt>
+                  <dd className="mt-1 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                    <CalendarClock className="h-4 w-4 text-muted" />
+                    {new Date(job.applicationDeadline).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          )}
+
+          <div className="mt-8">
+            <Link href={`/careers/${encodeURIComponent(companySlug)}/jobs/${encodeURIComponent(job.slug)}/apply`}>
+              <Button size="lg" className="w-full sm:w-auto sm:px-10">Apply for this Job</Button>
+            </Link>
+            <p className="mt-3 text-xs text-muted">
+              Takes a few minutes — you will upload your CV and answer a short set of questions.
+            </p>
+          </div>
+        </div>
+
+        {/* Description sections */}
+        <div className="mt-8 space-y-8 rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
+          <JobSection title="About the Role" value={job.description} />
+          <JobSection title="Responsibilities" value={job.responsibilities} />
+          <JobSection title="Qualifications" value={job.qualifications} />
+          <JobSection title="Benefits" value={job.benefits} />
+
+          {!job.responsibilities && !job.qualifications && !job.benefits && (
+            <p className="text-sm text-muted">
+              The full description is listed above. Apply to receive the complete role brief.
+            </p>
+          )}
+        </div>
+
+        {/* Bottom CTA */}
+        <div className="mt-8 rounded-3xl border border-primary/20 bg-primary-subtle p-6 text-center sm:p-8">
+          <GraduationCap className="mx-auto h-6 w-6 text-primary" />
+          <h2 className="mt-3 text-lg font-semibold text-foreground">Ready to apply?</h2>
+          <p className="mt-1 text-sm text-muted">Your application goes directly to the hiring team.</p>
+          <Link href={`/careers/${encodeURIComponent(companySlug)}/jobs/${encodeURIComponent(job.slug)}/apply`} className="mt-4 inline-block">
+            <Button size="lg" className="sm:px-12">Apply for this Job</Button>
+          </Link>
+        </div>
+      </article>
+
+      <footer className="border-t border-border-subtle py-8">
+        <p className="text-center text-xs text-muted-foreground">
+          Powered by AI Recruiter — fair, structured and transparent hiring.
+        </p>
+      </footer>
     </main>
   )
 }
 
 function JobSection({ title, value }: { title: string; value: string | null }) {
-  if (!value) return null
-  return <section><h2 className="text-lg font-semibold text-foreground">{title}</h2><p className="mt-2 whitespace-pre-line">{value}</p></section>
-}
-
-function Field({ name, label, type = "text", required = true }: { name: string; label: string; type?: string; required?: boolean }) {
-  return <label className="block text-sm font-medium text-foreground">{label}<input name={name} type={type} required={required} className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2" /></label>
+  if (!value?.trim()) return null
+  return (
+    <section aria-label={title}>
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <p className="mt-3 whitespace-pre-line text-sm leading-7 text-foreground/80">{value}</p>
+    </section>
+  )
 }

@@ -100,20 +100,37 @@ export const validationSchema = Joi.object({
   TAVUS_MAX_CALL_DURATION_SECONDS: Joi.number().min(60).max(14400).default(600),
   TAVUS_PARTICIPANT_ABSENT_TIMEOUT_SECONDS: Joi.number().min(10).max(3600).default(120),
   TAVUS_PARTICIPANT_LEFT_TIMEOUT_SECONDS: Joi.number().min(10).max(3600).default(60),
-  // Tavus recording (requires a storage destination configured in the Tavus dashboard)
+  // Tavus recording (requires a storage destination with federated identity)
   TAVUS_RECORDING_ENABLED: Joi.boolean().default(false),
   TAVUS_RECORDING_PROVIDER: Joi.string().valid('s3', 'gcs', 'azure_blob').default('s3'),
   TAVUS_RECORDING_BUCKET_NAME: Joi.string().optional().allow(''),
   TAVUS_RECORDING_BUCKET_REGION: Joi.string().optional().allow(''),
   TAVUS_RECORDING_ASSUME_ROLE_ARN: Joi.string().optional().allow(''),
-  TAVUS_RECORDING_EXTERNAL_ID: Joi.string().optional().allow(''),
+  TAVUS_RECORDING_PROJECT_ID: Joi.string().optional().allow(''),
   TAVUS_RECORDING_WORKLOAD_IDENTITY_PROVIDER: Joi.string().optional().allow(''),
   TAVUS_RECORDING_SERVICE_ACCOUNT_EMAIL: Joi.string().optional().allow(''),
+  TAVUS_RECORDING_STORAGE_ACCOUNT: Joi.string().optional().allow(''),
+  TAVUS_RECORDING_CONTAINER: Joi.string().optional().allow(''),
+  TAVUS_RECORDING_TENANT_ID: Joi.string().optional().allow(''),
+  TAVUS_RECORDING_CLIENT_ID: Joi.string().optional().allow(''),
+  TAVUS_RECORDING_KEY_TEMPLATE: Joi.string().max(512).optional().allow(''),
   // Tavus artifact sync (transcript/recording reconciliation)
   TAVUS_ARTIFACT_SYNC_INTERVAL_MS: Joi.number().min(15000).max(3600000).default(120000),
   TAVUS_ARTIFACT_SYNC_COOLDOWN_MS: Joi.number().min(5000).max(3600000).default(60000),
   TAVUS_ARTIFACT_SYNC_MAX_PER_CYCLE: Joi.number().min(1).max(50).default(5),
   TAVUS_ARTIFACT_SYNC_MAX_AGE_HOURS: Joi.number().min(1).max(720).default(72),
+  TAVUS_AUTO_END_STALE_AFTER_MINUTES: Joi.number().min(5).max(1440).default(60),
+
+  // AWS (secure recording playback). No secrets required when the backend runs
+  // with an IAM role; static keys or a shared profile are optional.
+  AWS_REGION: Joi.string().optional().allow(''),
+  AWS_ACCESS_KEY_ID: Joi.string().optional().allow(''),
+  AWS_SECRET_ACCESS_KEY: Joi.string().optional().allow(''),
+  AWS_SESSION_TOKEN: Joi.string().optional().allow(''),
+  AWS_PROFILE: Joi.string().optional().allow(''),
+  AWS_PLAYBACK_ROLE_ARN: Joi.string().optional().allow(''),
+  AWS_PLAYBACK_ROLE_SESSION_NAME: Joi.string().optional().default('ai-recruiter-playback'),
+  AWS_PLAYBACK_SIGNED_URL_TTL_SECONDS: Joi.number().min(60).max(3600).default(600),
 });
 
 export interface ValidatedEnv {

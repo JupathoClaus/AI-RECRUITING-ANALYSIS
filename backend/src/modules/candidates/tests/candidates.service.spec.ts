@@ -1051,9 +1051,9 @@ describe('CandidatesService', () => {
 
     it('should return 404 when the candidate is not linked to the company (tenant isolation)', async () => {
       prisma.candidate.findFirst.mockResolvedValue(null);
-      await expect(service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-2')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-2'),
+      ).rejects.toThrow(NotFoundException);
       expect(prisma.candidate.update).not.toHaveBeenCalled();
     });
 
@@ -1063,7 +1063,14 @@ describe('CandidatesService', () => {
         status: 'DELETED',
         deletedAt: new Date(),
       });
-      const result = await service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1');
+      const result = await service.deleteCandidate(
+        'candidate-1',
+        1,
+        undefined,
+        'u',
+        'm',
+        'company-1',
+      );
       expect(result).toEqual({ deleted: true, status: 'already_deleted' });
       expect(prisma.candidate.update).not.toHaveBeenCalled();
       expect(auditService.record).not.toHaveBeenCalled();
@@ -1071,20 +1078,20 @@ describe('CandidatesService', () => {
 
     it('should reject deleting a merged or anonymized candidate', async () => {
       prisma.candidate.findFirst.mockResolvedValue({ ...baseCandidate, status: 'MERGED' });
-      await expect(service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1'),
+      ).rejects.toThrow(BadRequestException);
       prisma.candidate.findFirst.mockResolvedValue({ ...baseCandidate, status: 'ANONYMIZED' });
-      await expect(service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1'),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should reject on stale version', async () => {
       prisma.candidate.findFirst.mockResolvedValue({ ...baseCandidate, version: 5 });
-      await expect(service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1')).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.deleteCandidate('candidate-1', 1, undefined, 'u', 'm', 'company-1'),
+      ).rejects.toThrow(ConflictException);
     });
   });
 

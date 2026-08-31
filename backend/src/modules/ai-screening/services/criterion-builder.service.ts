@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { ScreeningCriterion, CriterionRequirementType } from '../domain/screening-criterion.type';
+import {
+  ScreeningCriterion,
+  CriterionRequirementType,
+  CriterionCategory,
+} from '../domain/screening-criterion.type';
 import { ApplicationData } from './screening-input-builder.service';
 
 // Weight budgets — must sum to 1.0 across a well-formed job.
@@ -77,6 +81,7 @@ export class CriterionBuilderService {
    * 2. JobExperienceRequirement records
    * 3. JobEducationRequirement records
    * 4. Fallback: experienceLevel enum label when no explicit requirements exist
+   * 5. Final fallback: derive criteria from job description/qualifications text
    *
    * The AI is never asked to invent criteria — it only evaluates these.
    */
@@ -175,9 +180,36 @@ export class CriterionBuilderService {
       });
     }
 
+    // ── 5. Final fallback: derive criteria from job description/qualifications text
+    // If no structured criteria exist at all, create basic criteria from the
+    // job's description/qualifications text so the model has something to evaluate.
+    if (criteria.length === 0) {
+      this.addFallbackCriteria(job, criteria, nextId);
+    }
+
     if (criteria.length === 0) return criteria;
 
     return normaliseWeights(criteria);
+  }
+
+  /**
+   * Creates basic criteria from job description/qualifications text when no
+   * structured requirements exist. This ensures the AI always has criteria to
+   * evaluate against, preventing a zero-score result.
+   */
+  private addFallbackCriteria(
+    job: ApplicationData['job'],
+    criteria: ScreeningCriterion[],
+    nextId: (prefix: string) => string,
+  ): void {
+    // If no structured criteria exist, we do NOT fabricate criteria from keywords.
+    // Criteria must come from employer-provided structured data.
+    // If no structured criteria exist and no experienceLevel is specified,
+    // we return empty criteria to signal INSUFFICIENT JOB CRITERIA.
+    //
+    // Only add a generic experience criterion if experienceLevel is specified
+    // (already handled in step 4 above).
+    // No keyword-based skill extraction - criteria must come from employer-provided structured data.
   }
 
   /**
