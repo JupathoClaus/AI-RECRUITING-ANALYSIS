@@ -46,6 +46,7 @@ export interface CandidateApiListItem {
   skillSummary: CandidateApiSkill[]
   preferredInterviewLanguage: string | null
   screening?: CandidateApiScreeningSummary | null
+  companyProfile?: { rating: number | null }
   email?: string
   phone?: string
   createdAt: string
@@ -107,6 +108,18 @@ export interface CandidateApiDetail {
   updatedAt: string
 }
 
+export interface CandidateActivityItem {
+  id: string
+  eventType: string
+  description: string | null
+  occurredAt: string
+}
+
+export interface CandidateActivityResponse {
+  data: CandidateActivityItem[]
+  meta: PaginationMeta
+}
+
 // ── Simple query params ────────────────────────────────────────────
 
 export interface CandidateQueryParams {
@@ -115,6 +128,19 @@ export interface CandidateQueryParams {
   search?: string
   sortBy?: string
   sortOrder?: "asc" | "desc"
+  /** Filter to candidates whose current application is for this job. */
+  jobId?: string
+  /**
+   * Filter to candidates whose current application status is in this list.
+   * Mirrors the server's current-application selection rule.
+   */
+  applicationStatus?: ApplicationStatus[]
+  /** Minimum company rating (1-5). */
+  minRating?: number
+  /** Exact company rating (1-5). */
+  exactRating?: number
+  /** Only candidates with no recorded company rating. */
+  unrated?: boolean
 }
 
 // ── Candidate API functions ────────────────────────────────────────
@@ -127,7 +153,12 @@ export async function fetchCandidates(params?: CandidateQueryParams): Promise<Ca
       search: params?.search,
       sortBy: params?.sortBy,
       sortOrder: params?.sortOrder,
-    } as Record<string, string | number | undefined>,
+      jobId: params?.jobId,
+      applicationStatus: params?.applicationStatus,
+      minRating: params?.minRating,
+      exactRating: params?.exactRating,
+      unrated: params?.unrated ? "true" : undefined,
+    } as Record<string, string | number | string[] | undefined>,
   })
 }
 
@@ -157,6 +188,12 @@ export async function fetchCandidatesScoreSummary(): Promise<CandidateScoreSumma
 
 export async function fetchCandidateById(candidateId: string): Promise<CandidateApiDetail> {
   return apiRequest<CandidateApiDetail>(`/candidates/${candidateId}`)
+}
+
+export async function fetchCandidateActivity(candidateId: string, params?: { page?: number; limit?: number }): Promise<CandidateActivityResponse> {
+  return apiRequest<CandidateActivityResponse>(`/candidates/${candidateId}/activity`, {
+    params: params as Record<string, string | number | undefined>,
+  })
 }
 
 export interface CreateCandidateRequest {
@@ -402,6 +439,23 @@ export function mapToDisplayStatus(status: ApplicationStatus): DisplayApplicatio
   return DISPLAY_STATUS_MAP[status] || "Applied"
 }
 
+// Inverse of DISPLAY_STATUS_MAP, used to send a table "Status" filter to the
+// server as the set of ApplicationStatus values it maps to. ARCHIVED is
+// deliberately excluded from "Applied": the table's current application is
+// always the newest active pipeline application, never an archived one.
+const DISPLAY_STATUS_TO_APPLICATION_STATUSES: Record<DisplayApplicationStatus, ApplicationStatus[]> = {
+  Applied: ["DRAFT", "SUBMITTED", "ON_HOLD"],
+  Screening: ["UNDER_REVIEW", "SCREENING", "SHORTLISTED"],
+  Interview: ["ASSESSMENT", "INTERVIEW"],
+  Offer: ["OFFER"],
+  Hired: ["HIRED"],
+  Rejected: ["REJECTED", "WITHDRAWN", "DISQUALIFIED"],
+}
+
+export function displayStatusToApplicationStatuses(display: DisplayApplicationStatus): ApplicationStatus[] {
+  return DISPLAY_STATUS_TO_APPLICATION_STATUSES[display] ?? []
+}
+
 // ── Application selection rules ────────────────────────────────────
 
 interface RawApplicationInput {
@@ -533,7 +587,11 @@ export function mapCandidateFromApi(
     version: api.version,
     createdAt: parseDate(api.createdAt),
     updatedAt: parseDate(api.updatedAt),
-    companyProfile,
+    companyProfile:
+      companyProfile ??
+      (api.companyProfile != null
+        ? { rating: api.companyProfile.rating ?? 0 }
+        : undefined),
     applicationSummary: appInfo,
     screening: api.screening ? mapScreeningSummary(api.screening) : undefined,
   }

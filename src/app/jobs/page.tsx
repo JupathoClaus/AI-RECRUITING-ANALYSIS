@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,7 +16,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { EmptyState } from "@/components/ui/empty-state"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
-import { formatCurrency, timeAgo } from "@/lib/utils"
+import { cn, formatCurrency, timeAgo } from "@/lib/utils"
 import { getJobs, getJobById, createJob, updateJob, publishJob, closeJob, reopenJob, pauseJob, resumeJob, archiveJob } from "@/lib/api/jobs.api"
 import { JOB_ACTIVE_STATUSES, JOB_HISTORY_STATUSES, resolveJobStatusFilter } from "@/lib/jobs-view"
 import type { JobListDto } from "@/lib/api/types"
@@ -387,7 +388,7 @@ export default function JobsPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Type *</label>
                   <Select value={createForm.employmentType} onValueChange={(v) => setCreateForm((f) => ({ ...f, employmentType: v as CreateJobRequest["employmentType"] }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Type"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="FULL_TIME">Full-time</SelectItem>
                       <SelectItem value="PART_TIME">Part-time</SelectItem>
@@ -402,7 +403,7 @@ export default function JobsPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Workplace *</label>
                   <Select value={createForm.workplaceType} onValueChange={(v) => setCreateForm((f) => ({ ...f, workplaceType: v as CreateJobRequest["workplaceType"] }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Workplace"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ON_SITE">On-site</SelectItem>
                       <SelectItem value="REMOTE">Remote</SelectItem>
@@ -414,7 +415,7 @@ export default function JobsPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Level *</label>
                   <Select value={createForm.experienceLevel} onValueChange={(v) => setCreateForm((f) => ({ ...f, experienceLevel: v as CreateJobRequest["experienceLevel"] }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger aria-label="Level"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="ENTRY">Entry</SelectItem>
                       <SelectItem value="JUNIOR">Junior</SelectItem>
@@ -457,26 +458,44 @@ export default function JobsPage() {
       {/* Filters */}
       <div className="flex flex-col gap-4 mb-6 animate-fade-in">
         {/* Active / History scope */}
-        <Tabs
-          value={jobScope}
-          onValueChange={(v) => {
-            setJobScope(v as "active" | "history")
-            setStatusFilter("all")
-            setPage(1)
-          }}
-          className="w-fit"
+        <div
+          role="group"
+          aria-label="Job scope"
+          className="inline-flex h-10 w-fit items-center justify-center gap-1 rounded-xl bg-surface-elevated p-1 text-muted overflow-x-auto"
         >
-          <TabsList>
-            <TabsTrigger value="active" className="gap-1.5">
-              <TickCircle className="h-4 w-4" />
-              Active
-            </TabsTrigger>
-            <TabsTrigger value="history" className="gap-1.5">
-              <Archive className="h-4 w-4" />
-              Closed &amp; Archived
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+          <button
+            type="button"
+            aria-pressed={jobScope === "active"}
+            onClick={() => {
+              setJobScope("active")
+              setStatusFilter("all")
+              setPage(1)
+            }}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer hover:text-foreground",
+              jobScope === "active" ? "bg-surface text-foreground shadow-sm" : "text-muted",
+            )}
+          >
+            <TickCircle className="h-4 w-4" />
+            Active
+          </button>
+          <button
+            type="button"
+            aria-pressed={jobScope === "history"}
+            onClick={() => {
+              setJobScope("history")
+              setStatusFilter("all")
+              setPage(1)
+            }}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer hover:text-foreground",
+              jobScope === "history" ? "bg-surface text-foreground shadow-sm" : "text-muted",
+            )}
+          >
+            <Archive className="h-4 w-4" />
+            Closed &amp; Archived
+          </button>
+        </div>
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
@@ -489,7 +508,7 @@ export default function JobsPage() {
           </div>
           <div className="flex gap-3 flex-wrap">
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[140px]" aria-label="Status">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -500,7 +519,7 @@ export default function JobsPage() {
               </SelectContent>
             </Select>
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-[160px]" aria-label="Department">
                 <SelectValue placeholder="Department" />
               </SelectTrigger>
               <SelectContent>
@@ -511,7 +530,7 @@ export default function JobsPage() {
               </SelectContent>
             </Select>
             <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setPage(1) }}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[140px]" aria-label="Type">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -607,9 +626,9 @@ export default function JobsPage() {
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <DollarSquare className="h-3.5 w-3.5 shrink-0" />
                             {job.salaryMin != null && job.salaryMax != null ? (
-                              <span>{formatCurrency(job.salaryMin)} {"\u2013"} {formatCurrency(job.salaryMax)}</span>
+                              <span>{formatCurrency(job.salaryMin, job.salaryCurrency || "USD")} {"\u2013"} {formatCurrency(job.salaryMax, job.salaryCurrency || "USD")}</span>
                             ) : job.salaryMin != null ? (
-                              <span>From {formatCurrency(job.salaryMin)}</span>
+                              <span>From {formatCurrency(job.salaryMin, job.salaryCurrency || "USD")}</span>
                             ) : (
                               <span>Salary not specified</span>
                             )}
@@ -631,7 +650,7 @@ export default function JobsPage() {
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Job actions" onClick={(e) => e.stopPropagation()}>
                                 <More className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -769,9 +788,9 @@ export default function JobsPage() {
                             </TableCell>
                             <TableCell className="hidden sm:table-cell text-muted-foreground">
                               {job.salaryMin != null && job.salaryMax != null
-                                ? `${formatCurrency(job.salaryMin)} – ${formatCurrency(job.salaryMax)}`
+                                ? `${formatCurrency(job.salaryMin, job.salaryCurrency || "USD")} – ${formatCurrency(job.salaryMax, job.salaryCurrency || "USD")}`
                                 : job.salaryMin != null
-                                  ? `From ${formatCurrency(job.salaryMin)}`
+                                  ? `From ${formatCurrency(job.salaryMin, job.salaryCurrency || "USD")}`
                                   : "\u2014"}
                             </TableCell>
                             <TableCell className="text-center">
@@ -788,8 +807,8 @@ export default function JobsPage() {
                             <TableCell>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
-                                    <More className="h-4 w-4" />
+<Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Job actions" onClick={(e) => e.stopPropagation()}>
+                                  <More className="h-4 w-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
@@ -950,9 +969,9 @@ export default function JobsPage() {
                     <p className="text-xs text-muted mb-1">Salary Range</p>
                     <p className="text-sm font-medium text-foreground">
                       {detailsJob.salaryMin != null && detailsJob.salaryMax != null
-                        ? `${formatCurrency(detailsJob.salaryMin)} – ${formatCurrency(detailsJob.salaryMax)}`
+                        ? `${formatCurrency(detailsJob.salaryMin, detailsJob.salaryCurrency || "USD")} – ${formatCurrency(detailsJob.salaryMax, detailsJob.salaryCurrency || "USD")}`
                         : detailsJob.salaryMin != null
-                          ? `From ${formatCurrency(detailsJob.salaryMin)}`
+                          ? `From ${formatCurrency(detailsJob.salaryMin, detailsJob.salaryCurrency || "USD")}`
                           : "Not specified"}
                     </p>
                   </div>
@@ -969,6 +988,9 @@ export default function JobsPage() {
                 )}
               </div>
               <div className="flex justify-end gap-2 pt-4 border-t border-border mt-4">
+                <Link href={`/jobs/${detailsJob.id}`} className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-surface-hover">
+                  Open workspace
+                </Link>
                 <Button variant="outline" size="sm" onClick={() => { setEditMode(true); setEditError(null); setEditForm({ title: detailsJob.title, description: detailsJob.description || "", numberOfOpenings: detailsJob.numberOfOpenings, salaryMin: detailsJob.salaryMin ?? undefined, salaryMax: detailsJob.salaryMax ?? undefined, salaryCurrency: detailsJob.salaryCurrency ?? undefined }) }}>
                   <Edit2 className="h-4 w-4 mr-1.5" />
                   Edit

@@ -129,6 +129,19 @@ export interface JobPipelineDto {
   stages: PipelineStageDto[]
 }
 
+export interface JobActivityItem {
+  id: string
+  eventType: string
+  description: string | null
+  occurredAt: string
+  metadata: Record<string, unknown> | null
+}
+
+export interface JobActivityResponse {
+  data: JobActivityItem[]
+  meta: PaginationMeta
+}
+
 export interface CreatePipelineStageRequest {
   name: string
   type: string
@@ -163,6 +176,54 @@ export interface ReorderStagesRequest {
 
 export async function getJobPipeline(jobId: string): Promise<JobPipelineDto> {
   return apiRequest<JobPipelineDto>(`/jobs/${jobId}/pipeline`)
+}
+
+export interface JobAnalyticsStageCount {
+  stageId: string
+  name: string
+  count: number
+}
+
+export interface JobAnalyticsResponse {
+  jobId: string
+  numberOfOpenings: number
+  applications: {
+    total: number
+    active: number
+    byStatus: Record<string, number>
+    byStage: JobAnalyticsStageCount[]
+  }
+  screening: {
+    total: number
+    completed: number
+    failed: number
+    pending: number
+    scored: number
+    averageScore: number | null
+    byRecommendation: { SHORTLIST: number; NOT_SHORTLIST: number; HUMAN_REVIEW: number }
+  }
+  interviews: {
+    total: number
+    upcoming: number
+    byStatus: Record<string, number>
+    byResult: Record<string, number>
+  }
+  aiInterviews: {
+    total: number
+    byStatus: Record<string, number>
+  }
+  timeToHireDays: number | null
+  generatedAt: string
+}
+
+export async function getJobAnalytics(jobId: string): Promise<JobAnalyticsResponse> {
+  return apiRequest<JobAnalyticsResponse>(`/jobs/${jobId}/analytics`)
+}
+
+export async function getJobActivity(jobId: string, params?: { page?: number; limit?: number }): Promise<JobActivityResponse> {
+  return apiRequest<JobActivityResponse>(`/jobs/${jobId}/activity`, {
+    params: params as Record<string, string | number | undefined>,
+  })
 }
 
 export async function createPipelineStage(jobId: string, dto: CreatePipelineStageRequest): Promise<PipelineStageDto> {

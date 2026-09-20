@@ -50,6 +50,11 @@ export async function getApplicationResume(
   }
 }
 
+export async function downloadStoredFile(fileId: string): Promise<Blob> {
+  const response = await apiRequest<{ blob: Blob }>(`/files/${fileId}/download`, { responseType: 'blob' })
+  return response.blob
+}
+
 export async function uploadCompanyLogo(file: File): Promise<StoredFileResponse> {
   const formData = new FormData()
   formData.append('file', file)

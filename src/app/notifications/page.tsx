@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Notification,
@@ -206,27 +205,55 @@ export default function NotificationsPage() {
         </div>
       }
     >
-      <Tabs value={tab} onValueChange={handleTabChange}>
+      <div>
         <div className="flex items-center justify-between mb-6">
-          <TabsList>
-            <TabsTrigger value="all">
+          <div
+            role="group"
+            aria-label="Notification scope"
+            className="inline-flex h-10 items-center justify-center gap-1 rounded-xl bg-surface-elevated p-1 text-muted overflow-x-auto"
+          >
+            <button
+              type="button"
+              aria-pressed={tab === "all"}
+              onClick={() => handleTabChange("all")}
+              className={cn(
+                "inline-flex items-center justify-center whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer hover:text-foreground",
+                tab === "all" ? "bg-surface text-foreground shadow-sm" : "text-muted",
+              )}
+            >
               <Notification className="mr-1.5" size={14} />
               All
-              {unreadCount > 0 && (
+              {unreadCount > 0 && tab === "all" && (
                 <Badge variant="default" className="ml-2 h-5 min-w-5 px-1.5 text-[10px] justify-center">
                   {unreadCount}
                 </Badge>
               )}
-            </TabsTrigger>
-            <TabsTrigger value="unread">
+            </button>
+            <button
+              type="button"
+              aria-pressed={tab === "unread"}
+              onClick={() => handleTabChange("unread")}
+              className={cn(
+                "inline-flex items-center justify-center whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer hover:text-foreground",
+                tab === "unread" ? "bg-surface text-foreground shadow-sm" : "text-muted",
+              )}
+            >
               <MessageSquare className="mr-1.5" size={14} />
               Unread
-            </TabsTrigger>
-            <TabsTrigger value="system">
+            </button>
+            <button
+              type="button"
+              aria-pressed={tab === "system"}
+              onClick={() => handleTabChange("system")}
+              className={cn(
+                "inline-flex items-center justify-center whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 cursor-pointer hover:text-foreground",
+                tab === "system" ? "bg-surface text-foreground shadow-sm" : "text-muted",
+              )}
+            >
               <Cpu className="mr-1.5" size={14} />
               System
-            </TabsTrigger>
-          </TabsList>
+            </button>
+          </div>
         </div>
 
         {pageLoadError && (
@@ -270,7 +297,7 @@ export default function NotificationsPage() {
             </Button>
           </div>
         )}
-      </Tabs>
+      </div>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) setDeleteConfirmId(null) }}>

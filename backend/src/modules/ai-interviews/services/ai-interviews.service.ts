@@ -12,6 +12,7 @@ import { CreateAiInterviewDto } from '../dto/create-ai-interview.dto';
 import { SendInvitationDto } from '../dto/send-invitation.dto';
 import { VerifyCodeDto } from '../dto/verify-code.dto';
 import { StartAiInterviewDto } from '../dto/start-ai-interview.dto';
+import { AiInterviewQueryDto } from '../dto/ai-interview-query.dto';
 import {
   VerifyCodeResponseDto,
   SessionResponseDto,
@@ -151,21 +152,63 @@ export class AiInterviewsService {
     return this.stripMeetingToken(interview);
   }
 
-  async findAll(companyId: string) {
-    const interviews = await this.prisma.aiInterview.findMany({
-      where: { companyId },
-      include: {
-        application: {
-          include: {
-            candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
-            job: { select: { id: true, title: true } },
+  async findAll(companyId: string, query: AiInterviewQueryDto = {}) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const search = query.search?.trim();
+    const statusArr = Array.isArray(query.status)
+      ? query.status
+      : query.status
+        ? [query.status]
+        : [];
+
+    const applicationFilter: Prisma.ApplicationWhereInput = {};
+    if (query.jobId) applicationFilter.jobId = query.jobId;
+    if (search) {
+      applicationFilter.OR = [
+        {
+          candidate: {
+            is: {
+              OR: [
+                { firstName: { contains: search, mode: 'insensitive' } },
+                { lastName: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+              ],
+            },
           },
         },
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 100,
-    });
-    return interviews.map((interview) => this.stripMeetingToken(interview));
+        { job: { is: { title: { contains: search, mode: 'insensitive' } } } },
+      ];
+    }
+
+    const where: Prisma.AiInterviewWhereInput = {
+      companyId,
+      ...(Object.keys(applicationFilter).length ? { application: applicationFilter } : {}),
+      ...(query.language ? { language: query.language } : {}),
+      ...(statusArr.length ? { status: { in: statusArr } } : {}),
+    };
+
+    const [interviews, total] = await this.prisma.$transaction([
+      this.prisma.aiInterview.findMany({
+        where,
+        include: {
+          application: {
+            include: {
+              candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
+              job: { select: { id: true, title: true } },
+            },
+          },
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.aiInterview.count({ where }),
+    ]);
+    return {
+      data: interviews.map((interview) => this.stripMeetingToken(interview)),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   async findByApplication(applicationId: string, companyId: string) {

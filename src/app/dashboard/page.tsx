@@ -159,10 +159,12 @@ export default function DashboardPage() {
   const { user } = useAuth();
 
   useEffect(() => {
-    fetchCandidates()
-    fetchInterviews()
-    fetchActivities()
-    fetchAnalytics()
+    // Core operational content loads first. Analytics is intentionally deferred:
+    // its six independent report calls should not delay jobs, applications,
+    // candidates requiring attention, or upcoming interviews.
+    void Promise.all([fetchCandidates(), fetchInterviews(), fetchActivities()])
+    const analyticsTimer = window.setTimeout(() => { void fetchAnalytics() }, 750)
+    return () => window.clearTimeout(analyticsTimer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

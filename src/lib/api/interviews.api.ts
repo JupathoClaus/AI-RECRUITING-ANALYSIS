@@ -93,6 +93,7 @@ export interface InterviewDetail extends InterviewListItem {
 export interface InterviewQueryParams {
   page?: number
   limit?: number
+  search?: string
   status?: BackendInterviewStatus[]
   type?: BackendInterviewType[]
   applicationId?: string
@@ -178,6 +179,7 @@ export async function fetchInterviews(params?: InterviewQueryParams): Promise<In
     params: {
       page: params?.page,
       limit: params?.limit,
+      search: params?.search,
       status: params?.status,
       type: params?.type,
       applicationId: params?.applicationId,
@@ -284,13 +286,11 @@ const frontendToBackendType: Record<FrontendInterviewType, BackendInterviewType>
   Technical: "TECHNICAL",
 }
 
-function resultToScore(result: BackendInterviewResult): number | undefined {
-  switch (result) {
-    case "PASS": return 85
-    case "HOLD": return 60
-    case "FAIL": return 30
-    default: return undefined
-  }
+// PASS/HOLD/FAIL is a recruiter-recorded outcome, not a numeric AI assessment.
+// Never manufacture a score from it: downstream views use `undefined` to show
+// the truthful outcome-only state until an assessment API exists.
+function resultToScore(_result: BackendInterviewResult): number | undefined {
+  return undefined
 }
 
 function extractCandidateName(participants: InterviewParticipantRef[]): string {
@@ -316,6 +316,7 @@ export function mapInterviewListItem(
     status: backendToFrontendStatus[item.status],
     backendStatus: item.status,
     type: backendToFrontendType[item.type],
+    result: item.result,
     score: resultToScore(item.result),
     version: item.version,
     applicationId: item.applicationId,

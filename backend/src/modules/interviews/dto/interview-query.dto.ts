@@ -59,6 +59,11 @@ export class InterviewQueryDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  search?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   scheduledFrom?: string;
 
   @ApiPropertyOptional()

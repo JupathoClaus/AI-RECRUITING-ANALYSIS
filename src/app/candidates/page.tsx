@@ -32,11 +32,12 @@ import { SendAiInterviewModal } from "@/components/ai-interview/send-ai-intervie
 import { AddCandidateDialog } from "@/components/candidates/add-candidate-dialog"
 import { ScreeningProgress } from "@/components/ai-screening/screening-progress"
 import { ScreeningResultView } from "@/components/ai-screening/screening-result-view"
+import { Pagination } from "@/components/recruitment/pagination"
 import { useAiScreening } from "@/lib/ai-screening/use-ai-screening"
 import { getApplicationResume } from "@/lib/api/files.api"
 import type { StoredFileResponse } from "@/lib/api/files.api"
 import { getResumeExtractionStatus, retryAiScreeningExtraction } from "@/lib/api/ai-screening.api"
-import { deleteCandidate } from "@/lib/api/candidates.api"
+import { deleteCandidate, displayStatusToApplicationStatuses } from "@/lib/api/candidates.api"
 import {
   SearchNormal,
   Add,
@@ -305,8 +306,10 @@ function DetailScreeningSection({ applicationId }: { applicationId: string }) {
 
 export default function CandidatesPage() {
   const router = useRouter()
-  const { candidates, jobs, rejectCandidateApplication, advanceCandidateApplication, fetchCandidates, fetchJobs, candidatesLoading, candidatesError } = useStore()
+  const { candidates, candidatesMeta, jobs, rejectCandidateApplication, advanceCandidateApplication, fetchCandidates, fetchJobs, candidatesLoading, candidatesError } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
+  const [debouncedSearch, setDebouncedSearch] = React.useState("")
+  const [page, setPage] = React.useState(1)
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
   const [jobFilter, setJobFilter] = React.useState<string>("all")
   const [ratingFilter, setRatingFilter] = React.useState<string>("all")
@@ -414,33 +417,34 @@ export default function CandidatesPage() {
   // No timers leak on unmount
   React.useEffect(() => () => stopBulkPolling(), [stopBulkPolling])
 
+React.useEffect(() => {
+    const timer = window.setTimeout(() => { setDebouncedSearch(searchQuery); setPage(1) }, 300)
+    return () => window.clearTimeout(timer)
+  }, [searchQuery])
+
+  // Changing a filter re-queries the server (filters run DB-side, not on the
+  // loaded page), so the list always starts back at page 1.
   React.useEffect(() => {
-    void Promise.all([fetchCandidates(), fetchJobs()])
-  }, [fetchCandidates, fetchJobs])
+    setPage(1)
+  }, [statusFilter, jobFilter, ratingFilter])
 
-  const filteredCandidates = React.useMemo(() => {
-    return candidates.filter((candidate) => {
-      const status = getDisplayStatus(candidate)
-      const jobTitle = getJobTitle(candidate)
-      const rating = getRating(candidate)
-      const matchesSearch =
-        searchQuery === "" ||
-        candidate.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        candidate.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        jobTitle.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesStatus = statusFilter === "all" || status === statusFilter
-      const matchesJob = jobFilter === "all" || candidate.applicationSummary?.current?.jobId === jobFilter
-      const matchesRating =
-        ratingFilter === "all" ||
-        (ratingFilter === "5" && rating === 5) ||
-        (ratingFilter === "4+" && rating >= 4) ||
-        (ratingFilter === "3+" && rating >= 3) ||
-        (ratingFilter === "unrated" && rating === 0)
-      return matchesSearch && matchesStatus && matchesJob && matchesRating
-    })
-  }, [candidates, searchQuery, statusFilter, jobFilter, ratingFilter])
+  React.useEffect(() => {
+    void Promise.all([
+      fetchCandidates({
+        page,
+        limit: 20,
+        search: debouncedSearch,
+        jobId: jobFilter === "all" ? undefined : jobFilter,
+        applicationStatus: statusFilter === "all" ? undefined : displayStatusToApplicationStatuses(statusFilter as DisplayApplicationStatus),
+        exactRating: ratingFilter === "5" ? 5 : undefined,
+        minRating: ratingFilter === "4+" ? 4 : ratingFilter === "3+" ? 3 : undefined,
+        unrated: ratingFilter === "unrated" ? true : undefined,
+      }),
+      fetchJobs(),
+    ])
+  }, [debouncedSearch, fetchCandidates, fetchJobs, page, statusFilter, jobFilter, ratingFilter])
 
-  const allFilteredIds = React.useMemo(() => filteredCandidates.map((c) => c.id), [filteredCandidates])
+  const allFilteredIds = React.useMemo(() => candidates.map((c) => c.id), [candidates])
   const allSelected = allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedIds.has(id))
 
   const toggleSelect = React.useCallback((id: string) => {
@@ -556,7 +560,7 @@ export default function CandidatesPage() {
   return (
     <AppLayout
       title="Candidates"
-      description={`${filteredCandidates.length} candidates${newCount > 0 ? ` · ${newCount} new` : ""}${pipelineCount > 0 ? ` · ${pipelineCount} in pipeline` : ""}`}
+      description={`${candidatesMeta?.total ?? candidates.length} candidates${newCount > 0 ? ` · ${newCount} new` : ""}${pipelineCount > 0 ? ` · ${pipelineCount} in pipeline` : ""}`}
       actions={
         <Button size="sm" onClick={() => setAddDialogOpen(true)}>
           <Add className="h-4 w-4" />
@@ -597,7 +601,7 @@ export default function CandidatesPage() {
           </div>
           <div className="flex gap-3 flex-wrap">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[140px]" aria-label="Status">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -608,7 +612,7 @@ export default function CandidatesPage() {
               </SelectContent>
             </Select>
             <Select value={jobFilter} onValueChange={setJobFilter}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-[180px]" aria-label="Position">
                 <SelectValue placeholder="Position" />
               </SelectTrigger>
               <SelectContent>
@@ -619,7 +623,7 @@ export default function CandidatesPage() {
               </SelectContent>
             </Select>
             <Select value={ratingFilter} onValueChange={setRatingFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[140px]" aria-label="Rating">
                 <SelectValue placeholder="Rating" />
               </SelectTrigger>
               <SelectContent>
@@ -701,10 +705,10 @@ export default function CandidatesPage() {
                 </p>
                 {(bulkBatch.status === "COMPLETED" || bulkBatch.status === "PARTIALLY_COMPLETED") && (
                   <p className="text-muted-foreground">
-                    Recommended: <span className="font-semibold text-green-600">{bulkBatch.recommended}</span>
-                    {" · "}Human Review: <span className="font-semibold text-yellow-600">{bulkBatch.humanReview}</span>
-                    {" · "}Not Recommended: <span className="font-semibold text-red-600">{bulkBatch.notRecommended}</span>
-                    {bulkBatch.failed > 0 && <span className="text-red-600"> · Failed: {bulkBatch.failed}</span>}
+                    Recommended: <span className="font-semibold text-success">{bulkBatch.recommended}</span>
+                    {" · "}Human Review: <span className="font-semibold text-warning">{bulkBatch.humanReview}</span>
+                    {" · "}Not Recommended: <span className="font-semibold text-error">{bulkBatch.notRecommended}</span>
+                    {bulkBatch.failed > 0 && <span className="text-error"> · Failed: {bulkBatch.failed}</span>}
                     {bulkBatch.skipped > 0 && <span className="text-muted-foreground"> · Skipped: {bulkBatch.skipped}</span>}
                   </p>
                 )}
@@ -732,9 +736,9 @@ export default function CandidatesPage() {
             icon={<People className="h-8 w-8 text-muted" />}
             title="Failed to load candidates"
             description={candidatesError}
-            action={<Button variant="outline" onClick={() => fetchCandidates()}>Retry</Button>}
+            action={<Button variant="outline" onClick={() => fetchCandidates({ page, limit: 20, search: debouncedSearch })}>Retry</Button>}
           />
-        ) : filteredCandidates.length === 0 ? (
+        ) : candidates.length === 0 ? (
           <EmptyState
             icon={<People className="h-8 w-8 text-muted" />}
             title="No candidates found"
@@ -819,7 +823,7 @@ export default function CandidatesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCandidates.map((candidate) => {
+                  {candidates.map((candidate) => {
                     const displayStatus = getDisplayStatus(candidate)
                     const jobTitle = getJobTitle(candidate)
                     const rating = getRating(candidate)
@@ -827,7 +831,7 @@ export default function CandidatesPage() {
                       <TableRow
                         key={candidate.id}
                         className="cursor-pointer"
-                        onClick={() => setDetailsCandidate(candidate)}
+                        onClick={() => router.push(`/candidates/${candidate.id}`)}
                       >
                         <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
                           <input
@@ -899,7 +903,7 @@ export default function CandidatesPage() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDetailsCandidate(candidate) }}>
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); router.push(`/candidates/${candidate.id}`) }}>
                                 <Eye className="h-4 w-4 mr-2" />
                                 View Profile
                               </DropdownMenuItem>
@@ -941,6 +945,7 @@ export default function CandidatesPage() {
               </Table>
             </div>
           </Card>
+          {candidatesMeta && <Pagination meta={candidatesMeta} onPageChange={(nextPage) => { setPage(nextPage); setSelectedIds(new Set()) }} disabled={candidatesLoading} itemLabel="candidates" />}
           </>
         )}
       </div>

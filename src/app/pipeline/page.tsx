@@ -68,16 +68,10 @@ interface PipelineStage {
 }
 
 const DEFAULT_STAGE_COLORS = [
-  { colorClass: "bg-indigo-500", bgClass: "bg-indigo-500/10", textClass: "text-indigo-400", borderClass: "border-t-indigo-500" },
-  { colorClass: "bg-amber-500", bgClass: "bg-amber-500/10", textClass: "text-amber-400", borderClass: "border-t-amber-500" },
-  { colorClass: "bg-violet-500", bgClass: "bg-violet-500/10", textClass: "text-violet-400", borderClass: "border-t-violet-500" },
-  { colorClass: "bg-emerald-500", bgClass: "bg-emerald-500/10", textClass: "text-emerald-400", borderClass: "border-t-emerald-500" },
-  { colorClass: "bg-green-500", bgClass: "bg-green-500/10", textClass: "text-green-400", borderClass: "border-t-green-500" },
-  { colorClass: "bg-red-500", bgClass: "bg-red-500/10", textClass: "text-red-400", borderClass: "border-t-red-500" },
-  { colorClass: "bg-cyan-500", bgClass: "bg-cyan-500/10", textClass: "text-cyan-400", borderClass: "border-t-cyan-500" },
-  { colorClass: "bg-orange-500", bgClass: "bg-orange-500/10", textClass: "text-orange-400", borderClass: "border-t-orange-500" },
-  { colorClass: "bg-pink-500", bgClass: "bg-pink-500/10", textClass: "text-pink-400", borderClass: "border-t-pink-500" },
-  { colorClass: "bg-teal-500", bgClass: "bg-teal-500/10", textClass: "text-teal-400", borderClass: "border-t-teal-500" },
+  { colorClass: "bg-zinc-900 dark:bg-zinc-100", bgClass: "bg-zinc-100 dark:bg-zinc-800", textClass: "text-zinc-700 dark:text-zinc-200", borderClass: "border-t-zinc-900 dark:border-t-zinc-100" },
+  { colorClass: "bg-zinc-700 dark:bg-zinc-300", bgClass: "bg-zinc-100 dark:bg-zinc-800", textClass: "text-zinc-700 dark:text-zinc-200", borderClass: "border-t-zinc-700 dark:border-t-zinc-300" },
+  { colorClass: "bg-zinc-600 dark:bg-zinc-400", bgClass: "bg-zinc-100 dark:bg-zinc-800", textClass: "text-zinc-700 dark:text-zinc-200", borderClass: "border-t-zinc-600 dark:border-t-zinc-400" },
+  { colorClass: "bg-zinc-500 dark:bg-zinc-500", bgClass: "bg-zinc-100 dark:bg-zinc-800", textClass: "text-zinc-700 dark:text-zinc-200", borderClass: "border-t-zinc-500" },
 ]
 
 function mapStageToPipeline(stage: PipelineStageDto, idx: number): PipelineStage {
@@ -407,7 +401,7 @@ export default function PipelinePage() {
               />
             </div>
             <Select value={jobFilter} onValueChange={(v) => { setJobFilter(v); setStages([]); setPipeline(null) }}>
-              <SelectTrigger className="w-full sm:w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]" aria-label="Filter by position">
                 <SelectValue placeholder="Filter by position" />
               </SelectTrigger>
               <SelectContent>
@@ -529,13 +523,13 @@ export default function PipelinePage() {
                       </span>
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
+                      <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={`Edit stage ${stage.label}`} onClick={() => {
                         const dto = pipeline?.stages.find((s) => s.id === stage.id)
                         if (dto) { setEditingStage(dto); setStageForm({ name: dto.name, description: dto.description || "" }); setShowStageDialog(true) }
                       }}>
                         <Edit2 className="h-3 w-3" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6 text-error" onClick={() => handleDeleteStage(stage.id)}>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 text-error" aria-label={`Delete stage ${stage.label}`} onClick={() => handleDeleteStage(stage.id)}>
                         <Trash className="h-3 w-3" />
                       </Button>
                     </div>

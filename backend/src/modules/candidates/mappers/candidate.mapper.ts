@@ -27,6 +27,12 @@ export function mapCandidateToResponse(candidate: any, hasSensitivePermission = 
       (candidate.languages || []).find((l: any) => l.preferredInterviewLanguage)?.languageCode ??
       null,
     screening: candidate.screeningSummary ?? null,
+    companyProfile: (() => {
+      const companyCandidate = (candidate.companyCandidates || [])[0];
+      if (!companyCandidate) return undefined;
+      const rating = Number(companyCandidate.rating);
+      return { rating: Number.isFinite(rating) ? rating : 0 };
+    })(),
     createdAt: candidate.createdAt,
     updatedAt: candidate.updatedAt,
     version: candidate.version,

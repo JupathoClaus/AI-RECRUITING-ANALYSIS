@@ -129,7 +129,7 @@ export function ScreeningResultView({ result }: Props) {
 
           {result.uncertainties && result.uncertainties.length > 0 && (
             <div>
-              <h4 className="text-sm font-medium mb-1 text-amber-600">Uncertainties</h4>
+              <h4 className="text-sm font-medium mb-1 text-warning">Uncertainties</h4>
               <ul className="text-sm space-y-1">
                 {result.uncertainties.map((u, i) => (
                   <li key={i} className="text-muted-foreground">• {u}</li>
@@ -140,7 +140,7 @@ export function ScreeningResultView({ result }: Props) {
 
           {result.riskFlags && result.riskFlags.length > 0 && (
             <div>
-              <h4 className="text-sm font-medium mb-1 text-orange-600">Risk Flags</h4>
+              <h4 className="text-sm font-medium mb-1 text-warning">Risk Flags</h4>
               <div className="flex flex-wrap gap-2">
                 {result.riskFlags.map((rf, i) => (
                   <Badge key={i} variant="warning">{rf}</Badge>

@@ -11,10 +11,12 @@ import { ModalHeader } from "@/components/ui/modal-header"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { EmptyState } from "@/components/ui/empty-state"
+import { Pagination } from "@/components/recruitment/pagination"
 import { useStore } from "@/store/useStore"
 import { createAiInterview, sendAiInterviewInvitation, cancelAiInterview, regenerateAiInterviewCode, getAiInterview, listAiInterviews, getAiInterviewsByApplication, type AiInterviewDetail, type AiInterviewStatus } from "@/lib/api/ai-interviews.api"
 import { AiInterviewDetailDialog } from "@/components/ai-interview/ai-interview-detail-dialog"
-import { MagicStar, DocumentText, Clock, Link2, Warning2, Send2, Refresh, Eye, Calendar } from "iconsax-react"
+import { MagicStar, Clock, Link2, Warning2, Send2, Refresh, Eye, SearchNormal, CloseSquare } from "iconsax-react"
+import type { PaginationMeta } from "@/lib/api/types"
 
 const STATUS_LABEL: Record<AiInterviewStatus, string> = {
   CREATED: "Created",
@@ -52,13 +54,61 @@ export default function AIInterviewsPage() {
   const [scheduledAt, setScheduledAt] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [detailTarget, setDetailTarget] = useState<AiInterviewDetail | null>(null)
+const [detailTarget, setDetailTarget] = useState<AiInterviewDetail | null>(null)
+  const [page, setPage] = useState(1)
+  const [meta, setMeta] = useState<PaginationMeta | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [jobFilter, setJobFilter] = useState<string>("all")
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setDebouncedSearch(searchQuery); setPage(1) }, 300)
+    return () => window.clearTimeout(timer)
+  }, [searchQuery])
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value)
+    setPage(1)
+  }
+
+  const handleJobFilterChange = (value: string) => {
+    setJobFilter(value)
+    setPage(1)
+  }
+
+  const clearFilters = () => {
+    setSearchQuery("")
+    setStatusFilter("all")
+    setJobFilter("all")
+    setPage(1)
+  }
 
   useEffect(() => {
     let active = true
-    Promise.all([fetchCandidates(), fetchJobs(), listAiInterviews()])
-      .then(([, , interviews]) => {
-        if (active) setCreated(interviews)
+    Promise.all([
+      fetchCandidates(),
+      fetchJobs(),
+      listAiInterviews({
+        page,
+        limit: 20,
+        search: debouncedSearch || undefined,
+        status: statusFilter === "all" ? undefined : [statusFilter as AiInterviewStatus],
+        jobId: jobFilter === "all" ? undefined : jobFilter,
+      }),
+    ])
+      .then(([, , response]) => {
+        // Accept the legacy array briefly so a rolling deploy never crashes
+        // against an older API instance. The current backend returns data/meta.
+        if (active) {
+          if (Array.isArray(response)) {
+            setCreated(response)
+            setMeta(null)
+          } else {
+            setCreated(response.data)
+            setMeta(response.meta)
+          }
+        }
       })
       .catch((err) => {
         if (active) setError(err instanceof Error ? err.message : "AI interviews could not be loaded")
@@ -66,8 +116,7 @@ export default function AIInterviewsPage() {
     return () => {
       active = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [page, debouncedSearch, statusFilter, jobFilter, fetchCandidates, fetchJobs])
 
   // Applications available for AI interviews: every candidate with a current
   // application gets an entry, matched to a real job.
@@ -110,7 +159,7 @@ export default function AIInterviewsPage() {
       const [detail, existing] = await Promise.all([getAiInterview(interview.id), getAiInterviewsByApplication(selectedApplicationId).catch(() => [])])
       setCreated((prev) => {
         const merged = [detail, ...existing.filter((i) => i.id !== detail.id), ...prev]
-        return [...new Map(merged.map((i) => [i.id, i])).values()]
+        return [...new Map(merged.map((i) => [i.id, i])).values()].slice(0, 20)
       })
       setCreateOpen(false)
     } catch (err) {
@@ -196,7 +245,7 @@ export default function AIInterviewsPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-muted-foreground">Candidate &amp; Position</label>
                 <Select value={selectedApplicationId} onValueChange={setSelectedApplicationId}>
-                  <SelectTrigger className="bg-background border-border">
+                  <SelectTrigger className="bg-background border-border" aria-label="Candidate &amp; Position">
                     <SelectValue placeholder={applicationOptions.length ? "Select a candidate application" : "No candidates available"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -212,12 +261,13 @@ export default function AIInterviewsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
+      </div>
+      {meta && <Pagination meta={meta} onPageChange={setPage} itemLabel="AI interviews" />}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground">Language</label>
                   <Select value={language} onValueChange={setLanguage}>
-                    <SelectTrigger className="bg-background border-border">
+                    <SelectTrigger className="bg-background border-border" aria-label="Language">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -276,10 +326,69 @@ export default function AIInterviewsPage() {
         </div>
       )}
 
+      {/* Filters — run server-side on /ai-interviews, not on the loaded page */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="relative flex-1">
+          <SearchNormal className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted" />
+          <Input
+            type="search"
+            name="ai-interview-search"
+            autoComplete="off"
+            placeholder="Search by candidate, email, or position..."
+            className="pl-9"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-3 flex-wrap">
+          <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+            <SelectTrigger className="w-[180px]" aria-label="Status">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              {(Object.keys(STATUS_LABEL) as AiInterviewStatus[]).map((s) => (
+                <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={jobFilter} onValueChange={handleJobFilterChange}>
+            <SelectTrigger className="w-[200px]" aria-label="Position">
+              <SelectValue placeholder="Position" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Positions</SelectItem>
+              {jobs.map((j) => (
+                <SelectItem key={j.id} value={j.id}>{j.title}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(searchQuery || statusFilter !== "all" || jobFilter !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 self-end text-muted-foreground"
+              onClick={clearFilters}
+              title="Clear all search and filter settings"
+              aria-label="Clear Filters"
+            >
+              <CloseSquare className="h-4 w-4 mr-1" />
+              Clear Filters
+            </Button>
+          )}
+        </div>
+      </div>
+
       {created.length === 0 && !error ? (
         <Card>
           <CardContent className="py-16">
-            <EmptyState icon={<MagicStar className="h-12 w-12" />} title="No AI interviews yet" description="AI interviews are created per candidate application. Use “Create AI Interview” above, or open a candidate’s detail page and choose “Send AI Interview”." />
+            <EmptyState
+              icon={<MagicStar className="h-12 w-12" />}
+              title={searchQuery || statusFilter !== "all" || jobFilter !== "all" ? "No AI interviews match your filters" : "No AI interviews yet"}
+              description={searchQuery || statusFilter !== "all" || jobFilter !== "all"
+                ? "Try adjusting your search or filters to see more results."
+                : "AI interviews are created per candidate application. Use “Create AI Interview” above, or open a candidate’s detail page and choose “Send AI Interview”."}
+            />
           </CardContent>
         </Card>
       ) : created.length > 0 ? (

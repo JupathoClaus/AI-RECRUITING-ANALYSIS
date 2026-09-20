@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import type { Job, Candidate, Interview, Activity, JobStatus, CandidateStatus } from "@/types"
+import type { Job, Candidate, Interview, Activity, JobStatus, ApplicationStatus, CandidateStatus } from "@/types"
 import {
   fetchCandidates,
   createCandidate,
@@ -22,7 +22,7 @@ import type { CreateCandidateRequest } from "@/lib/api/candidates.api"
 import type { ApplicationListItem, ApplicationQueryParams } from "@/lib/api/applications.api"
 import { getJobs, getJobPipeline } from "@/lib/api/jobs.api"
 import type { PipelineStageDto } from "@/lib/api/jobs.api"
-import type { JobListDto } from "@/lib/api/types"
+import type { JobListDto, PaginationMeta } from "@/lib/api/types"
 import {
   fetchInterviews as fetchInterviewsApi,
   cancelInterview as cancelInterviewApi,
@@ -92,8 +92,10 @@ export type AddCandidateResult =
 interface AppState {
   jobs: Job[]
   candidates: Candidate[]
+  candidatesMeta: PaginationMeta | null
   candidatesScoreSummary: CandidateScoreSummary | null
   interviews: Interview[]
+  interviewsMeta: PaginationMeta | null
   activities: Activity[]
   candidatesLoading: boolean
   candidatesError: string | null
@@ -123,9 +125,9 @@ interface AppState {
   }) => Promise<AddCandidateResult>
   rejectCandidateApplication: (candidateId: string) => Promise<void>
   advanceCandidateApplication: (candidateId: string, toStatus: string) => Promise<void>
-  fetchCandidates: () => Promise<void>
+  fetchCandidates: (options?: CandidateFetchOptions) => Promise<void>
   fetchJobs: () => Promise<void>
-  fetchInterviews: () => Promise<void>
+  fetchInterviews: (options?: { page?: number; limit?: number; type?: FrontendInterviewType; search?: string }) => Promise<void>
   scheduleInterview: (data: {
     applicationId: string
     jobId: string
@@ -158,8 +160,30 @@ async function fetchAllPages<T>(
   return results
 }
 
-async function loadCandidatesWithApplications(): Promise<Candidate[]> {
-  const candidateRes = await fetchCandidates({ limit: 50, page: 1, sortBy: "createdAt", sortOrder: "desc" })
+export interface CandidateFetchOptions {
+  page?: number
+  limit?: number
+  search?: string
+  jobId?: string
+  applicationStatus?: ApplicationStatus[]
+  minRating?: number
+  exactRating?: number
+  unrated?: boolean
+}
+
+async function loadCandidatesWithApplications(options: CandidateFetchOptions = {}): Promise<{ candidates: Candidate[]; meta: PaginationMeta }> {
+  const candidateRes = await fetchCandidates({
+    limit: options.limit ?? 20,
+    page: options.page ?? 1,
+    search: options.search || undefined,
+    jobId: options.jobId,
+    applicationStatus: options.applicationStatus,
+    minRating: options.minRating,
+    exactRating: options.exactRating,
+    unrated: options.unrated,
+    sortBy: "createdAt",
+    sortOrder: "desc",
+  })
 
   const candidateIds = (candidateRes.data || []).map((c) => c.id)
 
@@ -192,7 +216,7 @@ async function loadCandidatesWithApplications(): Promise<Candidate[]> {
     }
   }
 
-  return (candidateRes.data || []).map((apiCandidate) => {
+  return { candidates: (candidateRes.data || []).map((apiCandidate) => {
     const applications = appsByCandidateId.get(apiCandidate.id) || []
     const rawApps = applications.map((app) => ({
       id: app.id,
@@ -210,7 +234,7 @@ async function loadCandidatesWithApplications(): Promise<Candidate[]> {
     const appInfo = buildApplicationInfo(rawApps)
 
     return mapCandidateFromApi(apiCandidate, appInfo)
-  })
+  }), meta: candidateRes.meta }
 }
 
 let candidatesRequestSequence = 0
@@ -246,8 +270,10 @@ function mapCreatedCandidate(api: CandidateApiDetail): Candidate {
 export const useStore = create<AppState>((set, get) => ({
   jobs: [],
   candidates: [],
+  candidatesMeta: null,
   candidatesScoreSummary: null,
   interviews: [],
+  interviewsMeta: null,
   activities: [],
   candidatesLoading: false,
   candidatesError: null,
@@ -286,20 +312,20 @@ export const useStore = create<AppState>((set, get) => ({
       // jobs stay as-is (possibly empty) on failure
     }
   },
-  fetchCandidates: async () => {
+  fetchCandidates: async (options = {}) => {
     const requestId = ++candidatesRequestSequence
     set({ candidatesLoading: true, candidatesError: null })
     try {
       // Whole-company aggregate runs alongside the paged list; a summary
       // failure must not break the page (the dashboard falls back to the
       // list-based computation).
-      const [candidates, scoreSummary] = await Promise.all([
-        loadCandidatesWithApplications(),
+      const [candidatePage, scoreSummary] = await Promise.all([
+        loadCandidatesWithApplications(options),
         fetchCandidatesScoreSummary().catch(() => null),
       ])
       if (requestId !== candidatesRequestSequence) return
       get().fetchJobs()
-      set({ candidates, candidatesScoreSummary: scoreSummary, candidatesLoading: false })
+      set({ candidates: candidatePage.candidates, candidatesMeta: candidatePage.meta, candidatesScoreSummary: scoreSummary, candidatesLoading: false })
     } catch (err) {
       if (requestId !== candidatesRequestSequence) return
       const message = err instanceof Error ? err.message : "Failed to fetch candidates"
@@ -377,8 +403,8 @@ export const useStore = create<AppState>((set, get) => ({
 
       await rejectApplication(currentApp.id, { expectedVersion: version, reasonCode: "OTHER" })
 
-      const candidates = await loadCandidatesWithApplications()
-      set({ candidates, candidatesLoading: false })
+      const candidatePage = await loadCandidatesWithApplications()
+      set({ candidates: candidatePage.candidates, candidatesMeta: candidatePage.meta, candidatesLoading: false })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to reject application"
       set({ candidatesError: message, candidatesLoading: false })
@@ -423,21 +449,21 @@ export const useStore = create<AppState>((set, get) => ({
           break
       }
 
-      const candidates = await loadCandidatesWithApplications()
-      set({ candidates, candidatesLoading: false })
+      const candidatePage = await loadCandidatesWithApplications()
+      set({ candidates: candidatePage.candidates, candidatesMeta: candidatePage.meta, candidatesLoading: false })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to update application"
       set({ candidatesError: message, candidatesLoading: false })
     }
   },
-  fetchInterviews: async () => {
+  fetchInterviews: async (options = {}) => {
     set({ interviewsLoading: true, interviewsError: null })
     try {
       await get().fetchJobs()
-      const res = await fetchInterviewsApi({ limit: 100, sortBy: "scheduledAt", sortOrder: "desc" })
+      const res = await fetchInterviewsApi({ page: options.page ?? 1, limit: options.limit ?? 20, search: options.search || undefined, type: options.type ? [mapFrontendToBackendType(options.type)] : undefined, sortBy: "scheduledAt", sortOrder: "desc" })
       const jobsMap = new Map(get().jobs.map((j) => [j.id, j.title]))
       const interviews = (res.data || []).map((item) => mapInterviewListItem(item, jobsMap))
-      set({ interviews, interviewsLoading: false })
+      set({ interviews, interviewsMeta: res.meta, interviewsLoading: false })
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to fetch interviews"
       set({ interviewsError: message, interviewsLoading: false })

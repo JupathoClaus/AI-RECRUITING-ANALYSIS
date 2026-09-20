@@ -270,6 +270,7 @@ export class InterviewsService {
       applicationId,
       jobId,
       stageId,
+      search,
       scheduledFrom,
       scheduledTo,
       sortBy = 'scheduledAt',
@@ -283,6 +284,15 @@ export class InterviewsService {
     if (applicationId) where.applicationId = applicationId;
     if (jobId) where.jobId = jobId;
     if (stageId) where.jobPipelineStageId = stageId;
+    if (search?.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { title: { contains: term, mode: 'insensitive' } },
+        { job: { title: { contains: term, mode: 'insensitive' } } },
+        { application: { candidate: { firstName: { contains: term, mode: 'insensitive' } } } },
+        { application: { candidate: { lastName: { contains: term, mode: 'insensitive' } } } },
+      ];
+    }
     if (scheduledFrom || scheduledTo) {
       where.scheduledAt = {};
       if (scheduledFrom) where.scheduledAt.gte = new Date(scheduledFrom);

@@ -216,8 +216,11 @@ describe("JobsPage salary fields", () => {
   it("edit job dialog loads existing salary values", async () => {
     render(<JobsPage />)
     await waitFor(() => expect(screen.getByText("Senior Engineer")).toBeTruthy())
-    fireEvent.click(screen.getByText("$2,500,000 – $5,000,000"))
+    // The fixture stores UGX; the grid card must render the stored currency,
+    // not a hardcoded USD symbol.
+    fireEvent.click(screen.getByText("UGX 2,500,000 – UGX 5,000,000"))
     const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByText("UGX 2,500,000 – UGX 5,000,000")).toBeTruthy()
     fireEvent.click(within(dialog).getByRole("button", { name: "Edit" }))
     expect((within(dialog).getByLabelText("Minimum Salary") as HTMLInputElement).value).toBe("2500000")
     expect((within(dialog).getByLabelText("Maximum Salary") as HTMLInputElement).value).toBe("5000000")

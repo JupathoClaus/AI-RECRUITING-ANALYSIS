@@ -417,21 +417,21 @@ useEffect(() => {
                 )}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">First Name</label>
-                    <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                    <label htmlFor="profile-first-name" className="text-sm font-medium text-foreground">First Name</label>
+                    <Input id="profile-first-name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Last Name</label>
-                    <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
+                    <label htmlFor="profile-last-name" className="text-sm font-medium text-foreground">Last Name</label>
+                    <Input id="profile-last-name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Email</label>
-                  <Input type="email" value={userEmail} disabled className="opacity-60" />
+                  <label htmlFor="profile-email" className="text-sm font-medium text-foreground">Email</label>
+                  <Input id="profile-email" type="email" value={userEmail} disabled className="opacity-60" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Role</label>
-                  <Input value={userRole} disabled className="opacity-60" />
+                  <label htmlFor="profile-role" className="text-sm font-medium text-foreground">Role</label>
+                  <Input id="profile-role" value={userRole} disabled className="opacity-60" />
                   <p className="text-xs text-muted">Roles are managed by company administrators under Company Members.</p>
                 </div>
                 <Separator className="opacity-50" />
@@ -500,13 +500,13 @@ useEffect(() => {
                 )}
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2 sm:col-span-2">
-                    <label className="text-sm font-medium text-foreground">Company Name</label>
-                    <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Enter company name" />
+                    <label htmlFor="company-name" className="text-sm font-medium text-foreground">Company Name</label>
+                    <Input id="company-name" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Enter company name" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Industry</label>
                     <Select value={companyIndustry || "technology"} onValueChange={setCompanyIndustry}>
-                      <SelectTrigger>
+                      <SelectTrigger aria-label="Industry">
                         <SelectValue placeholder="Select industry" />
                       </SelectTrigger>
                       <SelectContent>
@@ -521,7 +521,7 @@ useEffect(() => {
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Company Size</label>
                     <Select value={companySize} onValueChange={setCompanySize}>
-                      <SelectTrigger>
+                      <SelectTrigger aria-label="Company Size">
                         <SelectValue placeholder="Select size" />
                       </SelectTrigger>
                       <SelectContent>
@@ -535,12 +535,12 @@ useEffect(() => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Website</label>
-                  <Input type="url" value={companyWebsite} onChange={(e) => setCompanyWebsite(e.target.value)} placeholder="https://example.com" />
+                  <label htmlFor="company-website" className="text-sm font-medium text-foreground">Website</label>
+                  <Input id="company-website" type="url" value={companyWebsite} onChange={(e) => setCompanyWebsite(e.target.value)} placeholder="https://example.com" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Locations</label>
-                  <Input value={companyCity} onChange={(e) => setCompanyCity(e.target.value)} placeholder="City, State" />
+                  <label htmlFor="company-locations" className="text-sm font-medium text-foreground">Locations</label>
+                  <Input id="company-locations" value={companyCity} onChange={(e) => setCompanyCity(e.target.value)} placeholder="City, State" />
                   <p className="text-xs text-muted">Separate multiple locations with commas.</p>
                 </div>
                 <Separator className="opacity-50" />
@@ -680,12 +680,13 @@ useEffect(() => {
               <CardContent className="space-y-6">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-foreground">
+                    <label htmlFor="screening-threshold" className="text-sm font-medium text-foreground">
                       Screening Threshold: <span className="text-primary">{screeningThreshold}%</span>
                     </label>
                     <span className="text-xs text-muted">Feature coming soon</span>
                   </div>
                   <input
+                    id="screening-threshold"
                     type="range"
                     min={0}
                     max={100}
@@ -716,7 +717,7 @@ useEffect(() => {
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">AI Interviewer Personality</label>
                     <Select value={aiPersonality} onValueChange={setAiPersonality} disabled>
-                      <SelectTrigger className="opacity-60">
+                      <SelectTrigger className="opacity-60" aria-label="AI Interviewer Personality">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -731,7 +732,7 @@ useEffect(() => {
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">Language Preference</label>
                     <Select value={language} onValueChange={(v) => { setLanguage(v); saveSettings(v) }}>
-                      <SelectTrigger>
+                      <SelectTrigger aria-label="Language Preference">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -844,22 +845,22 @@ useEffect(() => {
                   <div className="rounded-lg border border-success/20 bg-success/5 px-4 py-2 text-sm text-success">{passwordSuccess}</div>
                 )}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Current Password</label>
+                  <label htmlFor="current-password" className="text-sm font-medium text-foreground">Current Password</label>
                   <div className="relative">
-                    <Input type={showPassword ? "text" : "password"} placeholder="Enter current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+                    <Input id="current-password" type={showPassword ? "text" : "password"} placeholder="Enter current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">New Password</label>
+                    <label htmlFor="new-password" className="text-sm font-medium text-foreground">New Password</label>
                     <div className="relative">
-                      <Input type={showPassword ? "text" : "password"} placeholder="Enter new password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                      <Input id="new-password" type={showPassword ? "text" : "password"} placeholder="Enter new password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Confirm New Password</label>
+                    <label htmlFor="confirm-password" className="text-sm font-medium text-foreground">Confirm New Password</label>
                     <div className="relative">
-                      <Input type={showPassword ? "text" : "password"} placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+                      <Input id="confirm-password" type={showPassword ? "text" : "password"} placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
                     </div>
                   </div>
                 </div>

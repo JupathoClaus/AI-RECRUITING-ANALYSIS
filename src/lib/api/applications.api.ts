@@ -115,6 +115,11 @@ export interface ApplicationQueryParams {
   jobId?: string[]
   status?: ApplicationStatus[]
   stageId?: string[]
+  source?: string[]
+  submittedFrom?: string
+  submittedTo?: string
+  hasActiveFlags?: boolean
+  archived?: boolean
   sortBy?: string
   sortOrder?: "asc" | "desc"
 }
@@ -157,6 +162,11 @@ export async function fetchApplications(params?: ApplicationQueryParams): Promis
       jobId: params?.jobId,
       status: params?.status,
       stageId: params?.stageId,
+      source: params?.source,
+      submittedFrom: params?.submittedFrom,
+      submittedTo: params?.submittedTo,
+      hasActiveFlags: params?.hasActiveFlags,
+      archived: params?.archived,
       sortBy: params?.sortBy,
       sortOrder: params?.sortOrder,
     } as Record<string, string | number | undefined>,

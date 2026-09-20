@@ -206,9 +206,14 @@ async function main() {
       if (m.type() === 'error') browserErrors.push(`console: ${m.text()}`);
     });
     page.on('pageerror', (e) => browserErrors.push(`pageerror: ${e.message}`));
-    page.on('requestfailed', (r) =>
-      browserErrors.push(`requestfailed: ${r.method()} ${r.url()} :: ${r.failure()?.errorText}`),
-    );
+    page.on('requestfailed', (r) => {
+      if (r.url().includes('_rsc=') && r.failure()?.errorText === 'net::ERR_ABORTED') {
+        // Next.js cancels stale RSC route-prefetches during SPA navigation;
+        // this is expected navigation-cancel behavior, not a request failure.
+        return;
+      }
+      browserErrors.push(`requestfailed: ${r.method()} ${r.url()} :: ${r.failure()?.errorText}`);
+    });
     page.on('response', (r) => {
       if (r.status() >= 400 && !/\/favicon\.ico|\/manifest\.json/.test(r.url())) {
         browserErrors.push(`http ${r.status()}: ${r.request().method()} ${r.url()}`);
@@ -288,20 +293,20 @@ async function main() {
         capturedPayload?.salaryCurrency === 'UGX';
       note('after.create.payload', `POST /jobs payload salaryMin=${capturedPayload?.salaryMin} salaryMax=${capturedPayload?.salaryMax} salaryCurrency=${capturedPayload?.salaryCurrency} -> ${payloadOk ? 'OK' : 'MISSING'}`);
 
-      // (c) card shows the salary range
+      // (c) card shows the salary range in the stored currency (UGX)
       let cardRange = false;
       try {
-        await page.getByText(/\$2,500,000\s*[–-]\s*\$5,000,000/).first().waitFor({ timeout: 10000 });
+        await page.getByText(/UGX\s*2,500,000\s*[–-]\s*UGX\s*5,000,000/).first().waitFor({ timeout: 10000 });
         cardRange = true;
       } catch { /* fall through */ }
-      note('after.card.range', `job card shows salary range: ${cardRange}`);
+      note('after.card.range', `job card shows UGX salary range: ${cardRange}`);
       await page.screenshot({ path: join(SHOTS, 'after-card-range.png'), fullPage: true });
 
       // (d) details dialog shows salary, edit shows values
-      await page.getByText(/\$2,500,000\s*[–-]\s*\$5,000,000/).first().click();
+      await page.getByText(/UGX\s*2,500,000\s*[–-]\s*UGX\s*5,000,000/).first().click();
       const details = page.getByRole('dialog');
       await details.getByRole('button', { name: 'Edit', exact: true }).waitFor({ timeout: 10000 });
-      const detailRange = (await details.getByText(/\$2,500,000\s*[–-]\s*\$5,000,000/).count()) > 0;
+      const detailRange = (await details.getByText(/UGX\s*2,500,000\s*[–-]\s*UGX\s*5,000,000/).count()) > 0;
       note('after.details.range', `details dialog shows salary range: ${detailRange}`);
       await page.screenshot({ path: join(SHOTS, 'after-details.png'), fullPage: true });
       await details.getByRole('button', { name: 'Edit', exact: true }).click();
@@ -317,11 +322,11 @@ async function main() {
       await details.locator('#job-salary-max').fill('6000000');
       await details.locator('button[type="submit"]').click();
       await sleep(1000);
-      const detailRange2 = (await details.getByText(/\$2,500,000\s*[–-]\s*\$6,000,000/).count()) > 0;
-      note('after.edit.save', `details after save shows 2,500,000 – 6,000,000: ${detailRange2}`);
+      const detailRange2 = (await details.getByText(/UGX\s*2,500,000\s*[–-]\s*UGX\s*6,000,000/).count()) > 0;
+      note('after.edit.save', `details after save shows UGX 2,500,000 – 6,000,000: ${detailRange2}`);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.getByText(JOB_A, { exact: true }).waitFor({ timeout: 20000 });
-      const cardRange2 = await page.getByText(/\$2,500,000\s*[–-]\s*\$6,000,000/).first().isVisible();
+      const cardRange2 = await page.getByText(/UGX\s*2,500,000\s*[–-]\s*UGX\s*6,000,000/).first().isVisible();
       note('after.reload', `after reload card shows 2,500,000 – 6,000,000: ${cardRange2}`);
       await page.screenshot({ path: join(SHOTS, 'after-reload.png'), fullPage: true });
 

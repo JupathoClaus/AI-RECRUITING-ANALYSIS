@@ -254,6 +254,11 @@ export class CandidatesService {
       search,
       status,
       source,
+      jobId,
+      applicationStatus,
+      minRating,
+      exactRating,
+      unrated,
       skillId,
       languageCode,
       city,
@@ -274,13 +279,122 @@ export class CandidatesService {
 
     const skip = (page - 1) * limit;
 
+    // Applications in these statuses are not "current" pipeline applications.
+    // Mirrors the client selection rule (and the ApplicationStatus values that
+    // isActiveStatus / selectCurrentApplication treat as terminal on the UI).
+    const terminalApplicationStatuses: ApplicationStatus[] = [
+      ApplicationStatus.HIRED,
+      ApplicationStatus.REJECTED,
+      ApplicationStatus.WITHDRAWN,
+      ApplicationStatus.DISQUALIFIED,
+      ApplicationStatus.ARCHIVED,
+    ];
+
+    // ── CURRENT-APPLICATION FILTERS (jobId / applicationStatus) ──────────────
+    // The candidate table displays each candidate's *current* application,
+    // resolved exactly like the client's selectCurrentApplication: the newest
+    // active (non-terminal, non-archived) application, or — when the candidate
+    // has no active application — the newest application of any status. Prisma
+    // `distinct` keeps the first row of each candidateId group AFTER ordering,
+    // so two tenant-scoped queries resolve that set: active-newest first (it
+    // wins for candidates that have one), then any-status-newest fills the
+    // gaps. Pagination and counts then filter by candidateId, so the result is
+    // exact, consistent and free of N+1.
+    let currentApplicationCandidateIds: string[] | null = null;
+    const applicationStatusArr = Array.isArray(applicationStatus)
+      ? applicationStatus
+      : applicationStatus
+        ? [applicationStatus]
+        : [];
+    if (companyId && (jobId || applicationStatusArr.length)) {
+      const currentOrderBy = [
+        { updatedAt: 'desc' as const },
+        { createdAt: 'desc' as const },
+        { id: 'desc' as const },
+      ];
+      const openApplicationWhere: Prisma.ApplicationWhereInput = {
+        companyId,
+        deletedAt: null,
+        status: { notIn: terminalApplicationStatuses },
+      };
+      const anyApplicationWhere: Prisma.ApplicationWhereInput = {
+        companyId,
+        deletedAt: null,
+      };
+      const currentSelect = { candidateId: true, jobId: true, status: true };
+
+      const [activeNewest, anyNewest] = await Promise.all([
+        this.prisma.application.findMany({
+          where: openApplicationWhere,
+          orderBy: currentOrderBy,
+          distinct: ['candidateId'],
+          select: currentSelect,
+        }),
+        this.prisma.application.findMany({
+          where: anyApplicationWhere,
+          orderBy: currentOrderBy,
+          distinct: ['candidateId'],
+          select: currentSelect,
+        }),
+      ]);
+
+      const currentByCandidate = new Map<
+        string,
+        { jobId: string; status: ApplicationStatus }
+      >();
+      for (const application of activeNewest) {
+        currentByCandidate.set(application.candidateId, application);
+      }
+      for (const application of anyNewest) {
+        if (!currentByCandidate.has(application.candidateId)) {
+          currentByCandidate.set(application.candidateId, application);
+        }
+      }
+
+      currentApplicationCandidateIds = [...currentByCandidate.entries()]
+        .filter(
+          ([, application]) =>
+            (!jobId || application.jobId === jobId) &&
+            (!applicationStatusArr.length ||
+              applicationStatusArr.includes(application.status)),
+        )
+        .map(([candidateId]) => candidateId);
+    }
+
     const conditions: Prisma.CandidateWhereInput[] = [];
 
     // ── COMPANY-SCOPED: only return candidates linked to this company ──────────
+    const ratingCondition: Prisma.CompanyCandidateWhereInput = {
+      ...(minRating !== undefined ? { rating: { gte: minRating } } : {}),
+      ...(exactRating !== undefined ? { rating: { equals: exactRating } } : {}),
+      ...(unrated ? { OR: [{ rating: null }, { rating: 0 }] } : {}),
+    };
+    const hasRatingFilter = Object.keys(ratingCondition).length > 0;
     if (companyId) {
       conditions.push({
-        companyCandidates: { some: { companyId, deletedAt: null } },
+        companyCandidates: {
+          some: { companyId, deletedAt: null, ...ratingCondition },
+        },
       });
+    } else if (hasRatingFilter) {
+      conditions.push({ companyCandidates: { some: ratingCondition } });
+    }
+
+    if (currentApplicationCandidateIds !== null) {
+      if (currentApplicationCandidateIds.length === 0) {
+        return {
+          data: [],
+          meta: {
+            page,
+            limit,
+            total: 0,
+            totalPages: 0,
+            hasNextPage: false,
+            hasPreviousPage: false,
+          },
+        };
+      }
+      conditions.push({ id: { in: currentApplicationCandidateIds } });
     }
 
     conditions.push({
@@ -348,6 +462,12 @@ export class CandidatesService {
         include: {
           skills: { include: { skill: true }, take: 5 },
           languages: true,
+          companyCandidates: companyId
+            ? {
+                where: { companyId, deletedAt: null },
+                select: { rating: true },
+              }
+            : false,
           applications: companyId
             ? {
                 where: { companyId, deletedAt: null },
@@ -370,18 +490,12 @@ export class CandidatesService {
     // summaries newest-first.
     let screeningMap = new Map<string, CandidateScreeningSummary>();
     if (companyId && data.length > 0) {
-      const terminalStatuses = new Set<ApplicationStatus>([
-        ApplicationStatus.HIRED,
-        ApplicationStatus.REJECTED,
-        ApplicationStatus.WITHDRAWN,
-        ApplicationStatus.DISQUALIFIED,
-        ApplicationStatus.ARCHIVED,
-      ]);
+      const terminalSet = new Set<ApplicationStatus>(terminalApplicationStatuses);
       const applicationToCandidate = new Map<string, string>();
       for (const candidate of data) {
         const applications = candidate.applications ?? [];
         const current =
-          applications.find((application) => !terminalStatuses.has(application.status)) ??
+          applications.find((application) => !terminalSet.has(application.status)) ??
           applications[0];
         if (current) applicationToCandidate.set(current.id, candidate.id);
       }

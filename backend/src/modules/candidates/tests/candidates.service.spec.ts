@@ -458,6 +458,147 @@ describe('CandidatesService', () => {
 
       expect(prisma.aiScreeningResult.findMany).not.toHaveBeenCalled();
     });
+
+    it('filters candidates by the jobId of their current application', async () => {
+      prisma.application.findMany
+        .mockResolvedValueOnce([
+          { candidateId: 'c-1', jobId: 'job-1', status: 'SUBMITTED' },
+          { candidateId: 'c-2', jobId: 'job-2', status: 'INTERVIEW' },
+        ])
+        .mockResolvedValueOnce([
+          { candidateId: 'c-1', jobId: 'job-1', status: 'SUBMITTED' },
+          { candidateId: 'c-2', jobId: 'job-2', status: 'INTERVIEW' },
+        ]);
+      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'c-1' }]);
+      prisma.candidate.count.mockResolvedValue(1);
+
+      await service.findAll({ page: 1, limit: 20, jobId: 'job-1' }, false, 'company-1');
+
+      expect(prisma.application.findMany).toHaveBeenCalledTimes(2);
+      expect(prisma.application.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ companyId: 'company-1', deletedAt: null }),
+          distinct: ['candidateId'],
+        }),
+      );
+      expect(prisma.candidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              expect.objectContaining({ id: { in: ['c-1'] } }),
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('filters candidates by the status of their current application', async () => {
+      prisma.application.findMany
+        .mockResolvedValueOnce([{ candidateId: 'c-1', jobId: 'job-1', status: 'INTERVIEW' }])
+        .mockResolvedValueOnce([{ candidateId: 'c-1', jobId: 'job-1', status: 'INTERVIEW' }]);
+      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'c-1' }]);
+      prisma.candidate.count.mockResolvedValue(1);
+
+      await service.findAll(
+        { page: 1, limit: 20, applicationStatus: ['INTERVIEW'] },
+        false,
+        'company-1',
+      );
+
+      expect(prisma.candidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              expect.objectContaining({ id: { in: ['c-1'] } }),
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('returns an empty page early when no current application matches', async () => {
+      prisma.application.findMany
+        .mockResolvedValueOnce([{ candidateId: 'c-1', jobId: 'job-1', status: 'SUBMITTED' }])
+        .mockResolvedValueOnce([{ candidateId: 'c-1', jobId: 'job-1', status: 'SUBMITTED' }]);
+
+      const result = await service.findAll(
+        { page: 1, limit: 20, jobId: 'job-404' },
+        false,
+        'company-1',
+      );
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+      expect(prisma.candidate.findMany).not.toHaveBeenCalled();
+      expect(prisma.candidate.count).not.toHaveBeenCalled();
+    });
+
+    it('filters candidates by minimum company rating', async () => {
+      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'c-1' }]);
+      prisma.candidate.count.mockResolvedValue(1);
+
+      await service.findAll({ page: 1, limit: 20, minRating: 4 }, false, 'company-1');
+
+      expect(prisma.candidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                companyCandidates: {
+                  some: { companyId: 'company-1', deletedAt: null, rating: { gte: 4 } },
+                },
+              }),
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('filters candidates by an exact rating', async () => {
+      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'c-1' }]);
+      prisma.candidate.count.mockResolvedValue(1);
+
+      await service.findAll({ page: 1, limit: 20, exactRating: 5 }, false, 'company-1');
+
+      expect(prisma.candidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                companyCandidates: {
+                  some: { companyId: 'company-1', deletedAt: null, rating: { equals: 5 } },
+                },
+              }),
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('filters candidates that are unrated (null or zero rating)', async () => {
+      prisma.candidate.findMany.mockResolvedValue([{ ...baseCandidate, id: 'c-1' }]);
+      prisma.candidate.count.mockResolvedValue(1);
+
+      await service.findAll({ page: 1, limit: 20, unrated: true }, false, 'company-1');
+
+      expect(prisma.candidate.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              expect.objectContaining({
+                companyCandidates: {
+                  some: {
+                    companyId: 'company-1',
+                    deletedAt: null,
+                    OR: [{ rating: null }, { rating: 0 }],
+                  },
+                },
+              }),
+            ]),
+          }),
+        }),
+      );
+    });
   });
 
   // ─── getScreeningScoreSummary ──────────────────────────────────────────────────

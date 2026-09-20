@@ -5,8 +5,8 @@ import { AuthProvider } from "@/lib/auth-context";
 import { FloatingAIAssistant } from "@/components/ai-assistant";
 
 export const metadata: Metadata = {
-  title: "AI Recruiter - AI Recruitment Operating System",
-  description: "Enterprise-grade AI-powered recruitment platform",
+  title: "TalentAI | Recruitment workspace",
+  description: "TalentAI recruitment workspace for structured hiring decisions.",
   icons: {
     icon: "/ai-recruiter-logo.png",
   },

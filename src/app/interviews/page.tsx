@@ -16,6 +16,7 @@ import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, D
 import { ModalHeader } from "@/components/ui/modal-header"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
+import { Pagination } from "@/components/recruitment/pagination"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
 import {
@@ -95,13 +96,16 @@ function isCompleted(interview: Interview): boolean {
 }
 
 export default function InterviewsPage() {
-  const { interviews, candidates, jobs, interviewsLoading, interviewsError, fetchInterviews: loadInterviews, scheduleInterview, cancelInterviewById, completeInterviewById, rescheduleInterviewById, recordResultById } = useStore()
+  const { interviews, interviewsMeta, candidates, jobs, interviewsLoading, interviewsError, fetchInterviews: loadInterviews, scheduleInterview, cancelInterviewById, completeInterviewById, rescheduleInterviewById, recordResultById } = useStore()
   const [searchQuery, setSearchQuery] = React.useState("")
-  React.useEffect(() => {
-    loadInterviews()
-  }, [loadInterviews])
+  const [debouncedSearch, setDebouncedSearch] = React.useState("")
   const [typeFilter, setTypeFilter] = React.useState<string>("all")
   const [activeTab, setActiveTab] = React.useState("upcoming")
+  const [page, setPage] = React.useState(1)
+  React.useEffect(() => { const timer = window.setTimeout(() => { setDebouncedSearch(searchQuery); setPage(1) }, 300); return () => window.clearTimeout(timer) }, [searchQuery])
+  React.useEffect(() => {
+    void loadInterviews({ page, limit: 20, search: debouncedSearch, type: typeFilter === "all" ? undefined : typeFilter as InterviewType })
+  }, [debouncedSearch, loadInterviews, page, typeFilter])
   const [scheduleDialogOpen, setScheduleDialogOpen] = React.useState(false)
   const [detailsInterview, setDetailsInterview] = React.useState<Interview | null>(null)
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = React.useState(false)
@@ -136,10 +140,7 @@ export default function InterviewsPage() {
 
   const filteredInterviews = React.useMemo(() => {
     return interviews.filter((interview) => {
-      const matchesSearch =
-        searchQuery === "" ||
-        interview.candidateName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        interview.jobTitle.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesSearch = true
       const matchesType = typeFilter === "all" || interview.type === typeFilter
       return matchesSearch && matchesType
     })
@@ -209,7 +210,7 @@ export default function InterviewsPage() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Candidate *</label>
                 <Select value={newInterview.candidateId} onValueChange={(v) => setNewInterview((p) => ({ ...p, candidateId: v }))}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Candidate">
                     <SelectValue placeholder="Select a candidate" />
                   </SelectTrigger>
                   <SelectContent>
@@ -222,7 +223,7 @@ export default function InterviewsPage() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-foreground">Position *</label>
                 <Select value={newInterview.jobId} onValueChange={(v) => setNewInterview((p) => ({ ...p, jobId: v }))}>
-                  <SelectTrigger>
+                  <SelectTrigger aria-label="Position">
                     <SelectValue placeholder="Select a position" />
                   </SelectTrigger>
                   <SelectContent>
@@ -236,7 +237,7 @@ export default function InterviewsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-foreground">Interview Type</label>
                   <Select value={newInterview.type} onValueChange={(v) => setNewInterview((p) => ({ ...p, type: v as InterviewType }))}>
-                    <SelectTrigger>
+                    <SelectTrigger aria-label="Interview Type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -249,7 +250,7 @@ export default function InterviewsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium text-foreground">Duration (min)</label>
                   <Select value={newInterview.duration} onValueChange={(v) => setNewInterview((p) => ({ ...p, duration: v }))}>
-                    <SelectTrigger>
+                    <SelectTrigger aria-label="Duration (min)">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -368,7 +369,7 @@ export default function InterviewsPage() {
           </div>
           <div className="flex gap-3 flex-wrap">
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[140px]" aria-label="Type">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -518,6 +519,7 @@ export default function InterviewsPage() {
           )}
         </TabsContent>
       </Tabs>
+      {interviewsMeta && <Pagination meta={interviewsMeta} onPageChange={setPage} disabled={interviewsLoading} itemLabel="interviews" />}
 
       {/* Interview Detail Dialog */}
       <Dialog open={!!detailsInterview} onOpenChange={(open) => !open && setDetailsInterview(null)}>
@@ -843,7 +845,7 @@ export default function InterviewsPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Result *</label>
               <Select value={completeForm.result} onValueChange={(v) => setCompleteForm((f) => ({ ...f, result: v as BackendInterviewResult }))}>
-                <SelectTrigger>
+                <SelectTrigger aria-label="Result">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -929,7 +931,7 @@ function InterviewCard({
             </div>
           </div>
 
-          {/* Right: Status Badge, Score */}
+          {/* Right: truthful outcome and status. A score only renders when a real assessment supplies one. */}
           <div className="flex items-center gap-3 shrink-0">
             {completed && interview.score != null && (
               <div className="text-right">
@@ -942,6 +944,11 @@ function InterviewCard({
             <Badge variant={statusConfig[interview.status].variant}>
               {statusConfig[interview.status].label}
             </Badge>
+            {completed && interview.result && interview.result !== "NOT_RECORDED" && (
+              <Badge variant={interview.result === "PASS" ? "success" : interview.result === "FAIL" ? "error" : "warning"}>
+                Outcome: {interview.result === "HOLD" ? "Hold" : interview.result === "PASS" ? "Pass" : interview.result === "FAIL" ? "Fail" : "Pending"}
+              </Badge>
+            )}
           </div>
         </div>
 

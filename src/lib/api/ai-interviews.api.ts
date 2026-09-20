@@ -1,4 +1,5 @@
 import { apiRequest } from "./client"
+import type { PaginationMeta } from "./types"
 
 export type AiInterviewProvider = "MOCK" | "TAVUS"
 export type AiInterviewStatus = "CREATED" | "SENT" | "ACCESSED" | "READY" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "EXPIRED" | "FAILED"
@@ -124,8 +125,32 @@ export async function getAiInterview(id: string): Promise<AiInterviewDetail> {
   return apiRequest<AiInterviewDetail>(`/ai-interviews/${id}`)
 }
 
-export async function listAiInterviews(): Promise<AiInterviewDetail[]> {
-  return apiRequest<AiInterviewDetail[]>("/ai-interviews")
+export interface AiInterviewListResponse {
+  data: AiInterviewDetail[]
+  meta: PaginationMeta
+}
+
+export interface AiInterviewListParams {
+  page?: number
+  limit?: number
+  /** Matches candidate first/last name, email or job title. */
+  search?: string
+  status?: AiInterviewStatus[]
+  jobId?: string
+  language?: string
+}
+
+export async function listAiInterviews(params: AiInterviewListParams = {}): Promise<AiInterviewListResponse> {
+  return apiRequest<AiInterviewListResponse>("/ai-interviews", {
+    params: {
+      page: params.page,
+      limit: params.limit,
+      search: params.search,
+      status: params.status,
+      jobId: params.jobId,
+      language: params.language,
+    } as Record<string, string | number | string[] | undefined>,
+  })
 }
 
 export async function getAiInterviewsByApplication(applicationId: string): Promise<AiInterviewDetail[]> {

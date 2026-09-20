@@ -62,6 +62,7 @@ describe('JobsService', () => {
       create: jest.fn(),
       update: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
     },
     jobCollaborator: {
       create: jest.fn(),
@@ -101,6 +102,24 @@ describe('JobsService', () => {
     },
     skill: {
       findFirst: jest.fn(),
+    },
+    application: {
+      count: jest.fn(),
+      groupBy: jest.fn(),
+      findMany: jest.fn(),
+    },
+    aiScreeningResult: {
+      count: jest.fn(),
+      groupBy: jest.fn(),
+      aggregate: jest.fn(),
+    },
+    interview: {
+      count: jest.fn(),
+      groupBy: jest.fn(),
+    },
+    aiInterview: {
+      count: jest.fn(),
+      groupBy: jest.fn(),
     },
   };
 
@@ -460,6 +479,22 @@ describe('JobsService', () => {
       expect(result.department!.name).toBe('Engineering');
     });
 
+    it('should request _count matching JobListDto (screeningQuestions etc.)', async () => {
+      const mockJob = { id: 'job-1', _count: { collaborators: 0, screeningQuestions: 2, skills: 1 } };
+      prisma.job.findFirst.mockResolvedValue(mockJob);
+
+      await service.findById('company-1', 'job-1');
+
+      const include = prisma.job.findFirst.mock.calls[0][0].include;
+      expect(include._count).toEqual({
+        select: {
+          collaborators: { where: { removedAt: null } },
+          screeningQuestions: { where: { deletedAt: null } },
+          skills: true,
+        },
+      });
+    });
+
     it('should throw NotFoundException for cross-tenant access', async () => {
       prisma.job.findFirst.mockResolvedValue(null);
 
@@ -773,6 +808,145 @@ describe('JobsService', () => {
       expect(result.totalJobs).toBe(10);
       expect(result.summary.draft).toBe(5);
       expect(result.summary.published).toBe(3);
+    });
+  });
+
+  // ─── getAnalytics ──────────────────────────────────────────────────────────────
+  describe('getAnalytics', () => {
+    const stubAggregates = () => {
+      prisma.application.count.mockResolvedValue(10);
+      prisma.application.groupBy
+        .mockResolvedValueOnce([
+          { status: 'SUBMITTED', _count: { id: 4 } },
+          { status: 'HIRED', _count: { id: 2 } },
+          { status: 'REJECTED', _count: { id: 1 } },
+        ])
+        .mockResolvedValueOnce([{ currentStageId: 'stage-1', _count: { id: 5 } }]);
+      prisma.jobPipelineStage.findMany.mockResolvedValue([
+        { id: 'stage-1', name: 'Applied', sortOrder: 0 },
+        { id: 'stage-2', name: 'Interview', sortOrder: 1 },
+      ]);
+      prisma.application.findMany.mockResolvedValue([
+        { createdAt: new Date('2025-01-01T00:00:00Z'), hiredAt: new Date('2025-01-11T00:00:00Z') },
+      ]);
+      prisma.aiScreeningResult.count.mockResolvedValue(6);
+      prisma.aiScreeningResult.groupBy
+        .mockResolvedValueOnce([
+          { status: 'COMPLETED', _count: { id: 4 } },
+          { status: 'FAILED', _count: { id: 1 } },
+          { status: 'PENDING', _count: { id: 1 } },
+        ])
+        .mockResolvedValueOnce([
+          { recommendation: 'SHORTLIST', _count: { id: 2 } },
+          { recommendation: 'HUMAN_REVIEW', _count: { id: 2 } },
+        ]);
+      prisma.aiScreeningResult.aggregate.mockResolvedValue({
+        _avg: { overallScore: 78.4 },
+        _count: { _all: 4 },
+      });
+      prisma.interview.count.mockResolvedValueOnce(3).mockResolvedValueOnce(2);
+      prisma.interview.groupBy
+        .mockResolvedValueOnce([
+          { status: 'SCHEDULED', _count: { id: 2 } },
+          { status: 'COMPLETED', _count: { id: 1 } },
+        ])
+        .mockResolvedValueOnce([
+          { result: 'PASS', _count: { id: 1 } },
+          { result: 'NOT_RECORDED', _count: { id: 2 } },
+        ]);
+      prisma.aiInterview.count.mockResolvedValue(2);
+      prisma.aiInterview.groupBy.mockResolvedValue([
+        { status: 'COMPLETED', _count: { id: 1 } },
+        { status: 'SENT', _count: { id: 1 } },
+      ]);
+    };
+
+    it('should aggregate all job metrics from backend queries', async () => {
+      prisma.job.findFirst.mockResolvedValue({ id: 'job-1', numberOfOpenings: 2 });
+      stubAggregates();
+
+      const result = await service.getAnalytics('company-1', 'job-1');
+
+      expect(prisma.job.findFirst).toHaveBeenCalledWith({
+        where: { id: 'job-1', companyId: 'company-1', deletedAt: null },
+        select: { id: true, numberOfOpenings: true },
+      });
+      expect(result.applications.total).toBe(10);
+      expect(result.applications.active).toBe(7);
+      expect(result.applications.byStage).toEqual([
+        { stageId: 'stage-1', name: 'Applied', count: 5 },
+        { stageId: 'stage-2', name: 'Interview', count: 0 },
+      ]);
+      expect(result.screening).toMatchObject({
+        total: 6,
+        completed: 4,
+        failed: 1,
+        pending: 1,
+        scored: 4,
+        averageScore: 78,
+      });
+      expect(result.screening.byRecommendation).toEqual({
+        SHORTLIST: 2,
+        NOT_SHORTLIST: 0,
+        HUMAN_REVIEW: 2,
+      });
+      expect(result.interviews.total).toBe(3);
+      expect(result.interviews.upcoming).toBe(2);
+      expect(result.interviews.byResult).toEqual({ PASS: 1, NOT_RECORDED: 2 });
+      expect(result.aiInterviews.total).toBe(2);
+      expect(result.aiInterviews.byStatus).toEqual({ COMPLETED: 1, SENT: 1 });
+      expect(result.timeToHireDays).toBe(10);
+      expect(result.jobId).toBe('job-1');
+      expect(result.numberOfOpenings).toBe(2);
+    });
+
+    it('should isolate every aggregate by tenant and job', async () => {
+      prisma.job.findFirst.mockResolvedValue({ id: 'job-1', numberOfOpenings: 1 });
+      stubAggregates();
+
+      await service.getAnalytics('company-1', 'job-1');
+
+      expect(prisma.application.count).toHaveBeenCalledWith({
+        where: { companyId: 'company-1', jobId: 'job-1', deletedAt: null },
+      });
+      expect(prisma.aiInterview.count).toHaveBeenCalledWith({
+        where: {
+          companyId: 'company-1',
+          application: { jobId: 'job-1', deletedAt: null },
+        },
+      });
+    });
+
+    it('should return null average and zero metrics when no data exists', async () => {
+      prisma.job.findFirst.mockResolvedValue({ id: 'job-1', numberOfOpenings: 1 });
+      prisma.application.count.mockResolvedValue(0);
+      prisma.application.groupBy.mockResolvedValue([]);
+      prisma.jobPipelineStage.findMany.mockResolvedValue([]);
+      prisma.application.findMany.mockResolvedValue([]);
+      prisma.aiScreeningResult.count.mockResolvedValue(0);
+      prisma.aiScreeningResult.groupBy.mockResolvedValue([]);
+      prisma.aiScreeningResult.aggregate.mockResolvedValue({
+        _avg: { overallScore: null },
+        _count: { _all: 0 },
+      });
+      prisma.interview.count.mockResolvedValue(0);
+      prisma.interview.groupBy.mockResolvedValue([]);
+      prisma.aiInterview.count.mockResolvedValue(0);
+      prisma.aiInterview.groupBy.mockResolvedValue([]);
+
+      const result = await service.getAnalytics('company-1', 'job-1');
+
+      expect(result.screening.averageScore).toBeNull();
+      expect(result.timeToHireDays).toBeNull();
+      expect(result.applications.byStage).toEqual([]);
+      expect(result.interviews.byResult).toEqual({});
+    });
+
+    it('should throw JOB_NOT_FOUND and skip aggregates when the job is out of tenant scope', async () => {
+      prisma.job.findFirst.mockResolvedValue(null);
+
+      await expect(service.getAnalytics('company-1', 'job-1')).rejects.toThrow(NotFoundException);
+      expect(prisma.application.count).not.toHaveBeenCalled();
     });
   });
 

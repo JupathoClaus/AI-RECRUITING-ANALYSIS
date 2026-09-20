@@ -1,68 +1,60 @@
 /**
- * The AI Assistant is a static preview: it must never fabricate recruitment
- * metrics and never claim that screening/scheduling/analytics actions were
- * performed.
+ * The floating assistant is an intentional static feature guide: there is no
+ * assistant endpoint, so it must never fabricate recruitment metrics, never
+ * imply it performed an action, and never render a chat input that cannot work.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, afterEach } from "vitest"
 import { render, screen, fireEvent, cleanup } from "@testing-library/react"
 import { FloatingAIAssistant } from "@/components/ai-assistant"
 
-function openAssistant() {
+function openGuide() {
   render(<FloatingAIAssistant />)
-  fireEvent.click(screen.getByRole("button", { name: /Open AI Assistant preview/i }))
+  fireEvent.click(screen.getByRole("button", { name: /open talentai feature guide/i }))
 }
 
-async function ask(question: string) {
-  const input = screen.getByPlaceholderText("Ask how to use a feature...")
-  fireEvent.change(input, { target: { value: question } })
-  fireEvent.click(screen.getByRole("button", { name: /send message/i }))
-}
+describe("FloatingAIAssistant (static feature guide)", () => {
+  afterEach(() => cleanup())
 
-describe("FloatingAIAssistant (preview)", () => {
-  beforeEach(() => {
-    vi.stubGlobal("scrollIntoView", vi.fn())
-    Element.prototype.scrollIntoView = vi.fn()
+  it("labels itself as preview-only with no live data", () => {
+    render(<FloatingAIAssistant />)
+    expect(screen.queryByText(/Preview only/i)).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: /open talentai feature guide/i }))
+
+    expect(screen.getByText("TalentAI feature guide")).toBeTruthy()
+    expect(
+      screen.getByText(/Preview only — no conversational AI, actions, or live data are available here/i),
+    ).toBeTruthy()
   })
 
-  afterEach(() => {
-    cleanup()
-    vi.unstubAllGlobals()
+  it("links only to real workflows and fabricates no metrics or actions", () => {
+    openGuide()
+
+    const links = screen.getAllByRole("link")
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/applications",
+      "/interviews",
+      "/reports",
+    ])
+
+    const body = document.body.textContent ?? ""
+    expect(body).not.toMatch(/12 active job openings|47 candidates|18 days|34%/i)
+    expect(body).not.toMatch(/I (have )?(screened|scheduled)|screening (is )?complete|interview (is )?scheduled/i)
   })
 
-  it("labels itself as preview with actions unavailable", () => {
-    openAssistant()
-    expect(screen.getByText("Preview — actions unavailable")).toBeTruthy()
-    expect(screen.getByText(/no actions are executed and no live data is shown/i)).toBeTruthy()
+  it("does not render a chat input or send control", () => {
+    openGuide()
+
+    expect(screen.queryByRole("textbox")).toBeNull()
+    expect(screen.queryByRole("button", { name: /send message/i })).toBeNull()
   })
 
-  it("does not fabricate numerical recruitment metrics", async () => {
-    openAssistant()
-    await ask("Show hiring analytics")
+  it("closes the guide", () => {
+    openGuide()
 
-    const reply = await screen.findByText(/Hiring metrics are shown on the Dashboard/i, {
-      timeout: 5000,
-    })
-    expect(reply.textContent).not.toMatch(/12 active job openings|47 candidates|18 days|34%/i)
-    expect(reply.textContent).toMatch(/does not load or fabricate metric values/i)
-  })
+    fireEvent.click(screen.getByRole("button", { name: /close feature guide/i }))
 
-  it("never claims screening was performed", async () => {
-    openAssistant()
-    await ask("Screen a candidate for me")
-
-    const reply = await screen.findByText(/AI screening is available now/i, { timeout: 5000 })
-    expect(reply.textContent).not.toMatch(/I (have )?screened|screening (is )?complete/i)
-    expect(reply.textContent).toMatch(/AI Screener page/i)
-  })
-
-  it("never claims scheduling was performed", async () => {
-    openAssistant()
-    await ask("Schedule an interview")
-
-    const reply = await screen.findByText(/Interviews are scheduled from the Interviews page/i, {
-      timeout: 5000,
-    })
-    expect(reply.textContent).not.toMatch(/scheduled (an|the) interview/i)
+    expect(screen.queryByText("TalentAI feature guide")).toBeNull()
   })
 })

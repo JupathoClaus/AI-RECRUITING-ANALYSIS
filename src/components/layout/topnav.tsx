@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Notification, ArrowDown2, Moon, Sun, Information, User, Setting, Logout } from "iconsax-react"
+import { Bell, ChevronDown, LogOut, Moon, Settings, Sun, User } from "lucide-react"
 import { useTheme } from "@/lib/theme-context"
 import Link from "next/link"
 
@@ -75,7 +75,7 @@ export function TopNav({ title, description, actions }: TopNavProps) {
           className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-surface-hover hover:text-foreground transition-colors duration-150"
           aria-label="Notifications"
         >
-          <Notification className="h-4 w-4" />
+          <Bell className="h-4 w-4" />
         </Link>
 
         <DropdownMenu>
@@ -83,7 +83,7 @@ export function TopNav({ title, description, actions }: TopNavProps) {
             <Button variant="ghost" className="gap-2 h-9 px-2.5">
               <Avatar className="h-6 w-6" fallback={userInitials} />
               <span className="text-sm font-medium hidden sm:inline">{user?.name?.split(" ")[0] || "User"}</span>
-              <ArrowDown2 className="h-3.5 w-3.5 text-muted hidden sm:block" />
+              <ChevronDown className="hidden h-3.5 w-3.5 text-muted sm:block" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -94,21 +94,21 @@ export function TopNav({ title, description, actions }: TopNavProps) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <User className="mr-2 h-4 w-4" />
-              Profile
+            <DropdownMenuItem asChild>
+              <Link href="/settings">
+                <User className="mr-2 h-4 w-4" />
+                Profile
+              </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Setting className="mr-2 h-4 w-4" />
-              Settings
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Information className="mr-2 h-4 w-4" />
-              Help & Support
+            <DropdownMenuItem asChild>
+              <Link href="/settings">
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem className="text-error" onClick={handleLogout}>
-              <Logout className="mr-2 h-4 w-4" />
+              <LogOut className="mr-2 h-4 w-4" />
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>

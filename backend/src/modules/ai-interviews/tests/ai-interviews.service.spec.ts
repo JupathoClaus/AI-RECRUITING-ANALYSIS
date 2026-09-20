@@ -72,6 +72,7 @@ describe('AiInterviewsService', () => {
       findFirst: jest.fn(),
       findUnique: jest.fn(),
       findMany: jest.fn(),
+      count: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
@@ -390,18 +391,103 @@ describe('AiInterviewsService', () => {
   });
 
   describe('findAll', () => {
-    it('lists only the active company interviews and strips meeting tokens', async () => {
-      prisma.aiInterview.findMany.mockResolvedValue([
-        { ...mockInterview, tavusMeetingToken: 'secret-token' },
+    it('returns a tenant-scoped paginated list and strips meeting tokens', async () => {
+      prisma.$transaction.mockResolvedValue([
+        [{ ...mockInterview, tavusMeetingToken: 'secret-token' }],
+        3,
       ]);
 
       const result = await service.findAll('company-1');
 
       expect(prisma.aiInterview.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { companyId: 'company-1' }, take: 100 }),
+        expect.objectContaining({ where: { companyId: 'company-1' }, skip: 0, take: 20 }),
       );
-      expect(result).toHaveLength(1);
-      expect(result[0]).not.toHaveProperty('tavusMeetingToken');
+      expect(prisma.aiInterview.count).toHaveBeenCalledWith({
+        where: { companyId: 'company-1' },
+      });
+      expect(result.meta).toEqual({ total: 3, page: 1, limit: 20, totalPages: 1 });
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]).not.toHaveProperty('tavusMeetingToken');
+    });
+
+    it('filters by search across candidate name and job title', async () => {
+      prisma.$transaction.mockResolvedValue([[], 0]);
+
+      await service.findAll('company-1', { search: 'Daniel' });
+
+      expect(prisma.aiInterview.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: 'company-1',
+            application: expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({
+                  candidate: expect.objectContaining({
+                    is: expect.objectContaining({
+                      OR: expect.arrayContaining([
+                        { firstName: { contains: 'Daniel', mode: 'insensitive' } },
+                        { lastName: { contains: 'Daniel', mode: 'insensitive' } },
+                        { email: { contains: 'Daniel', mode: 'insensitive' } },
+                      ]),
+                    }),
+                  }),
+                }),
+                expect.objectContaining({
+                  job: expect.objectContaining({
+                    is: expect.objectContaining({
+                      title: { contains: 'Daniel', mode: 'insensitive' },
+                    }),
+                  }),
+                }),
+              ]),
+            }),
+          }),
+        }),
+      );
+      expect(prisma.aiInterview.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ companyId: 'company-1' }),
+        }),
+      );
+    });
+
+    it('filters by status, jobId and language', async () => {
+      prisma.$transaction.mockResolvedValue([[], 0]);
+
+      await service.findAll('company-1', {
+        status: [AiInterviewStatus.COMPLETED],
+        jobId: 'job-1',
+        language: 'en',
+      });
+
+      expect(prisma.aiInterview.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: 'company-1',
+            status: { in: [AiInterviewStatus.COMPLETED] },
+            language: 'en',
+            application: { jobId: 'job-1' },
+          }),
+        }),
+      );
+    });
+
+    it('combines jobId and search inside a single application filter', async () => {
+      prisma.$transaction.mockResolvedValue([[], 0]);
+
+      await service.findAll('company-1', { search: 'Kato', jobId: 'job-1' });
+
+      expect(prisma.aiInterview.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: 'company-1',
+            application: expect.objectContaining({
+              jobId: 'job-1',
+              OR: expect.any(Array),
+            }),
+          }),
+        }),
+      );
     });
   });
 

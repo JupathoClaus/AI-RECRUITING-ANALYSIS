@@ -126,6 +126,8 @@ export interface Interview {
   status: "Scheduled" | "Completed" | "Cancelled"
   backendStatus: "SCHEDULED" | "CONFIRMED" | "RESCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "NO_SHOW" | "EXPIRED"
   type: "Video" | "Phone" | "On-site" | "AI" | "Technical"
+  /** Recruiter-recorded outcome. This is intentionally distinct from an assessment score. */
+  result?: "PASS" | "FAIL" | "HOLD" | "PENDING" | "NOT_RECORDED"
   score?: number
   version: number
   applicationId?: string

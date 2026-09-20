@@ -454,6 +454,17 @@ export class JobsController {
     );
   }
 
+  @Get(':jobId/analytics')
+  @RequirePermissions('jobs.read')
+  @ApiOperation({ summary: 'Get truthful, tenant-scoped job analytics aggregates' })
+  @ApiParam({ name: 'jobId' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Job analytics aggregates' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'JOB_NOT_FOUND' })
+  async getAnalytics(@Param('jobId') jobId: string, @CurrentUser() user: AuthenticatedPrincipal) {
+    const { activeCompanyId } = this.validateTenant(user);
+    return this.jobsService.getAnalytics(activeCompanyId, jobId);
+  }
+
   @Get(':jobId/requirements')
   @RequirePermissions('jobs.read')
   @ApiOperation({ summary: 'Get job requirements' })

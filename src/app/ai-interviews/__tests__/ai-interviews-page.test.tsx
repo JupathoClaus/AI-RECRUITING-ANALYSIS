@@ -77,6 +77,7 @@ vi.mock("iconsax-react", () => {
     Send2: mock("Send2"),
     Refresh: mock("Refresh"),
     Eye: mock("Eye"),
+    SearchNormal: mock("SearchNormal"),
     DirectboxDefault: mock("DirectboxDefault"),
     CloseSquare: mock("CloseSquare"),
     Check: mock("Check"),

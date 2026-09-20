@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -17,6 +18,7 @@ import { AuthenticatedPrincipal } from '@modules/auth/interfaces/auth.interface'
 import { AiInterviewsService } from '../services/ai-interviews.service';
 import { CreateAiInterviewDto } from '../dto/create-ai-interview.dto';
 import { SendInvitationDto } from '../dto/send-invitation.dto';
+import { AiInterviewQueryDto } from '../dto/ai-interview-query.dto';
 
 @ApiTags('AI Interviews')
 @ApiBearerAuth()
@@ -35,8 +37,8 @@ export class AiInterviewsController {
   @Get()
   @RequirePermissions('interviews.read')
   @ApiOperation({ summary: 'List AI interviews for the active company' })
-  async findAll(@CurrentUser() user: AuthenticatedPrincipal) {
-    return this.aiInterviewsService.findAll(user.activeCompanyId!);
+  async findAll(@Query() query: AiInterviewQueryDto, @CurrentUser() user: AuthenticatedPrincipal) {
+    return this.aiInterviewsService.findAll(user.activeCompanyId!, query);
   }
 
   @Get(':id')

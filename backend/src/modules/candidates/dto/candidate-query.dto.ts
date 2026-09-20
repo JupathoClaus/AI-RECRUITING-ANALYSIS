@@ -11,7 +11,7 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { CandidateStatus, CandidateSource } from '@prisma/client';
+import { ApplicationStatus, CandidateStatus, CandidateSource } from '@prisma/client';
 
 export class CandidateQueryDto {
   @ApiPropertyOptional({ default: 1 })
@@ -45,6 +45,50 @@ export class CandidateQueryDto {
   @IsArray()
   @IsEnum(CandidateSource, { each: true })
   source?: CandidateSource[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  jobId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filters candidates by the status of their CURRENT (newest active) application; the same application the candidate table displays.',
+    enum: ApplicationStatus,
+    isArray: true,
+  })
+  @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
+  @IsEnum(ApplicationStatus, { each: true })
+  applicationStatus?: ApplicationStatus[];
+
+  @ApiPropertyOptional({
+    description: 'Minimum company rating (1-5) a candidate must have.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(5)
+  minRating?: number;
+
+  @ApiPropertyOptional({
+    description: 'Exact company rating (1-5) a candidate must have.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(5)
+  exactRating?: number;
+
+  @ApiPropertyOptional({
+    description: 'Only candidates without a recorded company rating.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  unrated?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()

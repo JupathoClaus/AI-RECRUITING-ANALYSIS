@@ -14,6 +14,10 @@ import {
   JobCollaboratorType,
   PipelineStageType,
   JobActivityEventType,
+  ApplicationStatus,
+  AiScreeningStatus,
+  AiScreeningRecommendation,
+  InterviewStatus,
   Prisma,
 } from '@prisma/client';
 import { OrganizationAuditService } from '@modules/organization/organization-audit.service';
@@ -512,6 +516,13 @@ export class JobsService {
         activityEvents: {
           take: 50,
           orderBy: { occurredAt: 'desc' },
+        },
+        _count: {
+          select: {
+            collaborators: { where: { removedAt: null } },
+            screeningQuestions: { where: { deletedAt: null } },
+            skills: true,
+          },
         },
       },
     });
@@ -1044,6 +1055,243 @@ export class JobsService {
         filled: statusSummary[JobStatus.FILLED] ?? 0,
         archived: statusSummary[JobStatus.ARCHIVED] ?? 0,
       },
+    };
+  }
+
+  /**
+   * Truthful, tenant-scoped job analytics computed entirely from backend
+   * aggregates. Nothing here is derived from a paginated page dataset. Counts
+   * with no underlying data return 0 and averages with no data return null
+   * rather than being estimated.
+   */
+  async getAnalytics(companyId: string, jobId: string) {
+    const job = await this.prisma.job.findFirst({
+      where: { id: jobId, companyId, deletedAt: null },
+      select: { id: true, numberOfOpenings: true },
+    });
+
+    if (!job) {
+      throw new NotFoundException('JOB_NOT_FOUND');
+    }
+
+    const terminalApplicationStatuses: ApplicationStatus[] = [
+      ApplicationStatus.HIRED,
+      ApplicationStatus.REJECTED,
+      ApplicationStatus.WITHDRAWN,
+      ApplicationStatus.DISQUALIFIED,
+      ApplicationStatus.ARCHIVED,
+    ];
+
+    const applicationWhere: Prisma.ApplicationWhereInput = {
+      companyId,
+      jobId,
+      deletedAt: null,
+    };
+    const screeningWhere: Prisma.AiScreeningResultWhereInput = {
+      companyId,
+      jobId,
+      application: { deletedAt: null },
+    };
+    const interviewWhere: Prisma.InterviewWhereInput = { companyId, jobId, deletedAt: null };
+    const aiInterviewWhere: Prisma.AiInterviewWhereInput = {
+      companyId,
+      application: { jobId, deletedAt: null },
+    };
+
+    const [
+      applicationTotal,
+      applicationsByStatus,
+      stageGroups,
+      pipelineStages,
+      hiredApplications,
+      screeningTotal,
+      screeningByStatus,
+      screeningByRecommendation,
+      screeningScore,
+      interviewTotal,
+      interviewsByStatus,
+      interviewsByResult,
+      upcomingInterviews,
+      aiInterviewTotal,
+      aiInterviewsByStatus,
+    ] = await Promise.all([
+      this.prisma.application.count({ where: applicationWhere }),
+      this.prisma.application.groupBy({
+        by: ['status'],
+        where: applicationWhere,
+        _count: { id: true },
+      }),
+      this.prisma.application.groupBy({
+        by: ['currentStageId'],
+        where: { ...applicationWhere, currentStageId: { not: null } },
+        _count: { id: true },
+      }),
+      this.prisma.jobPipelineStage.findMany({
+        where: { pipeline: { jobId }, deletedAt: null },
+        orderBy: { sortOrder: 'asc' },
+        select: { id: true, name: true, sortOrder: true },
+      }),
+      this.prisma.application.findMany({
+        where: {
+          ...applicationWhere,
+          status: ApplicationStatus.HIRED,
+          hiredAt: { not: null },
+        },
+        select: { createdAt: true, hiredAt: true },
+      }),
+      this.prisma.aiScreeningResult.count({ where: screeningWhere }),
+      this.prisma.aiScreeningResult.groupBy({
+        by: ['status'],
+        where: screeningWhere,
+        _count: { id: true },
+      }),
+      this.prisma.aiScreeningResult.groupBy({
+        by: ['recommendation'],
+        where: { ...screeningWhere, status: AiScreeningStatus.COMPLETED },
+        _count: { id: true },
+      }),
+      this.prisma.aiScreeningResult.aggregate({
+        where: {
+          ...screeningWhere,
+          status: AiScreeningStatus.COMPLETED,
+          overallScore: { not: null },
+        },
+        _avg: { overallScore: true },
+        _count: { _all: true },
+      }),
+      this.prisma.interview.count({ where: interviewWhere }),
+      this.prisma.interview.groupBy({
+        by: ['status'],
+        where: interviewWhere,
+        _count: { id: true },
+      }),
+      this.prisma.interview.groupBy({
+        by: ['result'],
+        where: interviewWhere,
+        _count: { id: true },
+      }),
+      this.prisma.interview.count({
+        where: {
+          ...interviewWhere,
+          scheduledAt: { gte: new Date() },
+          status: {
+            notIn: [
+              InterviewStatus.CANCELLED,
+              InterviewStatus.COMPLETED,
+              InterviewStatus.NO_SHOW,
+              InterviewStatus.EXPIRED,
+            ],
+          },
+        },
+      }),
+      this.prisma.aiInterview.count({ where: aiInterviewWhere }),
+      this.prisma.aiInterview.groupBy({
+        by: ['status'],
+        where: aiInterviewWhere,
+        _count: { id: true },
+      }),
+    ]);
+
+    const applicationStatusMap: Record<string, number> = {};
+    for (const row of applicationsByStatus) {
+      applicationStatusMap[row.status] = row._count.id;
+    }
+
+    const stageCountMap = new Map<string, number>();
+    for (const row of stageGroups) {
+      if (row.currentStageId) stageCountMap.set(row.currentStageId, row._count.id);
+    }
+    const byStage = pipelineStages.map((stage) => ({
+      stageId: stage.id,
+      name: stage.name,
+      count: stageCountMap.get(stage.id) ?? 0,
+    }));
+
+    const terminalCount = terminalApplicationStatuses.reduce(
+      (sum, status) => sum + (applicationStatusMap[status] ?? 0),
+      0,
+    );
+
+    const screeningStatusMap: Record<string, number> = {};
+    for (const row of screeningByStatus) {
+      screeningStatusMap[row.status] = row._count.id;
+    }
+
+    const screeningRecommendationMap: Record<string, number> = {};
+    for (const row of screeningByRecommendation) {
+      if (row.recommendation) screeningRecommendationMap[row.recommendation] = row._count.id;
+    }
+
+    const interviewStatusMap: Record<string, number> = {};
+    for (const row of interviewsByStatus) {
+      interviewStatusMap[row.status] = row._count.id;
+    }
+
+    const interviewResultMap: Record<string, number> = {};
+    for (const row of interviewsByResult) {
+      interviewResultMap[row.result] = row._count.id;
+    }
+
+    const aiInterviewStatusMap: Record<string, number> = {};
+    for (const row of aiInterviewsByStatus) {
+      aiInterviewStatusMap[row.status] = row._count.id;
+    }
+
+    let timeToHireDays: number | null = null;
+    let validHiredCount = 0;
+    let totalDays = 0;
+    for (const application of hiredApplications) {
+      if (!application.hiredAt) continue;
+      const diff = application.hiredAt.getTime() - application.createdAt.getTime();
+      if (diff <= 0) continue;
+      totalDays += Math.round(diff / (1000 * 60 * 60 * 24));
+      validHiredCount += 1;
+    }
+    if (validHiredCount > 0) {
+      timeToHireDays = Math.round(totalDays / validHiredCount);
+    }
+
+    const averageScore = screeningScore._avg.overallScore;
+
+    return {
+      jobId: job.id,
+      numberOfOpenings: job.numberOfOpenings,
+      applications: {
+        total: applicationTotal,
+        active: applicationTotal - terminalCount,
+        byStatus: applicationStatusMap,
+        byStage,
+      },
+      screening: {
+        total: screeningTotal,
+        completed: screeningStatusMap[AiScreeningStatus.COMPLETED] ?? 0,
+        failed: screeningStatusMap[AiScreeningStatus.FAILED] ?? 0,
+        pending:
+          (screeningStatusMap[AiScreeningStatus.PENDING] ?? 0) +
+          (screeningStatusMap[AiScreeningStatus.RUNNING] ?? 0),
+        scored: screeningScore._count._all,
+        averageScore: averageScore === null ? null : Math.round(averageScore),
+        byRecommendation: {
+          [AiScreeningRecommendation.SHORTLIST]:
+            screeningRecommendationMap[AiScreeningRecommendation.SHORTLIST] ?? 0,
+          [AiScreeningRecommendation.NOT_SHORTLIST]:
+            screeningRecommendationMap[AiScreeningRecommendation.NOT_SHORTLIST] ?? 0,
+          [AiScreeningRecommendation.HUMAN_REVIEW]:
+            screeningRecommendationMap[AiScreeningRecommendation.HUMAN_REVIEW] ?? 0,
+        },
+      },
+      interviews: {
+        total: interviewTotal,
+        upcoming: upcomingInterviews,
+        byStatus: interviewStatusMap,
+        byResult: interviewResultMap,
+      },
+      aiInterviews: {
+        total: aiInterviewTotal,
+        byStatus: aiInterviewStatusMap,
+      },
+      timeToHireDays,
+      generatedAt: new Date().toISOString(),
     };
   }
 

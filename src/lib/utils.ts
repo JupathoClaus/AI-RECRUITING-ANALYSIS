@@ -11,8 +11,8 @@ export function formatNumber(num: number): string {
   return num.toString()
 }
 
-export function formatCurrency(num: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(num)
+export function formatCurrency(num: number, currency = 'USD'): string {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 0 }).format(num)
 }
 
 export function getInitials(name: string): string {
