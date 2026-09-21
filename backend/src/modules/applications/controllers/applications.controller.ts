@@ -39,7 +39,6 @@ import { CreateNoteDto, UpdateNoteDto } from '../dto/note.dto';
 import { CreateFlagDto, ResolveFlagDto } from '../dto/flag.dto';
 import { CreateDecisionDto, OverrideDecisionDto } from '../dto/decision.dto';
 import { CreateAssignmentDto, TransferOwnershipDto } from '../dto/assignment.dto';
-import { BulkActionDto, BulkActionType } from '../dto/bulk-action.dto';
 import { ScreeningAnswerInputDto } from '../dto/create-application.dto';
 import { ApplicationStatus, ApplicationActorType } from '@prisma/client';
 
@@ -518,24 +517,5 @@ export class ApplicationsController {
       user.membershipId!,
       user.userId,
     );
-  }
-
-  // ── Bulk ───────────────────────────────────────────────────────────────────
-  @Post('bulk')
-  @RequirePermissions('applications.bulk_manage')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Bulk application actions (max 100)' })
-  async bulk(@Body() dto: BulkActionDto, @CurrentUser() user: AuthenticatedPrincipal) {
-    if (dto.applicationIds.length > 100) throw new Error('APPLICATION_BULK_LIMIT_EXCEEDED');
-    const results: Array<{ id: string; success: boolean; error?: string }> = [];
-    for (const appId of dto.applicationIds) {
-      try {
-        // Each action is best-effort; collect per-item results
-        results.push({ id: appId, success: true });
-      } catch (e: any) {
-        results.push({ id: appId, success: false, error: e.message });
-      }
-    }
-    return { action: dto.action, total: dto.applicationIds.length, results };
   }
 }

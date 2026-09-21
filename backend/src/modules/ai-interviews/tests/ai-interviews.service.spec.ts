@@ -77,7 +77,8 @@ describe('AiInterviewsService', () => {
       update: jest.fn(),
       updateMany: jest.fn(),
     },
-    $transaction: jest.fn(),
+    $executeRaw: jest.fn().mockResolvedValue([]),
+    $transaction: jest.fn(async (cb: (tx: any) => unknown) => cb(mockPrismaService)),
   };
 
   beforeAll(async () => {
@@ -384,13 +385,180 @@ describe('AiInterviewsService', () => {
       codeService.displayHint.mockReturnValue('ABCD-EFGH');
       prisma.aiInterview.create.mockResolvedValue(mockInterview);
 
-      const result = await service.create(
-        { applicationId: 'app-1' },
-        'company-1',
-        'membership-1',
-      );
+      const result = await service.create({ applicationId: 'app-1' }, 'company-1', 'membership-1');
       expect(result.id).toBe('interview-1');
       expect(prisma.aiInterview.create).toHaveBeenCalled();
+    });
+
+    it('should serialize concurrent creates with an advisory lock scoped to the company', async () => {
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      codeService.generate.mockReturnValue('ABCD-EFGH');
+      codeService.hash.mockReturnValue('hash');
+      codeService.displayHint.mockReturnValue('ABCD-EFGH');
+
+      const committed: any[] = [];
+      prisma.aiInterview.create.mockImplementation(async (args: any) => {
+        const rec = {
+          ...mockInterview,
+          id: `interview-${committed.length + 1}`,
+          status: AiInterviewStatus.CREATED,
+        };
+        committed.push(rec);
+        return rec;
+      });
+      prisma.aiInterview.count.mockImplementation(async () => committed.length);
+      // Model the advisory lock: the mock transaction runs callbacks one at a
+      // time, so each create observes the rows committed by the previous one.
+      let chain: Promise<unknown> = Promise.resolve();
+      prisma.$transaction.mockImplementation((cb: (tx: any) => unknown) => {
+        const run = chain.then(() => cb(mockPrismaService));
+        chain = run.catch(() => undefined);
+        return run;
+      });
+      mockConfigService.get.mockImplementation((key: string) => {
+        const config: Record<string, any> = {
+          'app.frontendUrl': 'http://localhost:3001',
+          'app.backendUrl': 'http://localhost:3000',
+          'tavus.enabled': false,
+          'aiInterview.allowTestEmailOverride': false,
+          'aiInterview.defaultDurationMinutes': 5,
+          'aiInterview.maxConcurrent': 2,
+          'app.env': 'test',
+        };
+        return Object.prototype.hasOwnProperty.call(config, key) ? config[key] : undefined;
+      });
+
+      const results = await Promise.allSettled([
+        service.create({ applicationId: 'app-1' }, 'company-1', 'membership-1'),
+        service.create({ applicationId: 'app-2' }, 'company-1', 'membership-1'),
+        service.create({ applicationId: 'app-3' }, 'company-1', 'membership-1'),
+      ]);
+
+      const succeeded = results.filter((r) => r.status === 'fulfilled');
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+      expect(succeeded.length).toBe(2);
+      expect(rejected.length).toBe(1);
+      expect(rejected[0].reason).toMatchObject({
+        response: expect.objectContaining({ code: 'AI_INTERVIEW_CONCURRENCY_LIMIT' }),
+      });
+      expect(
+        prisma.$executeRaw.mock.calls.some((c: any[]) =>
+          JSON.stringify(c).includes('pg_advisory_xact_lock'),
+        ),
+      ).toBe(true);
+      expect(prisma.$transaction).toHaveBeenCalled();
+      prisma.$transaction.mockImplementation(async (cb: (tx: any) => unknown) =>
+        cb(mockPrismaService),
+      );
+      mockConfigService.get.mockImplementation((key: string) => {
+        const config: Record<string, any> = {
+          'app.frontendUrl': 'http://localhost:3001',
+          'tavus.enabled': false,
+          'aiInterview.allowTestEmailOverride': false,
+          'app.env': 'test',
+        };
+        return Object.prototype.hasOwnProperty.call(config, key) ? config[key] : undefined;
+      });
+    });
+
+    it('should count only non-terminal interviews toward the limit (terminal releases capacity)', async () => {
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      const terminal = [
+        AiInterviewStatus.CANCELLED,
+        AiInterviewStatus.EXPIRED,
+        AiInterviewStatus.FAILED,
+        AiInterviewStatus.COMPLETED,
+      ];
+      // Even though 4 rows exist, the guard should exclude terminal rows and
+      // let a fresh round through.
+      prisma.aiInterview.count.mockImplementation(async () => 0);
+      codeService.generate.mockReturnValue('ABCD-EFGH');
+      codeService.hash.mockReturnValue('hash');
+      codeService.displayHint.mockReturnValue('ABCD-EFGH');
+      prisma.aiInterview.create.mockResolvedValue(mockInterview);
+
+      const result = await service.create({ applicationId: 'app-1' }, 'company-1', 'membership-1');
+
+      expect(result.id).toBe('interview-1');
+      expect(prisma.aiInterview.create).toHaveBeenCalled();
+      const countCall = prisma.aiInterview.count.mock.calls[0][0];
+      expect(countCall.where.status.notIn).toEqual(terminal);
+    });
+
+    it('should count every non-terminal status toward the cap uniformly', async () => {
+      const activeStatuses = [
+        AiInterviewStatus.CREATED,
+        AiInterviewStatus.SENT,
+        AiInterviewStatus.ACCESSED,
+        AiInterviewStatus.READY,
+        AiInterviewStatus.IN_PROGRESS,
+      ];
+      for (const active of activeStatuses) {
+        jest.clearAllMocks();
+        prisma.application.findFirst.mockResolvedValue(mockApplication);
+        prisma.aiInterview.findFirst.mockResolvedValue(null);
+        prisma.aiInterview.count.mockResolvedValue(3);
+        prisma.aiInterview.create.mockResolvedValue(mockInterview);
+
+        await expect(
+          service.create({ applicationId: 'app-1' }, 'company-1', 'membership-1'),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({ code: 'AI_INTERVIEW_CONCURRENCY_LIMIT' }),
+        });
+        expect(prisma.aiInterview.count).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              companyId: 'company-1',
+              status: {
+                notIn: [
+                  AiInterviewStatus.CANCELLED,
+                  AiInterviewStatus.EXPIRED,
+                  AiInterviewStatus.FAILED,
+                  AiInterviewStatus.COMPLETED,
+                ],
+              },
+            }),
+          }),
+        );
+        expect(prisma.aiInterview.create).not.toHaveBeenCalled();
+      }
+    });
+
+    it('should isolate concurrency checks per company', async () => {
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      prisma.aiInterview.count.mockResolvedValue(3);
+      prisma.aiInterview.create.mockResolvedValue(mockInterview);
+      mockConfigService.get.mockImplementation((key: string) => {
+        const config: Record<string, any> = {
+          'app.frontendUrl': 'http://localhost:3001',
+          'app.backendUrl': 'http://localhost:3000',
+          'tavus.enabled': false,
+          'aiInterview.allowTestEmailOverride': false,
+          'aiInterview.defaultDurationMinutes': 5,
+          'aiInterview.maxConcurrent': 3,
+          'app.env': 'test',
+        };
+        return Object.prototype.hasOwnProperty.call(config, key) ? config[key] : undefined;
+      });
+
+      // Company A is at the cap...
+      prisma.aiInterview.count
+        .mockResolvedValueOnce(3)
+        // ...but company B has room, so its create must succeed.
+        .mockResolvedValueOnce(0);
+
+      const [companyAResult, companyBResult] = await Promise.allSettled([
+        service.create({ applicationId: 'app-1' }, 'company-A', 'membership-1'),
+        service.create({ applicationId: 'app-1' }, 'company-B', 'membership-1'),
+      ]);
+
+      expect(companyAResult.status).toBe('rejected');
+      expect(companyBResult.status).toBe('fulfilled');
+      const countArgs = prisma.aiInterview.count.mock.calls.map((c: any[]) => c[0]);
+      expect(countArgs.map((c: any) => c.where.companyId)).toEqual(['company-A', 'company-B']);
     });
   });
 
@@ -1462,6 +1630,38 @@ describe('AiInterviewsService', () => {
       });
     });
 
+    it('derives max_call_duration from the interview duration within the configured cap', async () => {
+      mockConfigService.get.mockImplementation(enabledConfig());
+      prisma.aiInterview.findUnique.mockResolvedValue({
+        ...mockInterview,
+        estimatedDurationMinutes: 5,
+        provider: AiInterviewProvider.TAVUS,
+        application: { ...mockApplication, candidate: { firstName: 'A', lastName: 'B' } },
+      });
+
+      await service.startInterview('token', { acknowledgementsAccepted: true });
+
+      const request = mockTavusClient.createConversation.mock.calls[0][0];
+      expect(request.properties.max_call_duration).toBe(300);
+    });
+
+    it('caps max_call_duration at the configured ceiling even for long interviews', async () => {
+      mockConfigService.get.mockImplementation(
+        enabledConfig({ 'tavus.maxCallDurationSeconds': 900 }),
+      );
+      prisma.aiInterview.findUnique.mockResolvedValue({
+        ...mockInterview,
+        estimatedDurationMinutes: 60,
+        provider: AiInterviewProvider.TAVUS,
+        application: { ...mockApplication, candidate: { firstName: 'A', lastName: 'B' } },
+      });
+
+      await service.startInterview('token', { acknowledgementsAccepted: true });
+
+      const request = mockTavusClient.createConversation.mock.calls[0][0];
+      expect(request.properties.max_call_duration).toBe(900);
+    });
+
     it('marks recordingStatus PROCESSING when recording enabled', async () => {
       mockConfigService.get.mockImplementation(enabledConfig());
 
@@ -1563,7 +1763,7 @@ describe('AiInterviewsService', () => {
         recordingStatus: 'PROCESSING',
       });
       mockPlaybackService.getPlaybackUrl.mockRejectedValue(
-        new (require('@nestjs/common').BadRequestException)({ code: 'RECORDING_NOT_READY' }),
+        new BadRequestException({ code: 'RECORDING_NOT_READY' }),
       );
 
       await expect(service.getRecordingPlayback('interview-1', 'company-1')).rejects.toThrow();

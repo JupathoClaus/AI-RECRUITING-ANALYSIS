@@ -1,4 +1,10 @@
-﻿import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+﻿import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -20,7 +26,11 @@ import {
 } from '../dto/public-response.dto';
 import { AiInterviewCodeService } from './ai-interview-code.service';
 import { AiInterviewTokenService } from './ai-interview-token.service';
-import { TavusClientService, TavusConversationEvent } from './tavus-client.service';
+import {
+  TavusClientService,
+  TavusConversationEvent,
+  TavusConversationProperties,
+} from './tavus-client.service';
 import { RecordingPlaybackService } from './recording-playback.service';
 import { EmailService } from '@modules/email/email.service';
 
@@ -59,7 +69,8 @@ export class AiInterviewsService {
     this.frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
     this.backendUrl = this.configService.get<string>('app.backendUrl') || 'http://localhost:3000';
     this.env = this.configService.get<string>('app.env') || 'development';
-    this.defaultDurationMinutes = this.configService.get<number>('aiInterview.defaultDurationMinutes') || 5;
+    this.defaultDurationMinutes =
+      this.configService.get<number>('aiInterview.defaultDurationMinutes') || 5;
   }
 
   async create(dto: CreateAiInterviewDto, companyId: string, membershipId: string) {
@@ -77,67 +88,90 @@ export class AiInterviewsService {
       });
     }
 
-    const existing = await this.prisma.aiInterview.findFirst({
-      where: {
-        applicationId: dto.applicationId,
-        status: {
-          notIn: [
-            AiInterviewStatus.CANCELLED,
-            AiInterviewStatus.EXPIRED,
-            AiInterviewStatus.FAILED,
-            AiInterviewStatus.COMPLETED,
-          ],
-        },
-      },
-    });
-    if (existing) {
-      return this.findById(existing.id, companyId);
-    }
-
-    await this.assertCompanyWithinConcurrencyLimit(companyId);
-
     const provider = this.resolveProvider(dto.provider as AiInterviewProvider | undefined);
-
-    const rawCode = this.codeService.generate();
-    const codeHash = this.codeService.hash(rawCode);
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
     const scheduledAt = dto.scheduledAt ? new Date(dto.scheduledAt) : null;
 
-    const interview = await this.prisma.aiInterview.create({
-      data: {
-        applicationId: dto.applicationId,
-        companyId,
-        provider,
-        status: AiInterviewStatus.CREATED,
-        codeHash,
-        codeDisplayHint: this.codeService.displayHint(rawCode),
-        language: dto.language || 'en',
-        estimatedDurationMinutes: dto.estimatedDurationMinutes || this.defaultDurationMinutes,
-        expiresAt,
-        scheduledAt,
-        notes: dto.notes || null,
-        createdByMembershipId: membershipId,
-        transcriptStatus: AiInterviewTranscriptStatus.NOT_REQUESTED,
-      },
-      include: {
-        application: {
-          include: { candidate: true, job: true },
+    const interview = await this.prisma.$transaction(async (tx) => {
+      // Serialize all creations for this organization so the count+create are
+      // atomic: two concurrent creates cannot both observe "below the limit"
+      // and both insert. The advisory lock is released at commit/rollback.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${companyId}))`;
+
+      const existing = await tx.aiInterview.findFirst({
+        where: {
+          applicationId: dto.applicationId,
+          status: {
+            notIn: [
+              AiInterviewStatus.CANCELLED,
+              AiInterviewStatus.EXPIRED,
+              AiInterviewStatus.FAILED,
+              AiInterviewStatus.COMPLETED,
+            ],
+          },
         },
-      },
+      });
+      if (existing) {
+        return { existing, isNew: false as const, rawCode: undefined };
+      }
+
+      await this.assertCompanyWithinConcurrencyLimit(tx, companyId);
+
+      const rawCode = this.codeService.generate();
+      const codeHash = this.codeService.hash(rawCode);
+
+      const created = await tx.aiInterview.create({
+        data: {
+          applicationId: dto.applicationId,
+          companyId,
+          provider,
+          status: AiInterviewStatus.CREATED,
+          codeHash,
+          codeDisplayHint: this.codeService.displayHint(rawCode),
+          language: dto.language || 'en',
+          estimatedDurationMinutes: dto.estimatedDurationMinutes || this.defaultDurationMinutes,
+          expiresAt,
+          scheduledAt,
+          notes: dto.notes || null,
+          createdByMembershipId: membershipId,
+          transcriptStatus: AiInterviewTranscriptStatus.NOT_REQUESTED,
+        },
+        include: {
+          application: {
+            include: { candidate: true, job: true },
+          },
+        },
+      });
+
+      return { existing: created, isNew: true as const, rawCode };
     });
 
+    if (!interview.isNew) {
+      return this.findById(interview.existing.id, companyId);
+    }
+
     return {
-      ...interview,
-      rawCode,
+      ...interview.existing,
+      rawCode: interview.rawCode,
     };
   }
 
-  private async assertCompanyWithinConcurrencyLimit(companyId: string): Promise<void> {
+  /**
+   * Enforces the "active reservations per organization" model: every
+   * non-terminal AI interview (not CANCELLED/EXPIRED/FAILED/COMPLETED)
+   * counts against the company's concurrency ceiling. Called inside the
+   * advisory-lock transaction so the count cannot race concurrent creates.
+   * IN_PROGRESS sessions are necessarily a subset of non-terminal rows.
+   */
+  private async assertCompanyWithinConcurrencyLimit(
+    client: Pick<Prisma.TransactionClient, 'aiInterview'>,
+    companyId: string,
+  ): Promise<void> {
     const maxConcurrent = this.configService.get<number>('aiInterview.maxConcurrent') || 3;
-    const active = await this.prisma.aiInterview.count({
+    const active = await client.aiInterview.count({
       where: {
         companyId,
         status: {
@@ -805,9 +839,17 @@ export class AiInterviewsService {
       const recordingEnabled = recording.enabled === true;
 
       try {
-        const properties: Record<string, unknown> = {
-          max_call_duration:
-            this.configService.get<number>('tavus.maxCallDurationSeconds') || 600,
+        // The Tavus call ceiling is capped at the interview's own duration so a
+        // 5-minute interview never leaks into a 10-minute configured cap.
+        const maxDurationSeconds =
+          this.configService.get<number>('tavus.maxCallDurationSeconds') || 600;
+        const maxCallDuration = Math.min(
+          interview.estimatedDurationMinutes * 60,
+          maxDurationSeconds,
+        );
+
+        const properties: TavusConversationProperties = {
+          max_call_duration: maxCallDuration,
           participant_absent_timeout:
             this.configService.get<number>('tavus.participantAbsentTimeoutSeconds') || 120,
           participant_left_timeout:
@@ -816,7 +858,7 @@ export class AiInterviewsService {
 
         if (recordingEnabled) {
           properties.auto_start_recording = true;
-          const storage: Record<string, string> = {
+          const storage: TavusConversationProperties['recording_storage'] = {
             provider: (recording.provider as string) || 's3',
           };
           if (recording.provider === 'gcs') {

@@ -171,11 +171,20 @@ export interface ScoreSummaryTopCandidate {
   overallScore: number
 }
 
+export interface CandidateAttentionCounts {
+  newApplications: number
+  awaitingScreening: number
+  interviewsToday: number
+}
+
 export interface CandidateScoreSummary {
   totalCandidates: number
   scoredCandidates: number
   averageScore: number | null
   topCandidates: ScoreSummaryTopCandidate[]
+  // Tenant-wide attention counts (whole company, not the paged candidate list).
+  // Optional for backward compatibility with older responses.
+  attention?: CandidateAttentionCounts
 }
 
 // Whole-company AI screening aggregate (GET /candidates/score-summary).

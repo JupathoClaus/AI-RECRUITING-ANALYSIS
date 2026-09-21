@@ -4,6 +4,34 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 
+/**
+ * Tavus v2 conversation properties.
+ *
+ * `max_call_duration` is the hard call ceiling in seconds and caps the derived
+ * interview duration: the service sends `min(estimatedDurationMinutes * 60,
+ * tavus.maxCallDurationSeconds)`. The other fields are static call behavior.
+ */
+export interface TavusConversationProperties {
+  max_call_duration?: number;
+  participant_absent_timeout?: number;
+  participant_left_timeout?: number;
+  auto_start_recording?: boolean;
+  recording_storage?: {
+    provider: string;
+    bucket_name?: string;
+    bucket_region?: string;
+    assume_role_arn?: string;
+    key_template?: string;
+    project_id?: string;
+    workload_identity_provider?: string;
+    service_account_email?: string;
+    storage_account?: string;
+    container?: string;
+    tenant_id?: string;
+    client_id?: string;
+  };
+}
+
 export interface TavusCreateConversationRequest {
   persona_id: string;
   replica_id: string;
@@ -14,10 +42,7 @@ export interface TavusCreateConversationRequest {
   require_auth: boolean;
   max_participants?: number;
   test_mode?: boolean;
-  properties?: {
-    participant_absent_timeout?: number;
-    participant_left_timeout?: number;
-  };
+  properties?: TavusConversationProperties;
 }
 
 export interface TavusConversationResponse {

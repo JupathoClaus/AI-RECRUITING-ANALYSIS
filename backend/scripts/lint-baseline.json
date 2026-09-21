@@ -28,7 +28,6 @@
     "src/modules/applications/controllers/public-applications.controller.ts|@typescript-eslint/no-unused-vars|warning": 1,
     "src/modules/applications/dto/application-query.dto.ts|@typescript-eslint/no-unused-vars|warning": 1,
     "src/modules/applications/dto/assignment.dto.ts|@typescript-eslint/no-unused-vars|warning": 2,
-    "src/modules/applications/dto/bulk-action.dto.ts|@typescript-eslint/no-unused-vars|warning": 2,
     "src/modules/applications/dto/create-application.dto.ts|@typescript-eslint/no-unused-vars|warning": 1,
     "src/modules/applications/dto/decision.dto.ts|@typescript-eslint/no-unused-vars|warning": 1,
     "src/modules/applications/dto/flag.dto.ts|@typescript-eslint/no-unused-vars|warning": 1,

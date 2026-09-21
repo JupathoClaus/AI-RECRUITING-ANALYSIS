@@ -44,7 +44,6 @@ All endpoints require `Authorization: Bearer <accessToken>` unless marked `[PUBL
 | `applications.withdraw` | Withdraw | ADMIN, HR_MANAGER, RECRUITER |
 | `applications.hire` | Mark hired | ADMIN, HR_MANAGER |
 | `applications.assign` | Assign members | ADMIN, HR_MANAGER, RECRUITER |
-| `applications.bulk_manage` | Bulk actions | ADMIN, HR_MANAGER |
 | `applications.view_screening_answers` | See screening answers | ADMIN, HR_MANAGER, RECRUITER, HIRING_MANAGER |
 | `applications.add_notes` | Add notes | ADMIN, HR_MANAGER, RECRUITER |
 | `applications.delete_notes` | Delete own notes | ADMIN, HR_MANAGER, RECRUITER |
@@ -394,32 +393,14 @@ Returns 409 on stale version. Frontend should refresh the board and retry.
 
 ## Bulk Actions
 
-### POST /applications/bulk
+The generic `POST /applications/bulk` endpoint was removed: it returned a
+fabricated per-item `{ success: true }` without executing any action. Bulk
+recruiter operations are handled by the dedicated, implemented endpoints:
 
-Max 100 applications per request.
+### POST /ai-screenings/bulk
 
-```json
-{
-  "action": "ASSIGN",
-  "applicationIds": ["uuid1", "uuid2"],
-  "membershipId": "uuid",
-  "assignmentType": "RECRUITER"
-}
-```
-
-Actions: `ASSIGN`, `MOVE_STAGE`, `SHORTLIST`, `REJECT`, `HOLD`, `ADD_TAG`, `REMOVE_TAG`, `ARCHIVE`
-
-Returns per-item results:
-```json
-{
-  "action": "ASSIGN",
-  "total": 2,
-  "results": [
-    { "id": "uuid1", "success": true },
-    { "id": "uuid2", "success": false, "error": "APPLICATION_STALE_VERSION" }
-  ]
-}
-```
+Requests AI screening for multiple applications in one call. See the AI
+screening API documentation for the request/response contract.
 
 ---
 

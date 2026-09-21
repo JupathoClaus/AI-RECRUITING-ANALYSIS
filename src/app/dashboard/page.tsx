@@ -289,36 +289,47 @@ const stats = useMemo(() => {
   );
 
   // Dashboard as an action center: real, store-driven counts of what is
-  // waiting for a human today. Derived from the same fetches as the KPIs.
+  // waiting for a human today. The whole-company totals come from the
+  // server aggregate (score-summary `attention`) so the counts cover every
+  // candidate/interview in the tenant — not just the first page the store
+  // holds. The paged arrays remain a fallback for older responses.
   const attentionItems = useMemo(() => {
-    const newApplications = candidates.filter(
-      (c) => c.applicationSummary?.current?.displayStatus === "Applied"
-    ).length;
+    const serverAttention = candidatesScoreSummary?.attention;
+
+    const newApplications = serverAttention
+      ? serverAttention.newApplications
+      : candidates.filter(
+          (c) => c.applicationSummary?.current?.displayStatus === "Applied"
+        ).length;
 
     // Awaiting AI screening = no completed result yet (includes queued,
     // running and failed runs that still need attention).
-    const awaitingScreening = candidates.filter(
-      (c) => !c.screening || c.screening.status !== "COMPLETED"
-    ).length;
+    const awaitingScreening = serverAttention
+      ? serverAttention.awaitingScreening
+      : candidates.filter(
+          (c) => !c.screening || c.screening.status !== "COMPLETED"
+        ).length;
 
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfToday = new Date(startOfToday);
     endOfToday.setDate(endOfToday.getDate() + 1);
 
-    const interviewsToday = interviews.filter(
-      (i) =>
-        i.status === "Scheduled" &&
-        i.scheduledAt instanceof Date &&
-        !isNaN(i.scheduledAt.getTime()) &&
-        i.scheduledAt >= startOfToday &&
-        i.scheduledAt < endOfToday
-    ).length;
+    const interviewsToday = serverAttention
+      ? serverAttention.interviewsToday
+      : interviews.filter(
+          (i) =>
+            i.status === "Scheduled" &&
+            i.scheduledAt instanceof Date &&
+            !isNaN(i.scheduledAt.getTime()) &&
+            i.scheduledAt >= startOfToday &&
+            i.scheduledAt < endOfToday
+        ).length;
 
     const nextInterview = upcomingInterviews[0];
 
     return { newApplications, awaitingScreening, interviewsToday, nextInterview };
-  }, [candidates, interviews, upcomingInterviews]);
+  }, [candidates, interviews, upcomingInterviews, candidatesScoreSummary]);
 
   const kpiCards = [
     {

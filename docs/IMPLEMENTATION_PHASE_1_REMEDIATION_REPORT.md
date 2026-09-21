@@ -59,14 +59,15 @@ Statuses: `PASS` (fixed + proven), `PARTIAL` (honestly incomplete, remaining gap
 | Item | Status | Notes |
 |---|---|---|
 | Single config, default 5 min | PASS | `AI_INTERVIEW_DEFAULT_DURATION_MINUTES` (default `5`) added to `validation.ts` and loaded in `ai-interview.config.ts` (`defaultDurationMinutes`). The service uses it at create-fallback and `buildConversationContext`; DTO maps it as `@ApiPropertyOptional({ default: 5 })`; `ai-interviews/page.tsx` and the send-interview modal default to 5; AI-invitation email fallback is 5 (was 30/60). |
-| Tavus payload carries the duration cap | PASS | `TavusCreateConversationRequest` now includes `max_call_duration` (seconds) inside the conversation properties (`tavus.maxCallDurationSeconds || 600`). Verified by the ai-interviews service spec (`max_call_duration: 600`). |
+| Tavus payload carries the duration cap | PASS | `TavusCreateConversationRequest.properties` is now the typed `TavusConversationProperties` (`tavus-client.service.ts`), so the duration contract is compile-checked. `ai-interviews.service.ts` derives `max_call_duration = min(interview.estimatedDurationMinutes * 60, tavus.maxCallDurationSeconds || 600)`: a 5-minute interview sends 300s, a 30-minute interview sends the 600s default, and a 60-minute interview is capped at the configured ceiling (`tavus.maxCallDurationSeconds`, e.g. 900). Covered by three service specs. |
 | Frontend/backend spec parity | PASS | Frontend test expects `estimatedDurationMinutes: 5`; backend duration-default test expects 5; all green. |
 
 ## 9. Interview concurrency
 
 | Item | Status | Notes |
 |---|---|---|
-| Config + org-scoped guard | PASS | `AI_INTERVIEW_MAX_CONCURRENT` (default `3`) in `validation.ts`; loaded as `aiInterview.maxConcurrent`. `ai-interviews.service.ts` adds `assertCompanyWithinConcurrencyLimit(companyId)` — counts non-terminal interviews (excludes CANCELLED/EXPIRED/FAILED/COMPLETED) and rejects with `409 ConflictException` code `AI_INTERVIEW_CONCURRENCY_LIMIT` in `create`. Two new specs cover at-limit and over-limit; 84/84 ai-interviews jest tests green. |
+| Config + org-scoped guard | PASS | `AI_INTERVIEW_MAX_CONCURRENT` (default `3`) in `validation.ts`; loaded as `aiInterview.maxConcurrent`. `ai-interviews.service.ts` adds `assertCompanyWithinConcurrencyLimit(tx, companyId)` — counts non-terminal interviews (excludes CANCELLED/EXPIRED/FAILED/COMPLETED) and rejects with `409 ConflictException` code `AI_INTERVIEW_CONCURRENCY_LIMIT` in `create`. |
+| Race-safe under concurrent creates | PASS | `create()` now runs the dedup check, concurrency guard and create inside one `this.prisma.$transaction`, taking a per-company `pg_advisory_xact_lock(hashtext(companyId))` first (`tx.$executeRaw`). The guard therefore sees committed rows from the previous creator. Verified by a serialized "simultaneous create" spec (2 succeed / 1 rejected at cap 2, asserts the advisory-lock statement and `$transaction` are used), terminal-capacity release, per-non-terminal-status uniformity, and cross-org isolation. Real-DB e2e parallel test is DEFERRED (no test Postgres/Redis in this environment; unit proof only). |
 
 ## 10. Interview access code
 
@@ -98,7 +99,7 @@ Statuses: `PASS` (fixed + proven), `PARTIAL` (honestly incomplete, remaining gap
 |---|---|---|
 | Bulk screening progress + PARTIAL result | PASS | Pre-existing `EXISTS` (§14); unchanged. |
 | Destructive bulk reject confirmation | PASS | New confirmation dialog before bulk Reject (`src/app/candidates/page.tsx`); cancel/confirm with partial-failure feedback after. |
-| Generic `/applications/bulk` stub | PARTIAL | Unused by the UI; documented PARTIAL in the report, no UI surface. |
+| Generic `/applications/bulk` stub | PASS | Removed the fake `@Post('bulk')` handler and `bulk-action.dto.ts` from `applications.controller.ts`; dropped the unused `applications.bulk_manage` permission from `prisma/seed.ts` and its stale `lint-baseline.json` entry; updated `backend/docs/company-candidates-applications-api.md` to point at the real `POST /ai-screenings/bulk`. Zero code references remain (grep-verified). |
 
 ## 15. Recruiter currency (Uganda — not hardcoded USD)
 
@@ -133,7 +134,7 @@ Statuses: `PASS` (fixed + proven), `PARTIAL` (honestly incomplete, remaining gap
 |---|---|---|
 | Real total candidates (not page-capped) | PASS | Dashboard now uses `candidatesScoreSummary.totalCandidates` (server-truth) for the headline total instead of `candidates.length` (page-1 slice). |
 | No dead buttons / added aria-labels | PASS | "View profile" wired to `/candidates/{id}`; inert "More options" removed; icon-only buttons labelled. |
-| "Needs your attention" strip accuracy | PARTIAL | Counts still derive from loaded (recent) candidates — reflected honestly as sampled counts; accurate server-side totals are a deferred refinement. |
+| "Needs your attention" strip accuracy | PASS | `getScreeningScoreSummary` (`candidates.service.ts`) now returns an `attention` block with tenant-wide totals: `newApplications` (candidates whose current application is DRAFT/SUBMITTED/ON_HOLD), `awaitingScreening` (no latest COMPLETED screening) and `interviewsToday` (active scheduled interviews within the company-timezone day). The dashboard (`src/app/dashboard/page.tsx`) reads these instead of filtering the page-limited store arrays. A spec with 25 candidates (> the 20-row page size) proves the counts are tenant totals, not a page-1 slice. |
 
 ## 20. Integrity & honesty (accessibility / no fabrication)
 
@@ -151,12 +152,82 @@ Statuses: `PASS` (fixed + proven), `PARTIAL` (honestly incomplete, remaining gap
 |---|---|---|
 | Frontend typecheck | `npx tsc --noEmit` | PASS |
 | Frontend unit/integration | `npx vitest run` | PASS — 363/363 (35 files) |
-| Backend unit/integration | `npx jest --runInBand` | PASS — 1363/1363 (77 suites) |
+| Backend unit/integration | `npx jest --runInBand` | PASS — 1373/1373 (77 suites) |
 | Production build | `npx next build` | PASS |
 | Compile + run backend from dist | `cd backend && npx tsc && node start-prod.js` | PASS — health 200 |
 | Salary honesty (browser, DB, UI) | `node verification/jobs-salary-proof.mjs` | PASS — 0 browser errors |
 | Phase 1 UX smoke | `node verification/phase1-ux-smoke.mjs` | PASS — 16/16 |
 | Axe accessibility scan | `node verification/a11y-axe-scan.mjs` | PASS — 15 pages, 0 serious/critical |
 | Product-correction proof | `node verification/product-proof.mjs` | PASS — all checks, zero unexpected errors |
+| Tenant-isolation proof | `node verification/tenant-isolation-proof.mjs` | PASS — 6/6 (cross-tenant read hidden as 404) |
+| Phase 1 closure browser sweep | `node verification/phase1-closure-verify.mjs` | PASS — 23/23 (13 screens, pagination, bulk, profile, responsive, console/HTTP clean) |
 
-> Note: the real screening provider (Qwen/Ollama tunnel) was unreachable during verification (connection error). Proofs that need a completing screening run were executed with the deterministic `AI_SCREENING_PROVIDER=mock`; the screening pipeline, extraction + COMPLETED result + score propagation, is otherwise identical. This is an environment condition, not a code defect.
+> Note: the real screening provider (Qwen/Ollama) is present but cannot serve inference in this environment — see the Closure Review below. Proofs that need a completing screening run were executed with the deterministic `AI_SCREENING_PROVIDER=mock`; the screening pipeline (extraction → COMPLETED result → score propagation) is otherwise identical. This is an environment condition, not a code defect.
+
+---
+
+# Phase 1 Closure Review
+
+Scope: the final closure pass over the remaining production-readiness gaps (Tavus duration contract, interview concurrency, the generic bulk endpoint, dashboard attention counts, real-provider verification, secret hygiene, regression, and documentation).
+
+- Previous commit: `ee1dc63` — `fix(phase1): complete recruiter workspace remediation`.
+- Closure commit: the commit that adds this section — `fix(phase1): close remaining production readiness gaps`.
+
+## Changes in this pass
+
+| # | Gap | Resolution | Status |
+|---|---|---|---|
+| A | Tavus duration contract was untyped and could exceed the configured cap | Added the typed `TavusConversationProperties` in `tavus-client.service.ts`; `ai-interviews.service.ts` derives `max_call_duration = min(estimatedDurationMinutes * 60, tavus.maxCallDurationSeconds || 600)`. Three specs (5-min → 300, 30-min → 600 default, 60-min → capped at 900). | PASS |
+| B | Concurrency guard could race under simultaneous creates | `create()` now performs the dedup check, concurrency guard and create inside one transaction guarded by `pg_advisory_xact_lock(hashtext(companyId))`; the guard reads the transaction client. Specs cover the serialized race, capacity release, status uniformity and cross-org isolation. | PASS (unit) / DEFERRED (real-DB e2e) |
+| C | Fake, unused `POST /applications/bulk` endpoint | Removed the handler, DTO, unused permission, stale lint-baseline entry and API-doc row; docs now point at the real `POST /ai-screenings/bulk`. | PASS |
+| D | Dashboard attention counts were a page-1 slice | `getScreeningScoreSummary` returns a tenant-wide `attention` block (`newApplications`, `awaitingScreening`, `interviewsToday`); the dashboard consumes it. A 25-candidate spec proves totals exceed the 20-row page. | PASS |
+| E | Real Qwen/Ollama screening verification | Blocked by environment (see below). | BLOCKED BY ENVIRONMENT |
+| F | Secret hygiene | Scanned tracked filenames, the working diff and `.env.example`. | PASS |
+| G | Regression | Full frontend + backend + browser suites re-run green. | PASS |
+| H | Documentation | This section + `docs/PHASE_1_FINAL_ACCEPTANCE.md`. | PASS |
+
+## Real Qwen verification (BLOCKED BY ENVIRONMENT)
+
+- Ollama is reachable: `GET http://localhost:11434/api/tags` → `200`, and the configured model `qwen3.5:9b` (9.7B, Q4_K_M, 6.6 GB) is present.
+- A real inference request to the OpenAI-compatible endpoint (`POST /v1/chat/completions`, `response_format: json_object`) returned **HTTP 500** after ~17.9 s: `llama-server startup failed after projector CPU offload retry: … failed to allocate buffer of size 3419799552 … unable to allocate CPU_REPACK buffer`.
+- Host memory: 7.9 GB total, ~1.6 GB free — insufficient to load the model.
+- Conclusion: connectivity is proven, **inference is not**. No real-provider screening result was produced, so `REAL_QWEN_VERIFICATION = BLOCKED BY ENVIRONMENT`. The deterministic `AI_SCREENING_PROVIDER=mock` remains the verification provider for screening-flow proofs. No API key is required for the Ollama path.
+
+## Secret hygiene (PASS)
+
+- Tracked filenames: no `.env`, `.pem`, `.key`, `id_rsa`, `credentials.json`, `.p12`, `.pfx` or `.log` files (only `backend/.env.example`, whose secret values are placeholders such as `replace-with-strong-random-secret`).
+- Working diff scan for `sk-…`, `AIza…`, `AKIA…`, `-----BEGIN`, `Bearer …`, `password/secret/token=` patterns: no matches.
+- `.gitignore` covers `.env*`, `*.pem`, and all runtime/verification logs; `.env`, `.env.local`, `backend/.env*` are ignored in the working tree.
+
+## Regression results (this pass)
+
+| Check | Command | Result |
+|---|---|---|
+| Frontend typecheck | `npx tsc --noEmit` | PASS |
+| Frontend unit/integration | `npx vitest run` | PASS — 363/363 (35 files) |
+| Backend typecheck | `cd backend && npx tsc --noEmit` | PASS |
+| Backend unit/integration | `cd backend && npx jest --runInBand` | PASS — 1373/1373 (77 suites) |
+| Production build | `npx next build` | PASS |
+| Salary honesty | `node verification/jobs-salary-proof.mjs` | PASS |
+| Phase 1 UX smoke | `node verification/phase1-ux-smoke.mjs` | PASS — 16/16 |
+| Axe accessibility scan | `node verification/a11y-axe-scan.mjs` | PASS — 15 pages, 0 serious/critical |
+| Product-correction proof | `node verification/product-proof.mjs` | PASS |
+| Tenant isolation | `node verification/tenant-isolation-proof.mjs` | PASS — 6/6 |
+| Closure browser sweep | `node verification/phase1-closure-verify.mjs` | PASS — 23/23 |
+| Changed-file lint | `cd backend && node ./scripts/lint-changed.js --base HEAD` | PASS — every changed/added file clean (deleted targets skipped) |
+| Whole-repo lint baseline | `cd backend && npm run lint:baseline` | PRE-EXISTING FAILURE — fails identically on a clean `ee1dc63` checkout (mixed CRLF/LF endings in this Windows worktree make `prettier/prettier` flag untouched files); not a regression of this pass |
+
+> The frontend suite showed one load-induced 5 s timeout in `ai-interview-detail-dialog.test.tsx` on an early run; it passes 7/7 in isolation and the full suite passed 363/363 on re-run. The failure moved between runs and did not touch any changed file.
+
+## Remaining non-PASS items
+
+| Item | Status | Reason | Component | Blocks production? | Planned |
+|---|---|---|---|---|---|
+| Real Qwen verification | BLOCKED BY ENVIRONMENT | Host cannot load `qwen3.5:9b` (7.9 GB RAM; 500, CPU_REPACK buffer allocation failure) | `qwen-screening.provider.ts` / Ollama host | No (mock provider + full pipeline proofs) | Re-run on a host with ≥16 GB RAM or a remote Qwen/vLLM endpoint |
+| Interview concurrency real-DB e2e | DEFERRED | No test Postgres (5433) / Redis (6380) in this environment; unit proof + advisory-lock SQL only | `ai-interviews.service.ts` | No | Run `npm run test:infra:up` + `npx jest --config test/jest-e2e.json` on CI |
+| Read/write candidate profile | DEFERRED | Read-only profile is intentional Phase 1 scope | `candidate-profile` | No | Phase 2 candidate editing |
+| Applications list screening/interview columns | DEFERRED | Backend join out of Phase 1 scope | `applications` list | No | Phase 2 |
+
+## Final acceptance status
+
+See `docs/PHASE_1_FINAL_ACCEPTANCE.md`. Phase 1 is **not declared complete**: the real-provider verification remains BLOCKED and two items remain DEFERRED by design.

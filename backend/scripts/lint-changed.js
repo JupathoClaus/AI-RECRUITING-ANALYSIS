@@ -42,16 +42,19 @@ function display(file) {
 }
 
 async function run(files) {
-  if (!files.length) return;
+  const targets = files.filter((file) => existsSync(file));
+  const deleted = files.filter((file) => !existsSync(file));
+  if (deleted.length) {
+    console.log(`Skipping ${deleted.length} deleted target(s): ${deleted.map(display).join(', ')}`);
+  }
+  if (!targets.length) return;
   const { ESLint } = require('eslint');
   const eslint = new ESLint({ cwd: backendRoot, useEslintrc: true, cache: false, fix: false });
-  for (const file of files) {
-    if (!existsSync(file))
-      throw new Error(`Discovered lint target does not exist: ${display(file)}`);
+  for (const file of targets) {
     if (await eslint.isPathIgnored(file))
       throw new Error(`Discovered lint target is ignored: ${display(file)}`);
   }
-  const results = await eslint.lintFiles(files);
+  const results = await eslint.lintFiles(targets);
   const errors = results.flatMap((result) =>
     result.messages
       .filter((message) => message.severity === 2)

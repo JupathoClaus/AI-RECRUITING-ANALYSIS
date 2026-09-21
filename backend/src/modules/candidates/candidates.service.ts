@@ -6,7 +6,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '@database/prisma/prisma.service';
-import { ApplicationStatus, CandidateStatus, Prisma } from '@prisma/client';
+import { ApplicationStatus, CandidateStatus, InterviewStatus, Prisma } from '@prisma/client';
 import { CandidateAuditService } from './candidate-audit.service';
 import { CandidateDeduplicationService } from './candidate-deduplication.service';
 import { CreateCandidateDto, UpdateCandidateDto } from './dto/create-candidate.dto';
@@ -338,10 +338,7 @@ export class CandidatesService {
         }),
       ]);
 
-      const currentByCandidate = new Map<
-        string,
-        { jobId: string; status: ApplicationStatus }
-      >();
+      const currentByCandidate = new Map<string, { jobId: string; status: ApplicationStatus }>();
       for (const application of activeNewest) {
         currentByCandidate.set(application.candidateId, application);
       }
@@ -355,8 +352,7 @@ export class CandidatesService {
         .filter(
           ([, application]) =>
             (!jobId || application.jobId === jobId) &&
-            (!applicationStatusArr.length ||
-              applicationStatusArr.includes(application.status)),
+            (!applicationStatusArr.length || applicationStatusArr.includes(application.status)),
         )
         .map(([candidateId]) => candidateId);
     }
@@ -559,6 +555,11 @@ export class CandidatesService {
       throw new BadRequestException('Active company context is required');
     }
 
+    // Interviews scheduled "today" is independent of the candidate set, so it
+    // is resolved up front against the tenant's own timezone. This is a real
+    // tenant-wide COUNT — not a slice of the dashboard's paged interview list.
+    const interviewsToday = await this.countInterviewsScheduledToday(companyId);
+
     const conditions: Prisma.CandidateWhereInput[] = [];
 
     // ── COMPANY-SCOPED: only candidates linked to this company ──────────
@@ -588,7 +589,13 @@ export class CandidatesService {
 
     const totalCandidates = candidates.length;
     if (totalCandidates === 0) {
-      return { totalCandidates: 0, scoredCandidates: 0, averageScore: null, topCandidates: [] };
+      return {
+        totalCandidates: 0,
+        scoredCandidates: 0,
+        averageScore: null,
+        topCandidates: [],
+        attention: { newApplications: 0, awaitingScreening: 0, interviewsToday },
+      };
     }
 
     const candidateIds = candidates.map((c) => c.id);
@@ -705,12 +712,120 @@ export class CandidatesService {
       (a, b) => b.overallScore - a.overallScore || a.candidateId.localeCompare(b.candidateId),
     );
 
+    // Attention counts are tenant-wide totals over every candidate, not the
+    // first page the dashboard happens to hold. "Applied" mirrors the
+    // frontend display mapping (DRAFT/SUBMITTED/ON_HOLD); "awaiting screening"
+    // mirrors the per-candidate `!screening || screening.status !== COMPLETED`
+    // rule so the card agrees with the candidates table.
+    const appliedStatuses = new Set<string>([
+      ApplicationStatus.DRAFT,
+      ApplicationStatus.SUBMITTED,
+      ApplicationStatus.ON_HOLD,
+    ]);
+    let newApplications = 0;
+    let awaitingScreening = 0;
+    for (const candidate of candidates) {
+      const currentApp = currentAppByCandidate.get(candidate.id);
+      if (currentApp && appliedStatuses.has(currentApp.status)) {
+        newApplications++;
+      }
+      const summary = screeningMap.get(candidate.id);
+      if (!summary || summary.status !== 'COMPLETED') {
+        awaitingScreening++;
+      }
+    }
+
     return {
       totalCandidates,
       scoredCandidates: scoredCount,
       averageScore: scoredCount > 0 ? Math.round(scoreSum / scoredCount) : null,
       topCandidates: scored.slice(0, 5),
+      attention: { newApplications, awaitingScreening, interviewsToday },
     };
+  }
+
+  // Counts tenant interviews scheduled for the tenant's current calendar day.
+  // "Today" is resolved in the company's configured timezone (falling back to
+  // UTC) so the count matches the recruiter's local day rather than the
+  // server's. Active states match the frontend "Scheduled" group
+  // (SCHEDULED/CONFIRMED/RESCHEDULED/IN_PROGRESS); completed, cancelled,
+  // no-show and expired interviews are excluded.
+  private async countInterviewsScheduledToday(companyId: string): Promise<number> {
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+      select: { timezone: true },
+    });
+    const { start, end } = this.getLocalDayBounds(new Date(), company?.timezone || 'UTC');
+
+    return this.prisma.interview.count({
+      where: {
+        companyId,
+        deletedAt: null,
+        status: {
+          in: [
+            InterviewStatus.SCHEDULED,
+            InterviewStatus.CONFIRMED,
+            InterviewStatus.RESCHEDULED,
+            InterviewStatus.IN_PROGRESS,
+          ],
+        },
+        scheduledAt: { gte: start, lt: end },
+      },
+    });
+  }
+
+  // UTC instants bounding the local calendar day of `now` in `timeZone`.
+  // Resolves the local date via Intl, then removes the zone offset at that
+  // instant to recover the corresponding UTC midnight. Invalid timezones fall
+  // back to UTC.
+  private getLocalDayBounds(now: Date, timeZone: string): { start: Date; end: Date } {
+    const resolveParts = (tz: string) =>
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(now);
+
+    let parts: Intl.DateTimeFormatPart[];
+    let zone = timeZone;
+    try {
+      parts = resolveParts(zone);
+    } catch {
+      zone = 'UTC';
+      parts = resolveParts(zone);
+    }
+
+    const value = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    const localMidnightAsUtc = Date.UTC(value('year'), value('month') - 1, value('day'));
+    const offsetMs = this.getTimeZoneOffsetMs(new Date(localMidnightAsUtc), zone);
+    const start = new Date(localMidnightAsUtc - offsetMs);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    return { start, end };
+  }
+
+  // Milliseconds to add to a UTC instant to reach `timeZone` wall-clock time.
+  private getTimeZoneOffsetMs(date: Date, timeZone: string): number {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).formatToParts(date);
+    const value = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+    const asUtc = Date.UTC(
+      value('year'),
+      value('month') - 1,
+      value('day'),
+      value('hour') % 24,
+      value('minute'),
+      value('second'),
+    );
+    return asUtc - date.getTime();
   }
 
   async findById(id: string, hasSensitivePermission: boolean, companyId?: string) {

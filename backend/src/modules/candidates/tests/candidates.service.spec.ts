@@ -71,6 +71,13 @@ describe('CandidatesService', () => {
       findMany: jest.fn().mockResolvedValue([]),
       updateMany: jest.fn(),
     },
+    // Dashboard attention counts (score-summary)
+    company: {
+      findUnique: jest.fn().mockResolvedValue({ timezone: 'UTC' }),
+    },
+    interview: {
+      count: jest.fn().mockResolvedValue(0),
+    },
     $transaction: jest.fn((fn) =>
       fn({
         candidate: mockPrismaService.candidate,
@@ -152,6 +159,8 @@ describe('CandidatesService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPrismaService.company.findUnique.mockResolvedValue({ timezone: 'UTC' });
+    mockPrismaService.interview.count.mockResolvedValue(0);
   });
 
   // ─── create ────────────────────────────────────────────────────────────────────
@@ -484,9 +493,7 @@ describe('CandidatesService', () => {
       expect(prisma.candidate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            AND: expect.arrayContaining([
-              expect.objectContaining({ id: { in: ['c-1'] } }),
-            ]),
+            AND: expect.arrayContaining([expect.objectContaining({ id: { in: ['c-1'] } })]),
           }),
         }),
       );
@@ -508,9 +515,7 @@ describe('CandidatesService', () => {
       expect(prisma.candidate.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            AND: expect.arrayContaining([
-              expect.objectContaining({ id: { in: ['c-1'] } }),
-            ]),
+            AND: expect.arrayContaining([expect.objectContaining({ id: { in: ['c-1'] } })]),
           }),
         }),
       );
@@ -627,9 +632,130 @@ describe('CandidatesService', () => {
         scoredCandidates: 0,
         averageScore: null,
         topCandidates: [],
+        attention: { newApplications: 0, awaitingScreening: 0, interviewsToday: 0 },
       });
       expect(prisma.application.findMany).not.toHaveBeenCalled();
       expect(prisma.aiScreeningResult.findMany).not.toHaveBeenCalled();
+    });
+
+    it('counts attention across the whole tenant, not just the first page', async () => {
+      // 25 candidates > the dashboard page size (20): page 1 alone would
+      // undercount, so the attention block must be a real tenant total.
+      const candidates = Array.from({ length: 25 }, (_, i) => makeCandidateRow(`candidate-${i}`));
+      prisma.candidate.findMany.mockResolvedValue(candidates);
+      prisma.application.findMany.mockResolvedValue([
+        { id: 'app-0', candidateId: 'candidate-0', status: 'DRAFT', job: { title: 'Engineer' } },
+        {
+          id: 'app-1',
+          candidateId: 'candidate-1',
+          status: 'SUBMITTED',
+          job: { title: 'Engineer' },
+        },
+        { id: 'app-2', candidateId: 'candidate-2', status: 'ON_HOLD', job: { title: 'Engineer' } },
+        {
+          id: 'app-3',
+          candidateId: 'candidate-3',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+        {
+          id: 'app-4',
+          candidateId: 'candidate-4',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+      ]);
+      prisma.aiScreeningResult.findMany.mockResolvedValue(
+        ['candidate-0', 'candidate-1', 'candidate-2', 'candidate-3', 'candidate-4'].map((c, i) => ({
+          id: `res-${c}`,
+          applicationId: `app-${i}`,
+          candidateId: c,
+          status: 'COMPLETED',
+          overallScore: 50,
+          recommendation: 'SHORTLIST',
+          confidence: 'HIGH',
+          completedAt: new Date(),
+          createdAt: new Date(),
+        })),
+      );
+      prisma.interview.count.mockResolvedValue(4);
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(result.attention).toEqual({
+        newApplications: 3,
+        awaitingScreening: 20,
+        interviewsToday: 4,
+      });
+      // Whole-tenant scan: the candidates query is not paginated.
+      const candidateCall = prisma.candidate.findMany.mock.calls[0][0];
+      expect(candidateCall.take).toBeUndefined();
+      expect(candidateCall.skip).toBeUndefined();
+      // Interviews are counted tenant-wide for the day window, not sliced.
+      expect(prisma.interview.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            companyId: 'company-1',
+            deletedAt: null,
+            status: {
+              in: ['SCHEDULED', 'CONFIRMED', 'RESCHEDULED', 'IN_PROGRESS'],
+            },
+            scheduledAt: { gte: expect.any(Date), lt: expect.any(Date) },
+          }),
+        }),
+      );
+    });
+
+    it('does not count terminal or in-progress applications as new', async () => {
+      prisma.candidate.findMany.mockResolvedValue([
+        makeCandidateRow('candidate-1'),
+        makeCandidateRow('candidate-2'),
+        makeCandidateRow('candidate-3'),
+      ]);
+      prisma.application.findMany.mockResolvedValue([
+        { id: 'app-1', candidateId: 'candidate-1', status: 'REJECTED', job: { title: 'Engineer' } },
+        { id: 'app-2', candidateId: 'candidate-2', status: 'OFFER', job: { title: 'Engineer' } },
+        {
+          id: 'app-3',
+          candidateId: 'candidate-3',
+          status: 'SCREENING',
+          job: { title: 'Engineer' },
+        },
+      ]);
+      prisma.aiScreeningResult.findMany.mockResolvedValue([]);
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(result.attention?.newApplications).toBe(0);
+      // Every candidate lacks a completed screening.
+      expect(result.attention?.awaitingScreening).toBe(3);
+    });
+
+    it('resolves interviews today in the company timezone', async () => {
+      prisma.candidate.findMany.mockResolvedValue([]);
+      prisma.company.findUnique.mockResolvedValue({ timezone: 'Africa/Kampala' });
+      prisma.interview.count.mockResolvedValue(2);
+
+      const result = await service.getScreeningScoreSummary('company-1');
+
+      expect(prisma.company.findUnique).toHaveBeenCalledWith({
+        where: { id: 'company-1' },
+        select: { timezone: true },
+      });
+      const countCall = prisma.interview.count.mock.calls[0][0];
+      const { gte, lt } = countCall.where.scheduledAt;
+      expect(gte).toBeInstanceOf(Date);
+      expect(lt).toBeInstanceOf(Date);
+      expect(lt.getTime() - gte.getTime()).toBe(24 * 60 * 60 * 1000);
+      expect(result.attention?.interviewsToday).toBe(2);
+    });
+
+    it('falls back to UTC for an unknown company timezone', async () => {
+      prisma.candidate.findMany.mockResolvedValue([]);
+      prisma.company.findUnique.mockResolvedValue({ timezone: 'Not/A_Real_Zone' });
+
+      await expect(service.getScreeningScoreSummary('company-1')).resolves.toBeDefined();
+      expect(prisma.interview.count).toHaveBeenCalled();
     });
 
     it('aggregates the latest completed score across more than 50 candidates', async () => {

@@ -146,7 +146,7 @@ export class CandidatesController {
   @ApiOperation({
     summary: 'Company-wide AI screening score summary',
     description:
-      'Aggregates the latest completed screening score of every candidate linked to the company: total, scored count, average score and top 5 candidates. Tenant-scoped with a bounded response.',
+      'Aggregates the latest completed screening score of every candidate linked to the company: total, scored count, average score and top 5 candidates. Also returns tenant-wide dashboard attention counts (new applications, candidates awaiting screening, interviews scheduled today in the company timezone). Tenant-scoped with a bounded response.',
   })
   @ApiResponse({ status: HttpStatus.OK, description: 'Score summary' })
   async scoreSummary(@CurrentUser() user: AuthenticatedPrincipal) {
