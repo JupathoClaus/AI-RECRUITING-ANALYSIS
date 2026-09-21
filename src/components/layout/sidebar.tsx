@@ -5,7 +5,6 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
-import { useNotificationStore } from "@/store/notification-store"
 import {
   Category,
   Briefcase,
@@ -16,12 +15,12 @@ import {
   MagicStar,
   Video,
   Chart,
-  Building,
-  Notification,
+  TrendUp,
   Setting2,
   MessageQuestion,
   Logout,
   Menu,
+  ArrowDown2,
   ArrowLeft2,
   ArrowRight2,
   type Icon as IcIcon,
@@ -32,19 +31,33 @@ export const SIDEBAR_W_EXPANDED = 260
 export const SIDEBAR_W_COLLAPSED = 68
 
 // ─── Navigation definition ────────────────────────────────────────────────────
+// Phase 1 IA: CAPABILITY ≠ NAVIGATION ITEM. Top level = modes of work
+// (Dashboard / Hiring / Interviews / Reports) plus one Organization item
+// (Settings). Everything else lives inside an expandable group or a workspace.
 
-interface NavItem {
+interface NavLinkItem {
+  kind: "link"
   label: string
   href: string
   icon: IcIcon
   matchPrefixes?: string[]
-  badge?: "notifications"
 }
+
+interface NavGroupItem {
+  kind: "group"
+  label: string
+  /** Destination when the group label is clicked (or when collapsed). */
+  href: string
+  icon: IcIcon
+  children: NavLinkItem[]
+}
+
+type NavEntry = NavLinkItem | NavGroupItem
 
 interface NavSection {
   id: string
   title: string
-  items: NavItem[]
+  items: NavEntry[]
 }
 
 const NAV_SECTIONS: NavSection[] = [
@@ -52,42 +65,64 @@ const NAV_SECTIONS: NavSection[] = [
     id: "main",
     title: "Main Menu",
     items: [
-      { label: "Dashboard",      href: "/dashboard",     icon: Category,      matchPrefixes: ["/dashboard"] },
-      { label: "Jobs",           href: "/jobs",          icon: Briefcase,     matchPrefixes: ["/jobs"] },
-      { label: "Applications",   href: "/applications",  icon: DocumentText,  matchPrefixes: ["/applications"] },
-      { label: "Candidates",     href: "/candidates",    icon: People,        matchPrefixes: ["/candidates"] },
-      { label: "Pipeline",       href: "/pipeline",      icon: Routing2,      matchPrefixes: ["/pipeline"] },
-      { label: "Interviews",     href: "/interviews",    icon: Calendar,      matchPrefixes: ["/interviews"] },
-      { label: "AI Screener",    href: "/ai-screener",   icon: MagicStar,     matchPrefixes: ["/ai-screener"] },
-      { label: "AI Interviews",  href: "/ai-interviews", icon: Video,         matchPrefixes: ["/ai-interviews"] },
-      { label: "Reports",        href: "/reports",       icon: Chart,         matchPrefixes: ["/reports"] },
+      { kind: "link", label: "Dashboard", href: "/dashboard", icon: Category, matchPrefixes: ["/dashboard"] },
+      {
+        kind: "group",
+        label: "Hiring",
+        href: "/hiring",
+        icon: Briefcase,
+        children: [
+          { kind: "link", label: "Jobs",         href: "/jobs",          icon: Briefcase,     matchPrefixes: ["/jobs"] },
+          { kind: "link", label: "Applications", href: "/applications",  icon: DocumentText,  matchPrefixes: ["/applications"] },
+          { kind: "link", label: "Candidates",   href: "/candidates",    icon: People,        matchPrefixes: ["/candidates"] },
+          { kind: "link", label: "Pipeline",     href: "/pipeline",      icon: Routing2,      matchPrefixes: ["/pipeline"] },
+        ],
+      },
+      {
+        kind: "group",
+        label: "Interviews",
+        href: "/interviews",
+        icon: Calendar,
+        children: [
+          { kind: "link", label: "Human Interviews", href: "/interviews",    icon: Calendar, matchPrefixes: ["/interviews"] },
+          { kind: "link", label: "AI Interviews",    href: "/ai-interviews", icon: Video,    matchPrefixes: ["/ai-interviews"] },
+        ],
+      },
+      {
+        kind: "group",
+        label: "Reports",
+        href: "/reports",
+        icon: Chart,
+        children: [
+          { kind: "link", label: "Recruitment Reports", href: "/reports",   icon: Chart,   matchPrefixes: ["/reports"] },
+          { kind: "link", label: "Pipeline Analytics",  href: "/analytics", icon: TrendUp, matchPrefixes: ["/analytics"] },
+        ],
+      },
     ],
   },
   {
     id: "org",
     title: "Organization",
     items: [
-      { label: "Company",        href: "/company",       icon: Building,      matchPrefixes: ["/company"] },
-      {
-        label: "Notifications",
-        href: "/notifications",
-        icon: Notification,
-        matchPrefixes: ["/notifications"],
-        badge: "notifications",
-      },
-      { label: "Settings",       href: "/settings",      icon: Setting2,      matchPrefixes: ["/settings"] },
+      { kind: "link", label: "Settings", href: "/settings", icon: Setting2, matchPrefixes: ["/settings"] },
     ],
   },
 ]
 
-// ─── Helper: is a nav item active for current path ────────────────────────────
-function isNavActive(item: NavItem, pathname: string): boolean {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function isNavActive(item: NavLinkItem, pathname: string): boolean {
   if (item.matchPrefixes) {
     return item.matchPrefixes.some(
       (prefix) => pathname === prefix || pathname.startsWith(prefix + "/"),
     )
   }
   return pathname === item.href
+}
+
+/** The single child of a group that matches the current route, if any. */
+function activeChildOf(group: NavGroupItem, pathname: string): NavLinkItem | undefined {
+  return group.children.find((child) => isNavActive(child, pathname))
 }
 
 // ─── Tooltip wrapper for collapsed items ──────────────────────────────────────
@@ -138,14 +173,10 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout } = useAuth()
-  const unreadCount = useNotificationStore((s) => s.unreadCount)
-  const fetchUnreadCount = useNotificationStore((s) => s.fetchUnreadCount)
   const [mobileOpen, setMobileOpen] = React.useState(false)
-
-  // Fetch notification count on mount
-  React.useEffect(() => {
-    fetchUnreadCount()
-  }, [fetchUnreadCount])
+  // Manual expand/collapse per group. A group with an active child is always
+  // rendered open regardless of manual state, so the active route stays visible.
+  const [groupedOpen, setGroupedOpen] = React.useState<Record<string, boolean>>({})
 
   // Lock body scroll when mobile drawer open
   React.useEffect(() => {
@@ -291,9 +322,10 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
 
       {/* ── Navigation ──────────────────────────────────────────────────── */}
       <nav
-        className="flex-1 overflow-y-auto overflow-x-hidden py-3"
+        className="flex-1 overflow-y-auto overflow-x-hidden py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/30"
         role="navigation"
         aria-label="Main navigation"
+        tabIndex={0}
         style={{ scrollbarWidth: "none" }}
       >
         {NAV_SECTIONS.map((section, sectionIdx) => (
@@ -318,66 +350,180 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
             )}
 
             <div className="space-y-[2px] px-2">
-              {section.items.map((item) => {
-                const active = isNavActive(item, pathname)
-                const badge = item.badge === "notifications" && unreadCount > 0 ? unreadCount : 0
+              {section.items.map((entry) => {
+                if (entry.kind === "link") {
+                  const active = isNavActive(entry, pathname)
+                  return (
+                    <NavTooltip key={entry.href} label={entry.label} show={compact}>
+                      <Link
+                        href={entry.href}
+                        aria-label={compact ? entry.label : undefined}
+                        className={cn(
+                          "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium outline-none transition-colors duration-150",
+                          "focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent",
+                          compact && "justify-center px-0",
+                        )}
+                        style={{
+                          background: active ? "var(--sidebar-active-bg)" : "transparent",
+                          color: active ? "var(--sidebar-active-text)" : "var(--sidebar-text-muted)",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!active) {
+                            e.currentTarget.style.background = "var(--sidebar-hover-bg)"
+                            e.currentTarget.style.color = "var(--sidebar-text)"
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!active) {
+                            e.currentTarget.style.background = "transparent"
+                            e.currentTarget.style.color = "var(--sidebar-text-muted)"
+                          }
+                        }}
+                        aria-current={active ? "page" : undefined}
+                      >
+                        <entry.icon
+                          size={17}
+                          variant={active ? "Bold" : "Linear"}
+                          className="shrink-0"
+                          style={{ color: active ? "var(--sidebar-active-text)" : "var(--sidebar-icon)" }}
+                        />
+                        {!compact && <span className="flex-1 truncate leading-none">{entry.label}</span>}
+                      </Link>
+                    </NavTooltip>
+                  )
+                }
+
+                // ── Expandable group (Hiring / Interviews / Reports) ──────
+                const childActive = activeChildOf(entry, pathname)
+                const open = childActive ? true : (groupedOpen[entry.label] ?? false)
+                const groupActive = pathname === entry.href
+                const highlighted = groupActive || !!childActive
 
                 return (
-                  <NavTooltip key={item.href} label={item.label} show={compact}>
-                    <Link
-                      href={item.href}
+                  <div key={entry.label}>
+                    <div
                       className={cn(
-                        "group relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium outline-none transition-colors duration-150",
-                        "focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent",
-                        compact && "justify-center px-0",
+                        "flex items-center rounded-lg transition-colors duration-150",
+                        !compact && "gap-1 pl-1 pr-1",
                       )}
                       style={{
-                        background: active ? "var(--sidebar-active-bg)" : "transparent",
-                        color: active ? "var(--sidebar-active-text)" : "var(--sidebar-text-muted)",
+                        background: highlighted ? "var(--sidebar-active-bg)" : "transparent",
                       }}
                       onMouseEnter={(e) => {
-                        if (!active) {
-                          e.currentTarget.style.background = "var(--sidebar-hover-bg)"
-                          e.currentTarget.style.color = "var(--sidebar-text)"
-                        }
+                        if (!highlighted) (e.currentTarget as HTMLDivElement).style.background = "var(--sidebar-hover-bg)"
                       }}
                       onMouseLeave={(e) => {
-                        if (!active) {
-                          e.currentTarget.style.background = "transparent"
-                          e.currentTarget.style.color = "var(--sidebar-text-muted)"
-                        }
+                        if (!highlighted) (e.currentTarget as HTMLDivElement).style.background = "transparent"
                       }}
-                      aria-current={active ? "page" : undefined}
                     >
-                      <item.icon
-                        size={17}
-                        variant={active ? "Bold" : "Linear"}
-                        className="shrink-0"
-                        style={{ color: active ? "var(--sidebar-active-text)" : "var(--sidebar-icon)" }}
-                      />
-
-                      {!compact && (
-                        <span className="flex-1 truncate leading-none">{item.label}</span>
-                      )}
-
-                      {/* Notification badge */}
-                      {badge > 0 && (
-                        <span
+                      <NavTooltip label={entry.label} show={compact}>
+                        <Link
+                          href={entry.href}
+                          aria-label={compact ? entry.label : undefined}
                           className={cn(
-                            "flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums leading-none",
-                            compact && "absolute -top-0.5 -right-0.5",
+                            "flex flex-1 items-center gap-2.5 rounded-lg px-1.5 py-2 text-[13px] font-medium outline-none transition-colors duration-150",
+                            "focus-visible:ring-2 focus-visible:ring-white/30 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent",
+                            compact && "justify-center px-1",
                           )}
                           style={{
-                            background: "var(--sidebar-badge-bg)",
-                            color: "var(--sidebar-badge-text)",
+                            color: highlighted ? "var(--sidebar-active-text)" : "var(--sidebar-text-muted)",
                           }}
-                          aria-label={`${badge} unread notifications`}
+                          onMouseEnter={(e) => {
+                            if (!highlighted) (e.currentTarget as HTMLAnchorElement).style.color = "var(--sidebar-text)"
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!highlighted) (e.currentTarget as HTMLAnchorElement).style.color = "var(--sidebar-text-muted)"
+                          }}
+                          aria-current={groupActive ? "page" : undefined}
                         >
-                          {badge > 99 ? "99+" : badge}
-                        </span>
+                          <entry.icon
+                            size={17}
+                            variant={highlighted ? "Bold" : "Linear"}
+                            className="shrink-0"
+                            style={{ color: highlighted ? "var(--sidebar-active-text)" : "var(--sidebar-icon)" }}
+                          />
+                          {!compact && <span className="flex-1 truncate leading-none">{entry.label}</span>}
+                        </Link>
+                      </NavTooltip>
+
+                      {!compact && !childActive && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setGroupedOpen((prev) => ({ ...prev, [entry.label]: !(prev[entry.label] ?? false) }))
+                          }
+                          aria-expanded={open}
+                          aria-controls={`nav-group-${entry.label.toLowerCase()}`}
+                          aria-label={`${open ? "Collapse" : "Expand"} ${entry.label}`}
+                          className="flex h-7 w-6 shrink-0 items-center justify-center rounded-md outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-white/30"
+                          style={{ color: "var(--sidebar-text-muted)" }}
+                          onMouseEnter={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background = "var(--sidebar-hover-bg)"
+                            ;(e.currentTarget as HTMLButtonElement).style.color = "var(--sidebar-text)"
+                          }}
+                          onMouseLeave={(e) => {
+                            (e.currentTarget as HTMLButtonElement).style.background = "transparent"
+                            ;(e.currentTarget as HTMLButtonElement).style.color = "var(--sidebar-text-muted)"
+                          }}
+                        >
+                          <ArrowDown2
+                            size={14}
+                            className={cn("transition-transform duration-150", open && "rotate-180")}
+                          />
+                        </button>
                       )}
-                    </Link>
-                  </NavTooltip>
+                    </div>
+
+                    {open && !compact && (
+                      <div
+                        id={`nav-group-${entry.label.toLowerCase()}`}
+                        role="group"
+                        aria-label={entry.label}
+                        className="ml-[15px] mt-1 space-y-[2px] border-l pl-2"
+                        style={{ borderColor: "var(--sidebar-divider)" }}
+                      >
+                        {entry.children.map((child) => {
+                          const active = isNavActive(child, pathname)
+                          return (
+                            <NavTooltip key={child.href} label={child.label} show={false}>
+                              <Link
+                                href={child.href}
+                                className={cn(
+                                  "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-normal outline-none transition-colors duration-150",
+                                  "focus-visible:ring-2 focus-visible:ring-white/30",
+                                )}
+                                style={{
+                                  background: active ? "var(--sidebar-active-bg)" : "transparent",
+                                  color: active ? "var(--sidebar-active-text)" : "var(--sidebar-text-muted)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (!active) {
+                                    e.currentTarget.style.background = "var(--sidebar-hover-bg)"
+                                    e.currentTarget.style.color = "var(--sidebar-text)"
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (!active) {
+                                    e.currentTarget.style.background = "transparent"
+                                    e.currentTarget.style.color = "var(--sidebar-text-muted)"
+                                  }
+                                }}
+                                aria-current={active ? "page" : undefined}
+                              >
+                                <child.icon
+                                  size={15}
+                                  variant={active ? "Bold" : "Linear"}
+                                  className="shrink-0"
+                                  style={{ color: active ? "var(--sidebar-active-text)" : "var(--sidebar-icon)" }}
+                                />
+                                <span className="flex-1 truncate leading-none">{child.label}</span>
+                              </Link>
+                            </NavTooltip>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
                 )
               })}
             </div>
@@ -401,21 +547,31 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                   "focus-visible:ring-2 focus-visible:ring-white/30",
                   compact && "justify-center px-0",
                 )}
-                style={{ color: "var(--sidebar-text-muted)" }}
+                style={{
+                  color: pathname === "/help" ? "var(--sidebar-active-text)" : "var(--sidebar-text-muted)",
+                }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "var(--sidebar-hover-bg)"
-                  e.currentTarget.style.color = "var(--sidebar-text)"
+                  if (pathname !== "/help") {
+                    e.currentTarget.style.background = "var(--sidebar-hover-bg)"
+                    e.currentTarget.style.color = "var(--sidebar-text)"
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent"
-                  e.currentTarget.style.color = "var(--sidebar-text-muted)"
+                  if (pathname !== "/help") {
+                    e.currentTarget.style.background = "transparent"
+                    e.currentTarget.style.color = "var(--sidebar-text-muted)"
+                  }
                 }}
+                aria-label={compact ? "Help & Support" : undefined}
+                aria-current={pathname === "/help" ? "page" : undefined}
               >
                 <MessageQuestion
                   size={17}
-                  variant="Linear"
+                  variant={pathname === "/help" ? "Bold" : "Linear"}
                   className="shrink-0"
-                  style={{ color: "var(--sidebar-icon)" }}
+                  style={{
+                    color: pathname === "/help" ? "var(--sidebar-active-text)" : "var(--sidebar-icon)",
+                  }}
                 />
                 {!compact && <span className="flex-1 truncate leading-none">Help & Support</span>}
               </Link>

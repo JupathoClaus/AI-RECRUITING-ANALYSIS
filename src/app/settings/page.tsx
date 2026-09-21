@@ -27,6 +27,7 @@ import {
   Chart2,
 } from "iconsax-react"
 import { AppLayout } from "@/components/layout/app-layout"
+import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -544,7 +545,14 @@ useEffect(() => {
                   <p className="text-xs text-muted">Separate multiple locations with commas.</p>
                 </div>
                 <Separator className="opacity-50" />
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between gap-3">
+                  <Link
+                    href="/company"
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground underline underline-offset-2 transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                  >
+                    <UsersIcon className="h-4 w-4" />
+                    Manage team &amp; roles
+                  </Link>
                   <Button onClick={saveCompany} disabled={companySaving}>
                     <Save2 className="h-4 w-4" /> {companySaving ? "Saving..." : "Save Changes"}
                   </Button>

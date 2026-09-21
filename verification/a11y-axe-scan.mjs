@@ -163,6 +163,9 @@ async function main() {
   const all = [];
   for (const [url, label] of [
     [`${FE_URL}/dashboard`, 'dashboard'],
+    [`${FE_URL}/hiring`, 'hiring-hub'],
+    [`${FE_URL}/help`, 'help'],
+    [`${FE_URL}/candidates/compare`, 'candidates-compare-empty'],
     [`${FE_URL}/jobs`, 'jobs'],
     [`${FE_URL}/jobs/${jobId}`, 'job-workspace-overview'],
     [`${FE_URL}/jobs/${jobId}/analytics`, 'job-analytics'],

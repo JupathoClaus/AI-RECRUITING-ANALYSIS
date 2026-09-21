@@ -14,9 +14,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Bell, ChevronDown, LogOut, Moon, Settings, Sun, User } from "lucide-react"
+import { ChevronDown, LogOut, Moon, Settings, Sun, User } from "lucide-react"
 import { useTheme } from "@/lib/theme-context"
 import Link from "next/link"
+import { NotificationDrawer } from "./notification-drawer"
 
 interface TopNavProps {
   title: string
@@ -70,13 +71,7 @@ export function TopNav({ title, description, actions }: TopNavProps) {
           )}
         </Button>
 
-        <Link
-          href="/notifications"
-          className="inline-flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-surface-hover hover:text-foreground transition-colors duration-150"
-          aria-label="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-        </Link>
+<NotificationDrawer />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
