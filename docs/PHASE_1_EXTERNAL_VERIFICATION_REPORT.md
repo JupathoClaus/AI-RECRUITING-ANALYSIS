@@ -83,7 +83,7 @@ This closes the previously DEFERRED "real parallel DB cap" item from the closure
 | Item | Value |
 |---|---|
 | Branch | `main` (pushed to `analysis/main`) |
-| Commit for this pass | `fix(phase1): verify hosted qwen and close external blockers` (SHA recorded at push) |
+| Commit for this pass | `fix(phase1): verify hosted qwen and close external blockers` — `78eb1272ad50be1ce3ef5753ddfcd316fd64636c` (pushed to `analysis/main`) |
 | Parent | `64bd0ff859af0665753451a6b543856b3a16b968` |
 | Test infra | `docker compose --profile test up -d postgres-test redis-test`; migrations applied to `talentai_test` |
 
