@@ -50,7 +50,7 @@ export default function AIInterviewsPage() {
   const [created, setCreated] = useState<AiInterviewDetail[]>([])
   const [selectedApplicationId, setSelectedApplicationId] = useState("")
   const [language, setLanguage] = useState("en")
-  const [durationMinutes, setDurationMinutes] = useState("30")
+  const [durationMinutes, setDurationMinutes] = useState("5")
   const [scheduledAt, setScheduledAt] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)

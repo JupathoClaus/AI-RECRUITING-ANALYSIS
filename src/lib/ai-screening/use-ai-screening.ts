@@ -18,6 +18,7 @@ export type UploadResult =
 export interface ScreeningState {
   workflowState: ScreeningWorkflowState
   selectedApplicationId: string | null
+  selectedJobId: string | null
   screeningResult: AiScreeningResultDto | null
   screeningId: string | null
   extractionStatus: string | null
@@ -30,6 +31,7 @@ export interface ScreeningState {
 const initialState: ScreeningState = {
   workflowState: 'IDLE',
   selectedApplicationId: null,
+  selectedJobId: null,
   screeningResult: null,
   screeningId: null,
   extractionStatus: null,
@@ -91,11 +93,12 @@ export function useAiScreening() {
     })
   }, [])
 
-  const selectApplication = useCallback((applicationId: string) => {
+const selectApplication = useCallback((applicationId: string, jobId?: string) => {
     cancelAll()
     applicationRef.current = applicationId
     setWorkflow({
       selectedApplicationId: applicationId,
+      selectedJobId: jobId ?? null,
       workflowState: 'APPLICATION_SELECTED',
       screeningResult: null,
       screeningId: null,

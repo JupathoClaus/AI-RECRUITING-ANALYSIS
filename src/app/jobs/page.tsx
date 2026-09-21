@@ -626,9 +626,9 @@ export default function JobsPage() {
                           <div className="flex items-center gap-2 text-muted-foreground">
                             <DollarSquare className="h-3.5 w-3.5 shrink-0" />
                             {job.salaryMin != null && job.salaryMax != null ? (
-                              <span>{formatCurrency(job.salaryMin, job.salaryCurrency || "USD")} {"\u2013"} {formatCurrency(job.salaryMax, job.salaryCurrency || "USD")}</span>
+                              <span>{formatCurrency(job.salaryMin, job.salaryCurrency)} {"\u2013"} {formatCurrency(job.salaryMax, job.salaryCurrency)}</span>
                             ) : job.salaryMin != null ? (
-                              <span>From {formatCurrency(job.salaryMin, job.salaryCurrency || "USD")}</span>
+                              <span>From {formatCurrency(job.salaryMin, job.salaryCurrency)}</span>
                             ) : (
                               <span>Salary not specified</span>
                             )}
@@ -788,9 +788,9 @@ export default function JobsPage() {
                             </TableCell>
                             <TableCell className="hidden sm:table-cell text-muted-foreground">
                               {job.salaryMin != null && job.salaryMax != null
-                                ? `${formatCurrency(job.salaryMin, job.salaryCurrency || "USD")} – ${formatCurrency(job.salaryMax, job.salaryCurrency || "USD")}`
+                                ? `${formatCurrency(job.salaryMin, job.salaryCurrency)} – ${formatCurrency(job.salaryMax, job.salaryCurrency)}`
                                 : job.salaryMin != null
-                                  ? `From ${formatCurrency(job.salaryMin, job.salaryCurrency || "USD")}`
+                                  ? `From ${formatCurrency(job.salaryMin, job.salaryCurrency)}`
                                   : "\u2014"}
                             </TableCell>
                             <TableCell className="text-center">
@@ -969,9 +969,9 @@ export default function JobsPage() {
                     <p className="text-xs text-muted mb-1">Salary Range</p>
                     <p className="text-sm font-medium text-foreground">
                       {detailsJob.salaryMin != null && detailsJob.salaryMax != null
-                        ? `${formatCurrency(detailsJob.salaryMin, detailsJob.salaryCurrency || "USD")} – ${formatCurrency(detailsJob.salaryMax, detailsJob.salaryCurrency || "USD")}`
+                        ? `${formatCurrency(detailsJob.salaryMin, detailsJob.salaryCurrency)} – ${formatCurrency(detailsJob.salaryMax, detailsJob.salaryCurrency)}`
                         : detailsJob.salaryMin != null
-                          ? `From ${formatCurrency(detailsJob.salaryMin, detailsJob.salaryCurrency || "USD")}`
+                          ? `From ${formatCurrency(detailsJob.salaryMin, detailsJob.salaryCurrency)}`
                           : "Not specified"}
                     </p>
                   </div>

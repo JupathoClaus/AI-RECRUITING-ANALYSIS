@@ -18,6 +18,25 @@ class ScreeningEvidenceDto {
   @ApiPropertyOptional() isRequired?: boolean;
 }
 
+class CriterionEvidenceItemDto {
+  @ApiProperty() sourceCategory: string;
+  @ApiProperty() sourceText: string;
+  @ApiPropertyOptional()
+  verificationStatus?: 'VERBATIM' | 'SUPPORTED' | 'INFERRED' | 'UNVERIFIED';
+}
+
+class CriterionEvaluationDto {
+  @ApiProperty() criterionId: string;
+  @ApiProperty() criterion: string;
+  @ApiProperty() requirementType: string;
+  @ApiProperty() status: string;
+  @ApiProperty() reason: string;
+  @ApiProperty() confidence: string;
+  @ApiPropertyOptional({ type: [CriterionEvidenceItemDto] })
+  evidence?: CriterionEvidenceItemDto[];
+  @ApiPropertyOptional() evidenceUnverified?: boolean;
+}
+
 export class AiScreeningResponseDto {
   @ApiProperty() id: string;
   @ApiProperty() applicationId: string;
@@ -31,7 +50,7 @@ export class AiScreeningResponseDto {
   @ApiPropertyOptional({ type: [ScreeningCriterionScoreDto] })
   criteriaScores?: ScreeningCriterionScoreDto[];
   @ApiPropertyOptional()
-  criterionEvaluations?: unknown[];
+  criterionEvaluations?: CriterionEvaluationDto[];
   @ApiPropertyOptional() uncertainties?: string[];
   @ApiPropertyOptional() riskFlags?: string[];
   @ApiPropertyOptional() explanation?: string;

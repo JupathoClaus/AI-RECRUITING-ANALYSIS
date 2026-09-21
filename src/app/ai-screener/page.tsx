@@ -13,6 +13,7 @@ import { ScreeningResultView } from '@/components/ai-screening/screening-result-
 import { useAiScreening } from '@/lib/ai-screening/use-ai-screening'
 import { useStore } from '@/store/useStore'
 import { getApplicationResume } from '@/lib/api/files.api'
+import { fetchApplications } from '@/lib/api/applications.api'
 import { Shield, RefreshCw } from 'lucide-react'
 
 export default function AiScreenerPage() {
@@ -30,11 +31,21 @@ export default function AiScreenerPage() {
   const refreshedRef = useRef(false)
   const initialApplicationHandledRef = useRef(false)
 
-  useEffect(() => {
+useEffect(() => {
     if (initialApplicationHandledRef.current) return
     initialApplicationHandledRef.current = true
     const applicationId = new URLSearchParams(window.location.search).get('applicationId')
-    if (applicationId) selectApplication(applicationId)
+    if (applicationId) {
+      // Resolve the real job for deep-linked applications so job-level
+      // shortcuts (e.g. "Edit Job Requirements") never use the application id.
+      fetchApplications({ limit: 50, page: 1 })
+        .then((res) => {
+          const match = (res.data ?? []).find((a) => a.id === applicationId)
+          if (match?.job?.id) selectApplication(match.id, match.job.id)
+          else selectApplication(applicationId)
+        })
+        .catch(() => selectApplication(applicationId))
+    }
   }, [selectApplication])
 
   // A completed screening produces a real score; refresh the candidate store
@@ -75,8 +86,14 @@ export default function AiScreenerPage() {
     return () => { controller.abort() }
   }, [state.selectedApplicationId, loadLatestScreening, markResumeMissing])
 
-  const handleSelect = (applicationId: string) => {
-    selectApplication(applicationId)
+  const handleSelect = (applicationId: string, jobId: string) => {
+    selectApplication(applicationId, jobId || undefined)
+  }
+
+  const handleEditRequirements = () => {
+    if (state.selectedJobId) {
+      window.location.href = `/jobs/${state.selectedJobId}`
+    }
   }
 
   const isProcessing = ['REQUESTING_SCREENING', 'WAITING_FOR_EXTRACTION', 'SCREENING_PENDING', 'SCREENING_RUNNING', 'UPLOADING_RESUME'].includes(state.workflowState)
@@ -195,7 +212,7 @@ export default function AiScreenerPage() {
                   Please add skills, experience requirements, education requirements, or set an experience level
                   for this job, then try again.
                 </p>
-                <Button variant="outline" onClick={() => window.location.href = `/jobs/${state.selectedApplicationId}`}>
+                <Button variant="outline" onClick={handleEditRequirements} disabled={!state.selectedJobId}>
                   Edit Job Requirements
                 </Button>
               </CardContent>

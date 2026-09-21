@@ -382,9 +382,9 @@ async function main() {
       };
 
       const minOnly = await mkEdge(`Min Only ${RUN_ID}`, { min: 1000000, max: null, currency: null });
-      note('after.edge.minOnly', `min-only persisted: min=${minOnly?.salaryMin} max=${minOnly?.salaryMax} currency=${minOnly?.salaryCurrency} (display: "From $1,000,000")`);
-      const minOnlyCard = await page.getByText(/From \$1,000,000/).first().isVisible();
-      note('after.edge.minOnly.display', `min-only card shows "From $1,000,000": ${minOnlyCard}`);
+      note('after.edge.minOnly', `min-only persisted: min=${minOnly?.salaryMin} max=${minOnly?.salaryMax} currency=${minOnly?.salaryCurrency} (display: "From 1,000,000" — no fabricated currency symbol when unset)`);
+      const minOnlyCard = await page.getByText(/From 1,000,000/).first().isVisible();
+      note('after.edge.minOnly.display', `min-only card shows "From 1,000,000" (no fabricated "$" symbol): ${minOnlyCard}`);
 
       const maxOnly = await mkEdge(`Max Only ${RUN_ID}`, { min: null, max: 9000000, currency: null });
       note('after.edge.maxOnly', `max-only persisted: min=${maxOnly?.salaryMin} max=${maxOnly?.salaryMax} (existing display rule shows "Salary not specified" when min is absent)`);

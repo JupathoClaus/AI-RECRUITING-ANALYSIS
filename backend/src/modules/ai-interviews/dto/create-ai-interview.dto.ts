@@ -17,7 +17,7 @@ export class CreateAiInterviewDto {
   @IsString()
   language?: string;
 
-  @ApiPropertyOptional({ default: 30 })
+  @ApiPropertyOptional({ default: 5, description: 'Estimated duration in minutes' })
   @IsOptional()
   @IsInt()
   @Min(5)

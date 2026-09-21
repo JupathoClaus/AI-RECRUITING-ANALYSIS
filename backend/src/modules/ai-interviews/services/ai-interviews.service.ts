@@ -1,4 +1,4 @@
-﻿import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+﻿import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '@database/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -45,6 +45,7 @@ export class AiInterviewsService {
   private readonly frontendUrl: string;
   private readonly backendUrl: string;
   private readonly env: string;
+  private readonly defaultDurationMinutes: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -58,6 +59,7 @@ export class AiInterviewsService {
     this.frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
     this.backendUrl = this.configService.get<string>('app.backendUrl') || 'http://localhost:3000';
     this.env = this.configService.get<string>('app.env') || 'development';
+    this.defaultDurationMinutes = this.configService.get<number>('aiInterview.defaultDurationMinutes') || 5;
   }
 
   async create(dto: CreateAiInterviewDto, companyId: string, membershipId: string) {
@@ -92,6 +94,8 @@ export class AiInterviewsService {
       return this.findById(existing.id, companyId);
     }
 
+    await this.assertCompanyWithinConcurrencyLimit(companyId);
+
     const provider = this.resolveProvider(dto.provider as AiInterviewProvider | undefined);
 
     const rawCode = this.codeService.generate();
@@ -111,7 +115,7 @@ export class AiInterviewsService {
         codeHash,
         codeDisplayHint: this.codeService.displayHint(rawCode),
         language: dto.language || 'en',
-        estimatedDurationMinutes: dto.estimatedDurationMinutes || 30,
+        estimatedDurationMinutes: dto.estimatedDurationMinutes || this.defaultDurationMinutes,
         expiresAt,
         scheduledAt,
         notes: dto.notes || null,
@@ -129,6 +133,29 @@ export class AiInterviewsService {
       ...interview,
       rawCode,
     };
+  }
+
+  private async assertCompanyWithinConcurrencyLimit(companyId: string): Promise<void> {
+    const maxConcurrent = this.configService.get<number>('aiInterview.maxConcurrent') || 3;
+    const active = await this.prisma.aiInterview.count({
+      where: {
+        companyId,
+        status: {
+          notIn: [
+            AiInterviewStatus.CANCELLED,
+            AiInterviewStatus.EXPIRED,
+            AiInterviewStatus.FAILED,
+            AiInterviewStatus.COMPLETED,
+          ],
+        },
+      },
+    });
+    if (active >= maxConcurrent) {
+      throw new ConflictException({
+        code: 'AI_INTERVIEW_CONCURRENCY_LIMIT',
+        message: `This workspace already has ${active} active AI interviews, the configured maximum is ${maxConcurrent}. Complete or cancel an existing interview before creating another.`,
+      });
+    }
   }
 
   async findById(id: string, companyId: string) {
@@ -779,6 +806,8 @@ export class AiInterviewsService {
 
       try {
         const properties: Record<string, unknown> = {
+          max_call_duration:
+            this.configService.get<number>('tavus.maxCallDurationSeconds') || 600,
           participant_absent_timeout:
             this.configService.get<number>('tavus.participantAbsentTimeoutSeconds') || 120,
           participant_left_timeout:
@@ -1448,7 +1477,7 @@ export class AiInterviewsService {
     parts.push('INTERVIEW SETUP');
     parts.push(`Language: ${interview.language || 'en'}`);
     parts.push(
-      `Target duration: approximately ${interview.estimatedDurationMinutes || 30} minutes`,
+      `Target duration: approximately ${interview.estimatedDurationMinutes || this.defaultDurationMinutes} minutes`,
     );
     if (interview.accommodationRequested && interview.accommodationNotes) {
       parts.push(

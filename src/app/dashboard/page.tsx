@@ -19,7 +19,6 @@ import {
   Send2,
   MedalStar,
   Eye,
-  More,
   Calendar2,
   Cpu,
   Chart2,
@@ -44,7 +43,7 @@ import { mapToDisplayStatus } from "@/lib/api/candidates.api";
 import type { ApplicationStatus } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Avatar } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -154,6 +153,41 @@ function getInterviewTypeLabel(type: string): string {
   return type;
 }
 
+function AttentionItem({
+  icon,
+  count,
+  label,
+  cta,
+  href,
+}: {
+  icon: React.ReactNode
+  count: number
+  label: string
+  cta: string
+  href: string
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-4 py-3 transition-colors duration-150 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-subtle">
+        {icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-baseline gap-1.5 text-sm font-semibold text-foreground">
+          {count.toLocaleString()}
+          <span className="text-xs font-normal text-muted">{label}</span>
+        </p>
+        <p className="mt-0.5 inline-flex items-center gap-0.5 text-xs font-medium text-foreground">
+          {cta}
+          <ArrowRight size={13} className="text-muted transition-transform duration-150 group-hover:translate-x-0.5" />
+        </p>
+      </div>
+    </Link>
+  );
+}
+
 export default function DashboardPage() {
   const { jobs, candidates, candidatesScoreSummary, interviews, activities, activitiesLoading, candidatesLoading, candidatesError, interviewsLoading, interviewsError, analyticsApplicationsOverTime, fetchCandidates, fetchInterviews, fetchActivities, fetchAnalytics } = useStore();
   const { user } = useAuth();
@@ -198,7 +232,7 @@ const stats = useMemo(() => {
         })();
 
     const screenedCandidates = candidatesScoreSummary?.scoredCandidates ?? 0;
-    const totalCandidates = candidates.length;
+    const totalCandidates = candidatesScoreSummary?.totalCandidates ?? candidates.length;
 
     return { activeJobs, totalCandidates, screenedCandidates, interviewsThisWeek, avgScore };
   }, [jobs, candidates, candidatesScoreSummary, interviews]);
@@ -253,6 +287,38 @@ const stats = useMemo(() => {
         .slice(0, 5),
     [interviews]
   );
+
+  // Dashboard as an action center: real, store-driven counts of what is
+  // waiting for a human today. Derived from the same fetches as the KPIs.
+  const attentionItems = useMemo(() => {
+    const newApplications = candidates.filter(
+      (c) => c.applicationSummary?.current?.displayStatus === "Applied"
+    ).length;
+
+    // Awaiting AI screening = no completed result yet (includes queued,
+    // running and failed runs that still need attention).
+    const awaitingScreening = candidates.filter(
+      (c) => !c.screening || c.screening.status !== "COMPLETED"
+    ).length;
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfToday = new Date(startOfToday);
+    endOfToday.setDate(endOfToday.getDate() + 1);
+
+    const interviewsToday = interviews.filter(
+      (i) =>
+        i.status === "Scheduled" &&
+        i.scheduledAt instanceof Date &&
+        !isNaN(i.scheduledAt.getTime()) &&
+        i.scheduledAt >= startOfToday &&
+        i.scheduledAt < endOfToday
+    ).length;
+
+    const nextInterview = upcomingInterviews[0];
+
+    return { newApplications, awaitingScreening, interviewsToday, nextInterview };
+  }, [candidates, interviews, upcomingInterviews]);
 
   const kpiCards = [
     {
@@ -319,6 +385,64 @@ const stats = useMemo(() => {
             Loading dashboard data...
           </div>
         )}
+
+        {/* Needs your attention — the dashboard's action center */}
+        <div className="rounded-xl border border-border bg-surface p-5 shadow-card animate-fade-in">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Notification className="h-5 w-5 text-foreground" size={20} variant="Bold" />
+              <h2 className="text-sm font-semibold text-foreground">Needs your attention</h2>
+            </div>
+            <span className="hidden whitespace-nowrap text-xs text-muted sm:block">
+              Live from your workspace
+            </span>
+          </div>
+
+          {attentionItems.newApplications === 0 &&
+          attentionItems.awaitingScreening === 0 &&
+          attentionItems.interviewsToday === 0 ? (
+            <div className="mt-4 flex items-center gap-2 rounded-lg bg-primary-subtle px-4 py-3">
+              <TickCircle className="h-4 w-4 shrink-0 text-success" size={16} variant="Bold" />
+              <p className="text-sm text-foreground">
+                You're all caught up — nothing is waiting for your input right now.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {attentionItems.newApplications > 0 && (
+                <AttentionItem
+                  icon={<Document className="h-4 w-4 text-foreground" size={16} variant="Bold" />}
+                  count={attentionItems.newApplications}
+                  label="new applications to review"
+                  cta="Review applications"
+                  href="/applications"
+                />
+              )}
+              {attentionItems.interviewsToday > 0 && (
+                <AttentionItem
+                  icon={<Calendar className="h-4 w-4 text-foreground" size={16} variant="Bold" />}
+                  count={attentionItems.interviewsToday}
+                  label="interviews scheduled today"
+                  cta={
+                    attentionItems.nextInterview
+                      ? `${attentionItems.nextInterview.candidateName} · ${attentionItems.nextInterview.jobTitle} — Open interviews`
+                      : "Open interviews"
+                  }
+                  href="/interviews"
+                />
+              )}
+              {attentionItems.awaitingScreening > 0 && (
+                <AttentionItem
+                  icon={<MagicStar className="h-4 w-4 text-foreground" size={16} variant="Bold" />}
+                  count={attentionItems.awaitingScreening}
+                  label="candidates awaiting AI screening"
+                  cta="Run screening"
+                  href="/candidates"
+                />
+              )}
+            </div>
+          )}
+        </div>
 
         {/* KPI Stats Row */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -771,22 +895,13 @@ const stats = useMemo(() => {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="View profile"
+                          <Link
+                            href={`/candidates/${candidate.id}`}
+                            className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-8 w-8")}
+                            aria-label={`View ${candidate.displayName}'s profile`}
                           >
                             <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="More options"
-                          >
-                            <More className="h-4 w-4" />
-                          </Button>
+                          </Link>
                         </div>
                       </TableCell>
                     </TableRow>

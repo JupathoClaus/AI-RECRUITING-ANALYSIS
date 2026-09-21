@@ -286,7 +286,7 @@ describe('AiInterviewsService', () => {
       }
     });
 
-    it('should apply defaults language "en" and duration 30 when omitted', async () => {
+    it('should apply defaults language "en" and duration 5 when omitted', async () => {
       prisma.application.findFirst.mockResolvedValue(mockApplication);
       prisma.aiInterview.findFirst.mockResolvedValue(null);
       codeService.generate.mockReturnValue('ABCD-EFGH');
@@ -300,7 +300,7 @@ describe('AiInterviewsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             language: 'en',
-            estimatedDurationMinutes: 30,
+            estimatedDurationMinutes: 5,
           }),
         }),
       );
@@ -360,6 +360,37 @@ describe('AiInterviewsService', () => {
       const data = prisma.aiInterview.create.mock.calls[0][0].data;
       expect(data).not.toHaveProperty('rawCode');
       expect(data.codeHash).not.toContain('ABCD-EFGH');
+    });
+
+    it('should reject create when the company already has max concurrent interviews', async () => {
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      prisma.aiInterview.count.mockResolvedValue(3);
+
+      await expect(
+        service.create({ applicationId: 'app-1' }, 'company-1', 'membership-1'),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'AI_INTERVIEW_CONCURRENCY_LIMIT' }),
+      });
+      expect(prisma.aiInterview.create).not.toHaveBeenCalled();
+    });
+
+    it('should allow create when active interviews are below the concurrency limit', async () => {
+      prisma.application.findFirst.mockResolvedValue(mockApplication);
+      prisma.aiInterview.findFirst.mockResolvedValue(null);
+      prisma.aiInterview.count.mockResolvedValue(2);
+      codeService.generate.mockReturnValue('ABCD-EFGH');
+      codeService.hash.mockReturnValue('hash');
+      codeService.displayHint.mockReturnValue('ABCD-EFGH');
+      prisma.aiInterview.create.mockResolvedValue(mockInterview);
+
+      const result = await service.create(
+        { applicationId: 'app-1' },
+        'company-1',
+        'membership-1',
+      );
+      expect(result.id).toBe('interview-1');
+      expect(prisma.aiInterview.create).toHaveBeenCalled();
     });
   });
 
@@ -1418,6 +1449,7 @@ describe('AiInterviewsService', () => {
 
       const request = mockTavusClient.createConversation.mock.calls[0][0];
       expect(request.properties).toEqual({
+        max_call_duration: 600,
         participant_absent_timeout: 120,
         participant_left_timeout: 60,
         auto_start_recording: true,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { ScreeningResultView } from '../screening-result-view'
 import type { AiScreeningResultDto } from '@/lib/api/ai-screening.api'
 
@@ -45,7 +45,7 @@ describe('ScreeningResultView', () => {
   it('renders overall score with Progress', () => {
     render(<ScreeningResultView result={result({ overallScore: 75 })} />)
     expect(screen.getByText('Overall Score')).toBeDefined()
-    expect(screen.getByText('75/100')).toBeDefined()
+    expect(screen.getByText('75 out of 100')).toBeDefined()
   })
 
   it('renders nothing when overallScore is not set', () => {
@@ -149,5 +149,42 @@ describe('ScreeningResultView', () => {
     render(<ScreeningResultView result={result()} />)
     const notice = screen.getByText(/decision support/i)
     expect(notice).toBeDefined()
+  })
+
+  it('renders criterion evaluations with verification status', () => {
+    render(
+      <ScreeningResultView
+        result={result({
+          criterionEvaluations: [
+            {
+              criterionId: 'c1',
+              criterion: 'TypeScript',
+              requirementType: 'REQUIRED',
+              status: 'FULLY_MET',
+              reason: '5 years of TypeScript experience on resume',
+              confidence: 'HIGH',
+              evidence: [
+                {
+                  sourceCategory: 'RESUME',
+                  sourceText: 'Built TypeScript apps at ABC Ltd',
+                  verificationStatus: 'VERBATIM',
+                },
+              ],
+            },
+          ],
+        })}
+      />,
+    )
+    expect(screen.getByText('Why this score?')).toBeDefined()
+    expect(screen.getByText('TypeScript')).toBeDefined()
+    expect(screen.getByText('Fully met')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: /TypeScript/ }))
+    expect(screen.getByText('5 years of TypeScript experience on resume')).toBeDefined()
+    expect(screen.getByText('Verbatim')).toBeDefined()
+  })
+
+  it('does not render why this score when no criterion evaluations', () => {
+    render(<ScreeningResultView result={result({ criterionEvaluations: [] })} />)
+    expect(screen.queryByText('Why this score?')).toBeNull()
   })
 })

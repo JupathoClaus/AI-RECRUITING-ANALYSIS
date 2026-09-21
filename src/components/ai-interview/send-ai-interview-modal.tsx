@@ -104,7 +104,6 @@ export function SendAiInterviewModal({
     try {
       const result = await createAiInterview({
         applicationId,
-        estimatedDurationMinutes: 30,
       })
       setInterview({
         id: result.id,

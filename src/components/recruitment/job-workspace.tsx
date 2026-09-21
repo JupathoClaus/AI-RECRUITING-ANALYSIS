@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { getJobById, getJobPipeline, getJobAnalytics, type PipelineStageDto, type JobAnalyticsResponse } from "@/lib/api/jobs.api"
 import { fetchApplications } from "@/lib/api/applications.api"
 import { fetchInterviews } from "@/lib/api/interviews.api"
+import { formatCurrency } from "@/lib/utils"
 import type { JobListDto } from "@/lib/api/types"
 
 type WorkspaceSection = "overview" | "applications" | "pipeline" | "screening" | "interviews" | "analytics"
@@ -87,7 +88,7 @@ export function JobWorkspace({ section = "overview" }: { section?: WorkspaceSect
 
   const sectionHref = (tab: WorkspaceSection) => tab === "overview" ? `/jobs/${job.id}` : `/jobs/${job.id}/${tab}`
   const salary = job.salaryMin != null || job.salaryMax != null
-    ? new Intl.NumberFormat(undefined, { style: "currency", currency: job.salaryCurrency || "USD", maximumFractionDigits: 0 }).format(job.salaryMin ?? job.salaryMax ?? 0) + (job.salaryMax != null && job.salaryMax !== job.salaryMin ? ` – ${new Intl.NumberFormat(undefined, { style: "currency", currency: job.salaryCurrency || "USD", maximumFractionDigits: 0 }).format(job.salaryMax)}` : "")
+    ? formatCurrency(job.salaryMin ?? job.salaryMax ?? 0, job.salaryCurrency) + (job.salaryMax != null && job.salaryMax !== job.salaryMin ? ` – ${formatCurrency(job.salaryMax, job.salaryCurrency)}` : "")
     : null
 
   return <div className="space-y-6">

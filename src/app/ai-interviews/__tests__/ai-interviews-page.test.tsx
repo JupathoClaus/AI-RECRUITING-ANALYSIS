@@ -200,7 +200,7 @@ describe("AIInterviewsPage", () => {
       expect(mockCreateAiInterview).toHaveBeenCalledWith({
         applicationId: "app-c1",
         language: "en",
-        estimatedDurationMinutes: 30,
+        estimatedDurationMinutes: 5,
       })
     })
 

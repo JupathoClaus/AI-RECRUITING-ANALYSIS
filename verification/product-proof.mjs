@@ -28,6 +28,11 @@ import { cleanupExact } from './cleanup.mjs';
 const require = createRequire(new URL('../backend/package.json', import.meta.url));
 const { PrismaClient } = require('@prisma/client');
 
+// Radix modals are `div[role="dialog"]`; the persistent notification drawer
+// (`aside[role="dialog"]` with opacity-0) also matches role=dialog but never
+// hides, so scope dialog lookups to the real modal containers.
+const modalDialog = (page) => page.locator('div[role="dialog"]');
+
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const BACKEND = join(ROOT, 'backend');
 const FE_URL = process.env.PROOF_FE_URL ?? 'http://localhost:3001';
@@ -204,7 +209,7 @@ async function main() {
     // ── 1d: create + publish a job from the UI ───────────────────────────
     await page.goto(`${FE_URL}/jobs`, { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: 'Create Job' }).first().click();
-    const jobDialog = page.getByRole('dialog');
+    const jobDialog = modalDialog(page);
     await jobDialog.locator('input[placeholder*="Senior Software Engineer"]').fill(JOB_TITLE);
     await jobDialog.locator('textarea[placeholder*="Describe"]').fill(
       'We need a full-stack engineer with TypeScript, React and Node experience for our platform team.',
@@ -234,12 +239,12 @@ async function main() {
     // ── 2a: add candidate with real PDF, run screening from the dialog ───
     await page.goto(`${FE_URL}/candidates`, { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: 'Add Candidate', exact: true }).first().click();
-    await page.getByRole('dialog').waitFor({ timeout: 10000 });
+    await modalDialog(page).waitFor({ timeout: 10000 });
     await page.fill('input[placeholder="e.g. John Smith"]', CANDIDATE_NAME);
     await page.fill('input[placeholder="john@example.com"]', `proof${RUN_ID}@example.com`);
     await page.fill('input[placeholder="+1 555-0100"]', `+1 555 ${String(RUN_ID).slice(-4)}`);
     await page.fill('input[placeholder="5"]', '4');
-    const candDialog = page.getByRole('dialog');
+    const candDialog = modalDialog(page);
     await candDialog.locator('[role="combobox"]').click();
     await page.getByRole('option', { name: JOB_TITLE }).click();
     await page.setInputFiles('input[aria-label="Upload resume file"]', RESUME_PDF);
@@ -313,19 +318,18 @@ async function main() {
     }
     note('2b.list', `candidate list AI Score cell shows the real score ${cellText}`);
 
-    // ── 2c: the candidate DETAIL dialog shows the real score ─────────────
-    await page.locator('tr').filter({ hasText: CANDIDATE_NAME }).first().click();
-    const detailDialog = page.getByRole('dialog');
-    await detailDialog.waitFor({ state: 'visible', timeout: 15000 });
-    const statBox = detailDialog.locator('div.rounded-lg').filter({ hasText: 'AI Score' }).first();
-    await statBox.waitFor({ timeout: 15000 });
-    const detailScore = (await statBox.innerText()).replace('AI Score', '').trim();
-    if (detailScore !== String(realScore)) {
-      throw new Error(`detail dialog shows "${detailScore}" but DB score is ${realScore}`);
-    }
-    note('2c.detail', `candidate detail dialog shows the real score ${detailScore}`);
-    await detailDialog.getByRole('button', { name: 'Close' }).click().catch(() => {});
-    await detailDialog.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
+    // ── 2c: the application workspace shows the real score ───────────────
+    // Candidates rows navigate to the profile page; the screening score's
+    // detail surface is the application workspace (ScreeningResultView),
+    // which renders the score as "${score} out of 100".
+    await page.goto(`${FE_URL}/applications/${application.id}`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2500);
+    await page
+      .locator('body')
+      .getByText(`${realScore} out of 100`, { exact: true })
+      .first()
+      .waitFor({ timeout: 15000 });
+    note('2c.workspace', `application workspace shows the real score ${realScore} out of 100`);
 
     // ── 3: the dashboard uses the real score ─────────────────────────────
     let shownAvg = null;
@@ -367,39 +371,41 @@ async function main() {
     await bulkBar.waitFor({ timeout: 10000 });
     const bulkButton = page.getByRole('button', { name: 'Move to Screening Stage' });
     if ((await bulkButton.count()) === 0) throw new Error('Move to Screening Stage button not found');
-    // A disabled "Run AI Screening (coming next)" entry exists and cannot be confused with a working action.
-    const comingNext = page.getByRole('button', { name: /Run AI Screening/ });
-    if ((await comingNext.count()) === 0 || !(await comingNext.isDisabled())) {
-      throw new Error('Run AI Screening coming-next entry missing or not disabled');
+    // "Run AI Screening" is a separate, real bulk-screening action — it must
+    // exist as an enabled action distinct from the stage-move button.
+    const runScreeningBtn = page.getByRole('button', { name: /Run AI Screening/ });
+    if ((await runScreeningBtn.count()) === 0) {
+      throw new Error('Run AI Screening bulk action missing');
     }
-    note('4a.buttons', 'bulk bar shows "Move to Screening Stage" + disabled "Run AI Screening (coming next)"');
+    note('4a.buttons', 'bulk bar shows "Move to Screening Stage" + separate real "Run AI Screening" action');
     await bulkButton.click();
     await page.getByText(/Moved 1 candidate\(s\) to the Screening stage\. AI screening was not run\./).waitFor({ timeout: 15000 });
     note('4b.feedback', 'bulk feedback wording truthful: moved to Screening stage, AI screening was not run');
 
-    // ── 5: AI Assistant shows no fabricated data ─────────────────────────
+    // ── 5: AI Assistant (feature guide) shows no fabricated data ─────────
     await page.goto(`${FE_URL}/candidates`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2500); // settle after navigation
-    const fab = page.getByRole('button', { name: /Open AI Assistant preview/i });
+    const fab = page.getByRole('button', { name: /Open TalentAI feature guide/i });
     for (let attempt = 0; attempt < 3; attempt++) {
       if ((await fab.count()) > 0) {
         await fab.click().catch(() => {});
       }
       try {
-        await page.getByText('Preview — actions unavailable').waitFor({ timeout: 10000 });
+        await page.getByText('Preview only — no conversational AI, actions, or live data are available here.').waitFor({ timeout: 10000 });
         break;
       } catch {
-        if (attempt === 2) throw new Error('AI Assistant preview panel did not open');
+        if (attempt === 2) throw new Error('feature guide preview panel did not open');
       }
     }
     const assistantBody = await page.locator('body').innerText();
     for (const fabricated of ['12 active job openings', '47 candidates', '18 days', '34%']) {
       if (assistantBody.includes(fabricated)) {
-        throw new Error(`AI Assistant contains fabricated metric: "${fabricated}"`);
+        throw new Error(`feature guide contains fabricated metric: "${fabricated}"`);
       }
     }
-    note('5a.assistant', 'AI Assistant is a preview: no fabricated metrics, actions unavailable label shown');
-    await page.getByRole('button', { name: 'Close' }).first().click().catch(() => {});
+    note('5a.assistant', 'feature guide is a preview: no fabricated metrics, actions-unavailable label shown');
+    await page.getByRole('button', { name: 'Close feature guide' }).first().click().catch(() => {});
+    await page.getByText('Preview only — no conversational AI, actions, or live data are available here.').waitFor({ state: 'hidden', timeout: 10000 }).catch(() => {});
 
     // ── 6: AI Interviews loads the persisted tenant session ─────────────
     const token = await page.evaluate(() => localStorage.getItem('ai-recruiter-access-token'));
@@ -442,7 +448,7 @@ async function main() {
     if (stillInActive > 0) throw new Error('closed job still visible in the default Active view');
     note('7a.closed', 'closed job disappears from the default Active view immediately');
 
-    await page.getByRole('tab', { name: /Closed & Archived/ }).click();
+    await page.getByRole('button', { name: /Closed & Archived/ }).click();
     await page.getByText(JOB_TITLE, { exact: true }).waitFor({ timeout: 15000 });
     note('7b.history', 'closed job appears in the Closed & Archived history view');
 

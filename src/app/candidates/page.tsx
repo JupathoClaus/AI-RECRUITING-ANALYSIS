@@ -45,7 +45,6 @@ import {
   Star1,
   More,
   Eye,
-  Edit2,
   Calendar,
   CloseSquare,
   Call,
@@ -55,6 +54,7 @@ import {
   MessageSquare,
   DocumentText,
   Trash,
+  ArrowSwapHorizontal,
 } from "iconsax-react"
 
 const statusConfig: Record<DisplayApplicationStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" | "info" }> = {
@@ -323,6 +323,7 @@ export default function CandidatesPage() {
   const [pageFeedback, setPageFeedback] = React.useState<{ type: "success" | "warning"; message: string } | null>(null)
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [bulkActionLoading, setBulkActionLoading] = React.useState(false)
+  const [bulkRejectConfirmOpen, setBulkRejectConfirmOpen] = React.useState(false)
   // Bulk AI Screening state
   const [bulkScreenConfirmOpen, setBulkScreenConfirmOpen] = React.useState(false)
   const [bulkScreening, setBulkScreening] = React.useState(false)
@@ -683,6 +684,36 @@ React.useEffect(() => {
           </DialogContent>
         </Dialog>
 
+        {/* Bulk Reject — confirmation before a destructive, irreversible action */}
+        <Dialog open={bulkRejectConfirmOpen} onOpenChange={setBulkRejectConfirmOpen}>
+          <DialogContent className="sm:max-w-[440px]">
+            <ModalHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <CloseSquare className="h-5 w-5 text-error" />
+                Reject selected candidates
+              </DialogTitle>
+              <DialogDescription>
+                This moves {selectedIds.size} candidate{selectedIds.size !== 1 ? "s" : ""} to the Rejected stage.
+                This cannot be undone automatically.
+              </DialogDescription>
+            </ModalHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setBulkRejectConfirmOpen(false)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                disabled={bulkActionLoading}
+                onClick={() => {
+                  setBulkRejectConfirmOpen(false)
+                  void handleBulkAction("reject")
+                }}
+              >
+                <CloseSquare className="h-4 w-4 mr-2" />
+                Reject {selectedIds.size} candidate{selectedIds.size !== 1 ? "s" : ""}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Bulk AI Screening — batch progress banner */}
         {(bulkBatch || bulkScreening || bulkBatchError) && (
           <div className={cn(
@@ -774,7 +805,7 @@ React.useEffect(() => {
                     <Calendar className="h-4 w-4 mr-1" />
                     Move to Interview
                   </Button>
-                  <Button variant="outline" size="sm" disabled={bulkActionLoading} onClick={() => handleBulkAction("reject")} className="text-error hover:text-error">
+                  <Button variant="outline" size="sm" disabled={bulkActionLoading} onClick={() => setBulkRejectConfirmOpen(true)} className="text-error hover:text-error">
                     <CloseSquare className="h-4 w-4 mr-1" />
                     Reject
                   </Button>
@@ -786,6 +817,26 @@ React.useEffect(() => {
                   >
                     <MagicStar className="h-4 w-4 mr-1" />
                     {bulkScreening ? "Screening..." : "Run AI Screening"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={selectedIds.size < 2 || selectedIds.size > 4}
+                    onClick={() => {
+                      const ids = [...selectedIds].join("&ids=")
+                      router.push(`/candidates/compare?ids=${ids}`)
+                    }}
+                    title={
+                      selectedIds.size < 2
+                        ? "Select 2–4 candidates to compare side by side"
+                        : selectedIds.size > 4
+                          ? "Compare up to 4 candidates at a time"
+                          : "Compare the selected candidates side by side"
+                    }
+                    aria-label="Compare selected candidates"
+                  >
+                    <ArrowSwapHorizontal className="h-4 w-4 mr-1" />
+                    Compare
                   </Button>
                 </div>
                 <div className="flex-1" />
@@ -903,17 +954,9 @@ React.useEffect(() => {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); router.push(`/candidates/${candidate.id}`) }}>
+<DropdownMenuItem onClick={(e) => { e.stopPropagation(); router.push(`/candidates/${candidate.id}`) }}>
                                 <Eye className="h-4 w-4 mr-2" />
                                 View Profile
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                                <Edit2 className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
-                                <Calendar className="h-4 w-4 mr-2" />
-                                Schedule Interview
                               </DropdownMenuItem>
 {displayStatus && (
                 <>

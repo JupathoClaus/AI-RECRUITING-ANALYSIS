@@ -226,4 +226,16 @@ describe("JobsPage salary fields", () => {
     expect((within(dialog).getByLabelText("Maximum Salary") as HTMLInputElement).value).toBe("5000000")
     expect(within(dialog).getByRole("combobox", { name: "Currency" }).textContent).toContain("UGX")
   })
+
+  it("renders salary without a fabricated currency symbol when currency is unset", async () => {
+    mockGetJobs.mockResolvedValue({
+      data: [makeJob({ salaryCurrency: null })],
+      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+    })
+    render(<JobsPage />)
+    await waitFor(() => expect(screen.getByText("Senior Engineer")).toBeTruthy())
+    // No "USD" prefix — amounts are shown as plain numbers.
+    expect(screen.queryByText(/USD/)).toBeNull()
+    expect(screen.getByText("2,500,000 – 5,000,000")).toBeTruthy()
+  })
 })

@@ -120,6 +120,8 @@ export const validationSchema = Joi.object({
   TAVUS_ARTIFACT_SYNC_MAX_PER_CYCLE: Joi.number().min(1).max(50).default(5),
   TAVUS_ARTIFACT_SYNC_MAX_AGE_HOURS: Joi.number().min(1).max(720).default(72),
   TAVUS_AUTO_END_STALE_AFTER_MINUTES: Joi.number().min(5).max(1440).default(60),
+  AI_INTERVIEW_DEFAULT_DURATION_MINUTES: Joi.number().min(5).max(120).default(5),
+  AI_INTERVIEW_MAX_CONCURRENT: Joi.number().min(1).max(100).default(3),
 
   // AWS (secure recording playback). No secrets required when the backend runs
   // with an IAM role; static keys or a shared profile are optional.

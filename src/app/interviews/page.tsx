@@ -14,7 +14,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
 import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { ModalHeader } from "@/components/ui/modal-header"
-import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Pagination } from "@/components/recruitment/pagination"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -32,10 +31,8 @@ import {
   TickCircle,
   Timer,
   CloseSquare,
-  Document,
   TrendUp,
   Buildings,
-  Message,
 } from "iconsax-react"
 
 type InterviewType = Interview["type"]
@@ -61,20 +58,6 @@ function getScoreColor(score: number): string {
   if (score >= 85) return "text-success"
   if (score >= 70) return "text-warning"
   return "text-error"
-}
-
-function getScoreProgressColor(score: number): string {
-  if (score >= 85) return "bg-success"
-  if (score >= 70) return "bg-warning"
-  return "bg-error"
-}
-
-function getScoreLabel(score: number): string {
-  if (score >= 90) return "Excellent"
-  if (score >= 80) return "Strong"
-  if (score >= 70) return "Good"
-  if (score >= 60) return "Fair"
-  return "Needs Improvement"
 }
 
 function formatInterviewDate(date: Date): string {
@@ -601,121 +584,32 @@ export default function InterviewsPage() {
                   <p className="text-sm text-muted-foreground ml-6">{detailsInterview.jobTitle}</p>
                 </div>
 
-                {/* Score Section (if completed) */}
-                {detailsInterview.status === "Completed" && detailsInterview.score != null && (
-                  <>
-                    <Separator />
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Chart2 className="h-4 w-4 text-muted" />
-                        <h4 className="text-sm font-medium text-foreground">Interview Score</h4>
-                      </div>
-                      <div className="ml-6 space-y-3">
-                        <div className="flex items-center gap-3">
-                          <Progress
-                            value={detailsInterview.score}
-                            className="h-3 flex-1"
-                            indicatorClassName={getScoreProgressColor(detailsInterview.score)}
-                          />
-                          <span className={cn("text-lg font-bold w-12 text-right", getScoreColor(detailsInterview.score))}>
-                            {detailsInterview.score}%
-                          </span>
-                        </div>
-                        <p className={cn("text-sm font-medium", getScoreColor(detailsInterview.score))}>
-                          {getScoreLabel(detailsInterview.score)}
-                        </p>
-
-                        {/* Score Breakdown */}
-                        <div className="grid grid-cols-2 gap-3 mt-4">
-                          <div className="rounded-lg bg-background p-3">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Document className="text-muted-foreground" size={14} />
-                              <p className="text-xs text-muted">Technical Skills</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Progress
-                                value={Math.min(detailsInterview.score + 5, 100)}
-                                className="h-1.5 flex-1"
-                                indicatorClassName="bg-primary"
-                              />
-                              <span className="text-xs font-medium text-foreground">
-                                {Math.min(detailsInterview.score + 5, 100)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="rounded-lg bg-background p-3">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Message className="text-muted-foreground" size={14} />
-                              <p className="text-xs text-muted">Communication</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Progress
-                                value={Math.min(detailsInterview.score + 3, 100)}
-                                className="h-1.5 flex-1"
-                                indicatorClassName="bg-primary"
-                              />
-                              <span className="text-xs font-medium text-foreground">
-                                {Math.min(detailsInterview.score + 3, 100)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="rounded-lg bg-background p-3">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <MagicStar className="text-muted-foreground" size={14} />
-                              <p className="text-xs text-muted">Problem Solving</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Progress
-                                value={Math.max(detailsInterview.score - 2, 0)}
-                                className="h-1.5 flex-1"
-                                indicatorClassName="bg-primary"
-                              />
-                              <span className="text-xs font-medium text-foreground">
-                                {Math.max(detailsInterview.score - 2, 0)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="rounded-lg bg-background p-3">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <People className="text-muted-foreground" size={14} />
-                              <p className="text-xs text-muted">Culture Fit</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Progress
-                                value={Math.min(detailsInterview.score + 7, 100)}
-                                className="h-1.5 flex-1"
-                                indicatorClassName="bg-primary"
-                              />
-                              <span className="text-xs font-medium text-foreground">
-                                {Math.min(detailsInterview.score + 7, 100)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* AI Summary (shown for completed interviews) */}
+                {/* Outcome — a recruiter-recorded decision, never a fabricated score */}
                 {detailsInterview.status === "Completed" && (
                   <>
                     <Separator />
                     <div>
                       <div className="flex items-center gap-2 mb-3">
-                        <MagicStar className="h-4 w-4 text-primary" />
-                        <h4 className="text-sm font-medium text-foreground">AI Summary</h4>
+                        <Chart2 className="h-4 w-4 text-muted" />
+                        <h4 className="text-sm font-medium text-foreground">Outcome</h4>
                       </div>
-                      <div className="ml-6 rounded-lg bg-primary-subtle border border-primary/20 p-4">
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          {detailsInterview.candidateName} demonstrated {detailsInterview.score != null && detailsInterview.score >= 80 ? "strong" : "adequate"} performance
-                          in the {typeConfig[detailsInterview.type].label.toLowerCase()} interview for the {detailsInterview.jobTitle} position.
-                          {detailsInterview.score != null && detailsInterview.score >= 85
-                            ? " The candidate showed exceptional technical depth and clear communication throughout the session."
-                            : detailsInterview.score != null && detailsInterview.score >= 70
-                            ? " The candidate met expectations across most evaluation criteria with room for growth."
-                            : " The candidate may benefit from additional preparation in key areas before proceeding."}
-                          {" "}Interview duration was {detailsInterview.duration} minutes.
+                      <div className="ml-6">
+                        {detailsInterview.result && detailsInterview.result !== "NOT_RECORDED" && detailsInterview.result !== "PENDING" ? (
+                          <Badge variant={detailsInterview.result === "PASS" ? "success" : detailsInterview.result === "FAIL" ? "error" : "warning"}>
+                            Outcome: {detailsInterview.result === "HOLD" ? "Hold" : detailsInterview.result === "PASS" ? "Pass" : "Fail"}
+                          </Badge>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            No outcome has been recorded for this interview.
+                          </p>
+                        )}
+                        {detailsInterview.result === "PASS" && (
+                          <p className="text-xs text-muted mt-1">
+                            A Pass outcome is a recruiter decision — it is intentionally not converted into a numeric score.
+                          </p>
+                        )}
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Completed interview. Review the recording and record the outcome with "Mark Complete".
                         </p>
                       </div>
                     </div>
@@ -931,16 +825,8 @@ function InterviewCard({
             </div>
           </div>
 
-          {/* Right: truthful outcome and status. A score only renders when a real assessment supplies one. */}
+{/* Right: truthful outcome and status */}
           <div className="flex items-center gap-3 shrink-0">
-            {completed && interview.score != null && (
-              <div className="text-right">
-                <p className={cn("text-lg font-bold", getScoreColor(interview.score))}>
-                  {interview.score}%
-                </p>
-                <p className="text-xs text-muted">Score</p>
-              </div>
-            )}
             <Badge variant={statusConfig[interview.status].variant}>
               {statusConfig[interview.status].label}
             </Badge>
@@ -951,33 +837,6 @@ function InterviewCard({
             )}
           </div>
         </div>
-
-        {/* AI Summary (completed only) */}
-        {completed && interview.score != null && (
-          <div className="mt-3 pt-3 border-t border-border">
-            <div className="flex items-start gap-2">
-              <MagicStar className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  {interview.candidateName} scored {interview.score}% — {getScoreLabel(interview.score)} performance
-                  in {typeConfig[interview.type].label.toLowerCase()} interview.
-                </p>
-              </div>
-            </div>
-            <div className="mt-2">
-              <div className="flex items-center gap-2">
-                <Progress
-                  value={interview.score}
-                  className="h-1.5 flex-1"
-                  indicatorClassName={getScoreProgressColor(interview.score)}
-                />
-                <span className="text-xs font-medium text-muted w-8 text-right">
-                  {interview.score}/100
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   )

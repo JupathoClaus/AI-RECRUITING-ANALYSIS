@@ -11,7 +11,10 @@ export function formatNumber(num: number): string {
   return num.toString()
 }
 
-export function formatCurrency(num: number, currency = 'USD'): string {
+export function formatCurrency(num: number, currency?: string | null): string {
+  if (!currency) {
+    return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(num)
+  }
   return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 0 }).format(num)
 }
 

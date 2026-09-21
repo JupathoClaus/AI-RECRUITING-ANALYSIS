@@ -124,7 +124,7 @@ export class EmailWorker extends WorkerHost {
             job.data.companyName as string,
             job.data.interviewLink as string,
             job.data.interviewCode as string,
-            (job.data.durationMinutes as number) || 30,
+            (job.data.durationMinutes as number) || 5,
             job.data.expiresAt ? new Date(job.data.expiresAt as string) : null,
             job.data.recruiterNote as string | undefined,
           );

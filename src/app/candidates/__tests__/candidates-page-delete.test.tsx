@@ -129,6 +129,7 @@ vi.mock("iconsax-react", () => {
     ArrowDown2: mock("ArrowDown2"),
     Check: mock("Check"),
     DirectboxDefault: mock("DirectboxDefault"),
+    ArrowSwapHorizontal: mock("ArrowSwapHorizontal"),
   }
 })
 
@@ -231,6 +232,15 @@ describe("CandidatesPage delete workflow", () => {
 
     fireEvent.click(clear("Ada Loop"))
     await waitFor(() => expect(screen.getByText(/1 selected/)).toBeTruthy())
+
+    // Phase 1: the contextual Compare action appears only with a selection —
+    // a single row keeps it disabled with an explanatory title.
+    const compare = screen.getByRole("button", { name: "Compare selected candidates" })
+    expect((compare as HTMLButtonElement).disabled).toBe(true)
+
+    fireEvent.click(clear("Bo Ling"))
+    await waitFor(() => expect(screen.getByText(/2 selected/)).toBeTruthy())
+    expect((screen.getByRole("button", { name: "Compare selected candidates" }) as HTMLButtonElement).disabled).toBe(false)
 
     // The bulk action bar must label the reset unambiguously ("Clear Selection"),
     // not a bare ambiguous "Clear", so it cannot be mistaken for deleting candidates.

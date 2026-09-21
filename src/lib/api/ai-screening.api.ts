@@ -18,6 +18,22 @@ export interface ScreeningEvidence {
   score?: number
   weight?: number
   isRequired?: boolean
+  verificationStatus?: 'VERBATIM' | 'SUPPORTED' | 'INFERRED' | 'UNVERIFIED'
+}
+
+export interface CriterionEvaluation {
+  criterionId: string
+  criterion: string
+  requirementType: string
+  status: 'FULLY_MET' | 'PARTIALLY_MET' | 'NOT_MET' | 'UNCERTAIN'
+  reason: string
+  confidence: string
+  evidence?: {
+    sourceCategory: string
+    sourceText: string
+    verificationStatus?: 'VERBATIM' | 'SUPPORTED' | 'INFERRED' | 'UNVERIFIED'
+  }[]
+  evidenceUnverified?: boolean
 }
 
 export interface AiScreeningResultDto {
@@ -31,6 +47,7 @@ export interface AiScreeningResultDto {
   missingQualifications?: string[]
   evidence?: ScreeningEvidence[]
   criteriaScores?: ScreeningCriterionScore[]
+  criterionEvaluations?: CriterionEvaluation[]
   uncertainties?: string[]
   riskFlags?: string[]
   explanation?: string

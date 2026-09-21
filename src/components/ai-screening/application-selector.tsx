@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 
 interface ApplicationItem {
   id: string
+  jobId: string | null
   candidateName: string
   jobTitle: string
   status: string
@@ -17,7 +18,7 @@ interface ApplicationItem {
 }
 
 interface Props {
-  onSelect: (applicationId: string) => void
+  onSelect: (applicationId: string, jobId: string) => void
   selectedId: string | null
 }
 
@@ -34,6 +35,7 @@ export function ApplicationSelector({ onSelect, selectedId }: Props) {
       const result = await fetchApplications({ limit: 50, sortBy: 'createdAt', sortOrder: 'desc' })
       const items: ApplicationItem[] = (result.data ?? []).map((app: ApplicationListItem) => ({
         id: app.id,
+        jobId: app.job?.id ?? null,
         candidateName: app.candidate ? `${app.candidate.firstName} ${app.candidate.lastName}`.trim() : 'Unknown',
         jobTitle: app.job?.title ?? 'Unknown',
         status: app.status ?? 'DRAFT',
@@ -99,7 +101,7 @@ export function ApplicationSelector({ onSelect, selectedId }: Props) {
         {filtered.map((app) => (
           <button
             key={app.id}
-            onClick={() => onSelect(app.id)}
+            onClick={() => onSelect(app.id, app.jobId ?? '')}
             className={`w-full text-left p-3 rounded-lg border transition-colors ${
               selectedId === app.id ? 'border-blue-500 bg-blue-50 dark:bg-blue-950' : 'border-border hover:bg-accent'
             }`}

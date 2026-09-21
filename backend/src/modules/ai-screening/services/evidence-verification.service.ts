@@ -64,7 +64,7 @@ export class EvidenceVerificationService {
 
       return {
         ...ev,
-        evidence: verifiedEvidence.map(({ verificationStatus: _, ...rest }) => rest),
+        evidence: verifiedEvidence,
         evidenceUnverified: hasUnverifiedResume,
         confidence,
       };
