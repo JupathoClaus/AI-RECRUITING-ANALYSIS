@@ -8,16 +8,20 @@
 
 | Gate | Command | Result |
 |---|---|---|
-| Backend unit (assessments) | `npx jest --runInBand src/modules/assessments` | 40 tests / 5 suites PASS |
-| Regression unit (email, notifications, idempotency) | `npx jest --runInBand src/modules/email src/modules/notifications src/common/idempotency` | 65 tests / 4 suites PASS |
-| Backend e2e (assessments) | `npx jest --config ./test/jest-e2e.json test/assessments.e2e-spec.ts` | 21/21 PASS |
+| Backend unit — full sweep | `npx jest --runInBand` | 1,430 / 1,430 tests, 84 suites PASS |
+| Backend unit (assessments) | `npx jest --runInBand src/modules/assessments` | 44 tests / 6 suites PASS |
+| Backend unit (email, notifications, idempotency — regression) | `npx jest --runInBand src/modules/email src/modules/notifications src/common/idempotency` | 65 tests / 4 suites PASS (idempotency incl. new P2002 convergence test) |
+| Backend e2e — closure audit | `npx jest --config ./test/jest-e2e.json test/assessments-closure.e2e-spec.ts` | 20/20 PASS |
+| Backend e2e (assessments, regression) | `npx jest --config ./test/jest-e2e.json test/assessments.e2e-spec.ts` | 21/21 PASS |
+| Backend e2e — mass recruitment (gated) | `MASS_RECRUITMENT=1 npx jest --config ./test/jest-e2e.json test/mass-recruitment.e2e-spec.ts` | 2/2 PASS (1,000 apps in ~24 s, unique codes, email fan-out) |
 | Backend typecheck | `npx tsc --noEmit` (backend) | clean |
 | Backend build | `npm run build` (backend) | success |
 | Frontend typecheck | `npx tsc --noEmit` (root) | clean |
 | Frontend build | `npm run build` (root, next build) | success |
 | Frontend unit (assessments) | `npx vitest` — helpers (6), result-view (3), question-builder (3) | 12/12 PASS |
 | Schema | `npx prisma validate` / `prisma format` | clean |
-| Migrations | `prisma migrate deploy` on `:5432` and `:5433` | both applied |
+| Migrations | `prisma migrate deploy` on `:5432` and `:5433` | both applied (incl. `20260922120000_assessment_review_audit`) |
+| Secrets scan of close-out diff | `git diff` pattern scan | no credentials / keys / tokens |
 
 ## PRD acceptance matrix
 
@@ -40,12 +44,12 @@
 | 15 | AI rubric evaluation of free text | **PASS** | processor + evidence service; mock scenarios |
 | 16 | AI overall-score rejected (no fabricated totals) | **PASS** | output schema drops `overallScore`; result-view honesty |
 | 17 | Evidence verification (VERBATIM/SUPPORTED/INFERRED/UNVERIFIED) | **PASS** | evidence unit suite |
-| 18 | Fabricated evidence → terminal failure, deterministic floor preserved | **PASS** | mock `fabricated_evidence` + processor path |
-| 19 | Evaluation retry (recruiter-triggered) | **PASS** | e2e retry + result-view "Retry evaluation" |
-| 20 | Bulk assignment (async, truthful per-row results) | **PASS** | e2e bulk 2 assigned / 1 skipped; `bulk-jobs/:jobId` |
-| 21 | Candidate DTO leak-proof | **PASS** | e2e asserts no `isCorrect`/rubric/competency |
+| 18 | Fabricated evidence → terminal failure, deterministic floor preserved | **PASS** | mock `fabricated_evidence` + processor path; closure e2e floor + clean retry |
+| 19 | Evaluation retry (recruiter-triggered) | **PASS** | e2e retry + result-view "Retry evaluation"; closure e2e attempt 2, no duplicate rows |
+| 20 | Bulk assignment (async, truthful per-row results) | **PASS** | e2e bulk 2 assigned / 1 skipped; `bulk-jobs/:jobId`; ~42 rows/s on 1,000; content-addressed re-run dedup + per-row `ALREADY_ASSIGNED` skip (mass spec) |
+| 21 | Candidate DTO leak-proof | **PASS** | e2e asserts no `isCorrect`/rubric/competency; closure adversarial payload checks |
 | 22 | Scoring metadata (provider/model/prompt/schema/latency) | **PASS** | persisted on `AssessmentEvaluation` from day one |
-| 23 | Audit events (`ASSESSMENT_*`) | **PASS** | `ApplicationAuditEventType` + `ApplicationAuditService` reuse |
+| 23 | Audit events (`ASSESSMENT_*`) | **PASS** | `ApplicationAuditEventType` + `ApplicationAuditService` reuse; `ASSESSMENT_REVIEWED` added; closure e2e asserts full lifecycle through review + re-evaluation |
 | 24 | Notifications + email for assign/submit/evaluate | **PARTIAL** | Email path wired; SMTP down → silent fail (repo-wide Phase 1 behavior); in-app notifications reuse existing infra (not e2e-asserted) |
 | 25 | Recruiter result review UI with threshold context | **PASS** | `assessment-result-view` (score, floor, threshold, retry); vitest |
 | 26 | Job Workspace assessments tab + Application panel | **PASS** | `job-workspace` tab, `application-workspace` panel; build green |
@@ -55,7 +59,7 @@
 | 30 | Analytics aggregates (summary cards) | **PARTIAL** | Manager summary cards (assigned/completed/avg score/completion) implemented; deep charts deferred |
 | 31 | Accessibility / responsive candidate flow | **PARTIAL** | Keyboard/semantics follow existing templates; no dedicated a11y proof |
 | 32 | Qwen live evaluation | **DEFERRED** | Qwen GPU infra is a Phase-1 non-goal; `mock` default; provider injectable + timeout/error classes |
-| 33 | Regression: no Phase 1 breakage | **PASS (scoped)** | backend unit (email/notifications/idempotency), backend build, frontend build + typecheck green; full Phase 1 browser proofs not re-run this session |
+| 33 | Regression: no Phase 1 breakage | **PASS (scoped)** | backend unit full sweep 1,430/1,430 (incl. email/notifications/idempotency), base e2e 21/21, closure 20/20, backend build, frontend build + typecheck green; full Phase 1 browser proofs not re-run this session |
 | 34 | Lint discipline | **PARTIAL** | New files prettier-clean & no-new-error-class; repo-wide lint still shows pre-existing Phase 1 violations + backend baseline drift from untouched qwen commits |
 
 ## Deliverables
@@ -66,15 +70,30 @@
 - Frontend: API client, manager/builder/result/application-panel components, `/jobs/[jobId]/assessments`,
   `/assessments/start`, `/assessments/take`, Job/Application workspace integration.
 - Docs: `PHASE_2_CURRENT_STATE_AUDIT.md` (as-built), `PHASE_2_ASSESSMENT_ARCHITECTURE.md`,
-  `PHASE_2_IMPLEMENTATION_REPORT.md`, this file.
+  `PHASE_2_IMPLEMENTATION_REPORT.md`, `PHASE_2_CLOSURE_AUDIT.md`, this file.
+
+## Close-out production gaps fixed (see `PHASE_2_CLOSURE_AUDIT.md`)
+
+- Idempotency `P2002` on concurrent same-key insert now converges (COMPLETED replay / PROCESSING)
+  instead of surfacing serialization/unique-constraint failures — proven by 4-parallel-submit closure
+  test + a dedicated unit test.
+- Bulk `assignOneForBulk` records `ASSESSMENT_ASSIGNED` audit + candidate email per row (single-assign
+  parity), non-fatal.
+- `ASSESSMENT_REVIEWED` audit added (migration `20260922120000_assessment_review_audit`) and recorded
+  on result view + re-evaluation.
+- Worker-concurrency parser made env-value-safe; counter-evidence unit coverage added.
+- Mass-recruitment load proof passes at 1,000 applications.
 
 ## Post-acceptance follow-ups (traceability/consistency)
 
 Append the exact commit at close-out:
 
-- Commit SHA: `f3d8b630d65b7da077bc3524e3744ca3cd1930a7` (`feat(phase2): implement recruiter assessment engine`)
-- Branch: `main` (pushed to `analysis` remote → `JupathoClaus/AI-RECRUITING-ANALYSIS`, `main` at `f3d8b63`)
-- Working tree: clean for committed Phase 2 files; `origin` URL (`AkademiaLimited/AI-Recruiter-Agent`) is no longer reachable by the authenticated account (`JupathoClaus`) — the 9 prior Phase 1 commits and this commit are hosted on the `analysis` remote, which matches local history exactly (ahead 10 of `origin/main`).
+- Feature commit SHA: `f3d8b630d65b7da077bc3524e3744ca3cd1930a7` (`feat(phase2): implement recruiter assessment engine`)
+- Close-out commit SHA: `3e9a50b` (`fix(phase2): close assessment engine production gaps`)
+- Branch: `main` (pushed to `analysis` remote → `JupathoClaus/AI-RECRUITING-ANALYSIS`)
+- Working tree: clean after close-out docs commit; `origin` URL (`AkademiaLimited/AI-Recruiter-Agent`)
+  is no longer reachable by the authenticated account (`JupathoClaus`) — all commits are hosted on
+  the `analysis` remote, which matches local history exactly.
 
 Backend baseline drift in `ai-interviews/*`, `interviews/*`, `test/qwen-hf-verify.ts` (from the last
 Phase 1 qwen commits, untouched by Phase 2) is a pre-existing condition to update

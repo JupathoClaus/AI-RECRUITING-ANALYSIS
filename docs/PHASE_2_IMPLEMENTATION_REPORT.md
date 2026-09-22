@@ -83,9 +83,12 @@ Controllers:
 
 | Suite | Run | Result |
 |---|---|---|
-| Backend unit (assessments) | `npx jest --runInBand src/modules/assessments` | **40 passed / 5 suites** |
+| Backend unit — full sweep | `npx jest --runInBand` | **1,430 passed / 84 suites** |
+| Backend unit (assessments) | `npx jest --runInBand src/modules/assessments` | **44 passed / 6 suites** |
 | Backend unit (email + notifications + idempotency, regression) | `npx jest --runInBand src/modules/email src/modules/notifications src/common/idempotency` | **65 passed / 4 suites** |
+| Backend e2e — closure audit | `npx jest --config ./test/jest-e2e.json test/assessments-closure.e2e-spec.ts` | **20 passed / 20** |
 | Backend e2e (assessments) | `npx jest --config ./test/jest-e2e.json test/assessments.e2e-spec.ts` | **21 passed / 21** |
+| Backend e2e — mass recruitment (gated) | `MASS_RECRUITMENT=1 … test/mass-recruitment.e2e-spec.ts` | **2 passed / 2** (1,000 apps ~42/s) |
 | Backend typecheck | `npx tsc --noEmit` | clean |
 | Backend build | `npm run build` (nest build) | success |
 | Frontend typecheck | `npx tsc --noEmit` | clean |
@@ -118,3 +121,22 @@ only for files modified in the last Phase 1 qwen commits (`ai-interviews/*`, `in
   the codebase); no new error classes were introduced.
 - Emails fail silently when SMTP is down (matching the repo-wide Phase 1 behavior); the DB/queue path is
   what is asserted in tests.
+
+## 8. Close-out pass (production gaps)
+
+See `PHASE_2_CLOSURE_AUDIT.md` for the full audit. Summary of the close-out commit:
+
+- **Idempotency `P2002` convergence** (production fix): `IdempotencyService.executeTransactional` now
+  re-reads a claim row on concurrent same-key insert and converges to COMPLETED replay or PROCESSING,
+  instead of failing with a serialization/unique-constraint error. Proven by the closure
+  4-parallel-submit e2e and a new unit test (idempotency suite 13/13).
+- **Bulk assignment parity**: `assignOneForBulk` records `ASSESSMENT_ASSIGNED` audit + candidate email
+  per row (non-fatal); the processor passes `requestedByUserId` through.
+- **`ASSESSMENT_REVIEWED` audit**: enum + migration applied to dev/test; recorded on result view and
+  re-evaluation retry; controller injects the acting user.
+- **Worker-concurrency parser** made env-value-safe (was: garbage → clamp to max 20) + unit tests.
+- **Evidence counter-evidence** unit coverage added.
+- **Mass-recruitment load proof** (gated): 1,000 applications bulk-assigned in ~24 s (~42/s) through the
+  queue with truthful counts, 100% unique codes, 1,001 email jobs, exactly one assignment/session/user
+  per application; content-addressed re-runs return the original job (`deduplicated: true`) and
+  shifted id sets are reported `ALREADY_ASSIGNED` skipped.
