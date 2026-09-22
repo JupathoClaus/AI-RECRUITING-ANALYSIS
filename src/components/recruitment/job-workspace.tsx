@@ -3,8 +3,9 @@
 import * as React from "react"
 import Link from "next/link"
 import { useParams, usePathname } from "next/navigation"
-import { BarChart3, BriefcaseBusiness, CalendarDays, ChevronLeft, FileText, MapPin, Network, Sparkles } from "lucide-react"
+import { BarChart3, BriefcaseBusiness, CalendarDays, ChevronLeft, ClipboardList, FileText, MapPin, Network, Sparkles } from "lucide-react"
 import { ApplicationListView } from "@/components/recruitment/application-list-view"
+import { AssessmentManager } from "@/components/assessments/assessment-manager"
 import { PipelineBoard } from "@/components/recruitment/pipeline-board"
 import { JobStatusBadge } from "@/components/recruitment/status-badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,13 +17,14 @@ import { fetchInterviews } from "@/lib/api/interviews.api"
 import { formatCurrency } from "@/lib/utils"
 import type { JobListDto } from "@/lib/api/types"
 
-type WorkspaceSection = "overview" | "applications" | "pipeline" | "screening" | "interviews" | "analytics"
+type WorkspaceSection = "overview" | "applications" | "pipeline" | "screening" | "assessments" | "interviews" | "analytics"
 
 const tabs: { id: WorkspaceSection; label: string; icon: typeof BriefcaseBusiness }[] = [
   { id: "overview", label: "Overview", icon: BriefcaseBusiness },
   { id: "applications", label: "Applications", icon: FileText },
   { id: "pipeline", label: "Pipeline", icon: Network },
   { id: "screening", label: "Screening", icon: Sparkles },
+  { id: "assessments", label: "Assessments", icon: ClipboardList },
   { id: "interviews", label: "Interviews", icon: CalendarDays },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
 ]
@@ -105,6 +107,7 @@ export function JobWorkspace({ section = "overview" }: { section?: WorkspaceSect
     {section === "applications" && <ApplicationListView jobId={jobId} showJobColumn={false} />}
     {section === "pipeline" && <PipelineBoard jobId={jobId} stages={stages} />}
     {section === "screening" && <div className="space-y-3"><div><h3 className="text-lg font-semibold">Application screening</h3><p className="text-sm text-muted">Select applications to queue real AI screening. Results are decision support, not hiring decisions.</p></div><ApplicationListView jobId={jobId} showJobColumn={false} /></div>}
+    {section === "assessments" && <AssessmentManager jobId={jobId} />}
     {section === "interviews" && <Card><CardHeader><CardTitle>Interviews for this job</CardTitle></CardHeader><CardContent><p className="text-sm text-muted">{interviewCount === null ? "Interview totals are unavailable." : `${interviewCount} interview${interviewCount === 1 ? "" : "s"} are available for this job.`}</p><Link href={`/interviews?jobId=${jobId}`} className="mt-4 inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-surface-hover">Open interviews</Link></CardContent></Card>}
     {section === "analytics" && (analyticsError ? (
       <Card>

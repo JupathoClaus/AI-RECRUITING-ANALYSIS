@@ -130,6 +130,17 @@ export class EmailWorker extends WorkerHost {
           );
           break;
 
+        case 'recruitment.assessment-assigned':
+          await this.emailService.sendAssessmentAssignedEmail(
+            job.data.email as string,
+            (job.data.candidateName as string) || 'Candidate',
+            job.data.assessmentName as string,
+            job.data.jobTitle as string,
+            (job.data.companyName as string) || '',
+            job.data.code as string,
+          );
+          break;
+
         case 'recruitment.offer-sent':
           await this.emailService.sendOfferSentEmail(
             job.data.email as string,

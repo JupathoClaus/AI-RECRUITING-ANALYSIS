@@ -139,6 +139,34 @@ export class EmailService {
     await this.send({ to, subject, html, text });
   }
 
+  async sendAssessmentAssignedEmail(
+    to: string,
+    candidateName: string,
+    assessmentName: string,
+    jobTitle: string,
+    companyName: string,
+    code: string,
+  ): Promise<void> {
+    const startUrl = `${this.frontendUrl}/assessments/start`;
+    const subject = `Assessment invited: ${assessmentName}`;
+
+    const html = this.baseHtml(`
+      <h2 style="margin:0 0 16px 0;font-size:20px;font-weight:600;color:#1a1a2e;">Complete your assessment</h2>
+      <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#4a5568;">
+        Hi ${candidateName},<br><br>
+        You have been invited to complete the assessment <strong>${assessmentName}</strong>
+        for <strong>${jobTitle}</strong> at ${companyName}.<br><br>
+        Your access code is: <strong style="font-size:18px;letter-spacing:2px;">${code}</strong><br><br>
+        Enter it at <a href="${startUrl}" style="color:#6366f1;">${startUrl}</a> to begin.
+        Your answers save automatically as you go.
+      </p>
+    `);
+
+    const text = `Hi ${candidateName},\n\nYou have been invited to complete the assessment "${assessmentName}" for ${jobTitle} at ${companyName}.\n\nYour access code is: ${code}\n\nEnter it at ${startUrl} to begin. Your answers save automatically as you go.`;
+
+    await this.send({ to, subject, html, text });
+  }
+
   async sendApplicationStageChangedEmail(
     to: string,
     candidateName: string,

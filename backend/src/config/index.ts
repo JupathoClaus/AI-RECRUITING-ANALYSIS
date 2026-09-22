@@ -10,6 +10,7 @@ import aiScreeningConfig from './loaders/ai-screening.config';
 import resumeExtractionConfig from './loaders/resume-extraction.config';
 import tavusConfig from './loaders/tavus.config';
 import aiInterviewConfig from './loaders/ai-interview.config';
+import assessmentConfig from './loaders/assessment.config';
 import awsConfig from './loaders/aws.config';
 
 export default [
@@ -25,6 +26,7 @@ export default [
   resumeExtractionConfig,
   tavusConfig,
   aiInterviewConfig,
+  assessmentConfig,
   awsConfig,
 ];
 
@@ -41,5 +43,6 @@ export {
   resumeExtractionConfig,
   tavusConfig,
   aiInterviewConfig,
+  assessmentConfig,
   awsConfig,
 };

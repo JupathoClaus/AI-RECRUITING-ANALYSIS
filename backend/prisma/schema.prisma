@@ -235,6 +235,13 @@ model Company {
   // Phase 5 — AI Interviews
   aiInterviews AiInterview[]
 
+  // Phase 6 — Assessments (recruiter-controlled assessment engine)
+  assessments           Assessment[]
+  assessmentAssignments AssessmentAssignment[]
+  assessmentSessions    AssessmentSession[]
+  assessmentEvaluations AssessmentEvaluation[]
+  assessmentResults     AssessmentResult[]
+
   @@index([status])
   @@index([industry])
   @@index([createdAt])
@@ -347,6 +354,11 @@ model CompanyMembership {
 
   // Phase 5 — AI Interviews
   createdAiInterviews AiInterview[] @relation("AiInterviewCreatedBy")
+
+  // Phase 6 — Assessments
+  createdAssessments  Assessment[]           @relation("AssessmentCreatedBy")
+  updatedAssessments  Assessment[]           @relation("AssessmentUpdatedBy")
+  assignedAssessments AssessmentAssignment[] @relation("AssessmentAssignedBy")
 
   sessions UserSession[]
 
@@ -493,6 +505,9 @@ enum NotificationType {
   CANDIDATE_REJECTED
   NOTE_ADDED
   AI_SCREENING_COMPLETED
+  ASSESSMENT_ASSIGNED
+  ASSESSMENT_SUBMITTED
+  ASSESSMENT_EVALUATED
   SYSTEM
 }
 
@@ -916,6 +931,9 @@ model Job {
 
   // Phase 2.2
   applications Application[]
+
+  // Phase 6 — Assessments (job-scoped assessment definitions)
+  assessments Assessment[]
 
   // Phase 2.3
   interviews Interview[]
@@ -1744,6 +1762,15 @@ enum ApplicationAuditEventType {
   APPLICATION_RESUME_UPLOADED
   APPLICATION_RESUME_REPLACED
   APPLICATION_RESUME_DELETED
+  ASSESSMENT_CREATED
+  ASSESSMENT_UPDATED
+  ASSESSMENT_PUBLISHED
+  ASSESSMENT_ARCHIVED
+  ASSESSMENT_ASSIGNED
+  ASSESSMENT_STARTED
+  ASSESSMENT_SUBMITTED
+  ASSESSMENT_EXPIRED
+  ASSESSMENT_EVALUATED
 }
 
 // ─── CompanyCandidate ────────────────────────────────────────────────────────
@@ -1942,6 +1969,11 @@ model Application {
 
   // Phase 5.2 — Bulk screening membership
   screeningBatchItems AiScreeningBatchItem[]
+
+  // Phase 6 — Assessments (application-scoped assignment state)
+  assessmentAssignments AssessmentAssignment[]
+  assessmentSessions    AssessmentSession[]
+  assessmentResults     AssessmentResult[]
 
   @@unique([companyId, applicationNumber])
   @@index([companyId])
@@ -2224,14 +2256,14 @@ model AiScreeningResult {
   failureCode                 String?
   failureMessageSafe          String?
   /// Batch this screening belongs to (if initiated via bulk screening)
-  batchId                     String?   @db.Uuid
+  batchId                     String?                    @db.Uuid
   startedAt                   DateTime?
   completedAt                 DateTime?
   createdAt                   DateTime                   @default(now())
   updatedAt                   DateTime                   @updatedAt
 
-  application Application          @relation(fields: [applicationId], references: [id])
-  batch       AiScreeningBatch?    @relation(fields: [batchId], references: [id])
+  application Application            @relation(fields: [applicationId], references: [id])
+  batch       AiScreeningBatch?      @relation(fields: [batchId], references: [id])
   batchItems  AiScreeningBatchItem[]
 
   @@index([applicationId])
@@ -2320,8 +2352,8 @@ enum AiScreeningBatchItemAction {
 }
 
 model AiScreeningBatchItem {
-  id            String                    @id @default(uuid()) @db.Uuid
-  batchId       String                    @db.Uuid
+  id            String                     @id @default(uuid()) @db.Uuid
+  batchId       String                     @db.Uuid
   applicationId String
   /// Linked screening result. Null when the item never reached a screening
   /// (skipped due to missing resume, or failed before a result existed).
@@ -2332,9 +2364,9 @@ model AiScreeningBatchItem {
   createdAt     DateTime                   @default(now())
   updatedAt     DateTime                   @updatedAt
 
-  batch       AiScreeningBatch?   @relation(fields: [batchId], references: [id])
-  application Application?        @relation(fields: [applicationId], references: [id])
-  screening   AiScreeningResult?  @relation(fields: [screeningId], references: [id])
+  batch       AiScreeningBatch?  @relation(fields: [batchId], references: [id])
+  application Application?       @relation(fields: [applicationId], references: [id])
+  screening   AiScreeningResult? @relation(fields: [screeningId], references: [id])
 
   @@index([batchId, status])
   @@index([batchId, applicationId])
@@ -2663,10 +2695,10 @@ model AiInterview {
   accommodationNotes     String?
 
   // Tavus integration
-  tavusConversationId  String?
-  tavusConversationUrl String?
-  tavusStatus          String?
-  tavusMeetingToken    String?
+  tavusConversationId     String?
+  tavusConversationUrl    String?
+  tavusStatus             String?
+  tavusMeetingToken       String?
   artifactSyncAttemptedAt DateTime?
 
   // Transcript
@@ -2675,9 +2707,9 @@ model AiInterview {
   transcript       Json?
 
   // Recording
-  recordingStatus    String?
-  recordingUrl       String?
-  recordingMetadata  Json?
+  recordingStatus   String?
+  recordingUrl      String?
+  recordingMetadata Json?
 
   // Config
   language                 String    @default("en")
@@ -2706,4 +2738,331 @@ model AiInterview {
   @@index([status])
   @@index([tavusConversationId])
   @@index([expiresAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 6 — RECRUITER-CONTROLLED ASSESSMENT ENGINE
+//
+// Assessment (recruiter-owned definition)
+//   └─< AssessmentVersion (immutable once published; candidates pin a version)
+//         ├─< AssessmentQuestion (explicit sortOrder; typed enum)
+//         │     ├─< AssessmentQuestionOption (choice options; isCorrect is recruiter-only)
+//         │     └─< AssessmentRubricCriterion (recruiter-owned rubric for AI/manual scoring)
+//         └─< AssessmentAssignment (application-specific; unique per application+version)
+//               └─< AssessmentSession (candidate session: code + short-lived token)
+//                     ├─< AssessmentResponse (one per session+question; server-persisted)
+//                     ├─< AssessmentEvaluation (attempt history; never overwritten)
+//                     └── AssessmentResult (one per session; backend-computed 0–100)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum AssessmentStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AssessmentVersionStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AssessmentQuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  SHORT_TEXT
+  LONG_TEXT
+  TRUE_FALSE
+}
+
+enum AssessmentAssignmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+  CANCELLED
+  EVALUATED
+}
+
+enum AssessmentSessionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  SUBMITTED
+  EXPIRED
+  CANCELLED
+  EVALUATING
+  EVALUATED
+}
+
+enum AssessmentEvaluationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model Assessment {
+  id              String           @id @default(uuid())
+  companyId       String
+  jobId           String?
+  name            String
+  description     String?
+  instructions    String?
+  status          AssessmentStatus @default(DRAFT)
+  durationMinutes Int?
+  passingScore    Int?
+  maxAttempts     Int              @default(1)
+  aiGenerated     Boolean          @default(false)
+  aiApproved      Boolean          @default(true)
+
+  createdByMembershipId String
+  updatedByMembershipId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company            @relation(fields: [companyId], references: [id])
+  job       Job?               @relation(fields: [jobId], references: [id])
+  createdBy CompanyMembership  @relation("AssessmentCreatedBy", fields: [createdByMembershipId], references: [id])
+  updatedBy CompanyMembership? @relation("AssessmentUpdatedBy", fields: [updatedByMembershipId], references: [id])
+
+  versions AssessmentVersion[]
+
+  @@index([companyId])
+  @@index([jobId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AssessmentVersion {
+  id            String                  @id @default(uuid())
+  assessmentId  String
+  versionNumber Int
+  status        AssessmentVersionStatus @default(DRAFT)
+  publishedAt   DateTime?
+  totalPoints   Int                     @default(0)
+  questionCount Int                     @default(0)
+  contentHash   String?
+
+  createdByMembershipId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assessment  Assessment             @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  questions   AssessmentQuestion[]
+  assignments AssessmentAssignment[]
+
+  @@unique([assessmentId, versionNumber])
+  @@index([assessmentId])
+  @@index([status])
+}
+
+model AssessmentQuestion {
+  id           String                 @id @default(uuid())
+  versionId    String
+  type         AssessmentQuestionType
+  prompt       String
+  instructions String?
+  sortOrder    Int
+  required     Boolean                @default(true)
+  points       Int                    @default(0)
+  competency   String?
+  aiEvaluated  Boolean                @default(false)
+  aiGenerated  Boolean                @default(false)
+  aiApproved   Boolean                @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  version        AssessmentVersion           @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  options        AssessmentQuestionOption[]
+  rubricCriteria AssessmentRubricCriterion[]
+  responses      AssessmentResponse[]
+
+  @@unique([versionId, sortOrder])
+  @@index([versionId])
+  @@index([type])
+}
+
+model AssessmentQuestionOption {
+  id         String  @id @default(uuid())
+  questionId String
+  label      String
+  sortOrder  Int
+  isCorrect  Boolean @default(false)
+  points     Int?
+
+  createdAt DateTime @default(now())
+
+  question AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, sortOrder])
+  @@index([questionId])
+}
+
+model AssessmentRubricCriterion {
+  id          String  @id @default(uuid())
+  questionId  String
+  name        String
+  description String?
+  guidance    String?
+  maxScore    Int
+  weight      Float   @default(1)
+  sortOrder   Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  question AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, sortOrder])
+  @@index([questionId])
+}
+
+model AssessmentAssignment {
+  id                     String                     @id @default(uuid())
+  companyId              String
+  applicationId          String
+  versionId              String
+  status                 AssessmentAssignmentStatus @default(ASSIGNED)
+  dueAt                  DateTime?
+  notifiedAt             DateTime?
+  assignedByMembershipId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company     Company           @relation(fields: [companyId], references: [id])
+  application Application       @relation(fields: [applicationId], references: [id])
+  version     AssessmentVersion @relation(fields: [versionId], references: [id])
+  assignedBy  CompanyMembership @relation("AssessmentAssignedBy", fields: [assignedByMembershipId], references: [id])
+
+  sessions AssessmentSession[]
+
+  @@unique([applicationId, versionId])
+  @@index([companyId])
+  @@index([applicationId])
+  @@index([versionId])
+  @@index([status])
+}
+
+model AssessmentSession {
+  id              String                  @id @default(uuid())
+  assignmentId    String
+  companyId       String
+  applicationId   String
+  codeHash        String                  @unique
+  codeDisplayHint String?
+  status          AssessmentSessionStatus @default(NOT_STARTED)
+  attemptNumber   Int                     @default(1)
+
+  questionOrder Json?
+
+  startedAt      DateTime?
+  lastActivityAt DateTime?
+  submittedAt    DateTime?
+  expiresAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignment  AssessmentAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  company     Company              @relation(fields: [companyId], references: [id])
+  application Application          @relation(fields: [applicationId], references: [id])
+
+  responses   AssessmentResponse[]
+  evaluations AssessmentEvaluation[]
+  result      AssessmentResult?
+
+  @@index([assignmentId])
+  @@index([companyId])
+  @@index([applicationId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model AssessmentResponse {
+  id                 String  @id @default(uuid())
+  sessionId          String
+  questionId         String
+  selectedOptionIds  Json?
+  textAnswer         String?
+  deterministicScore Float?
+  deterministicMax   Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session  AssessmentSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question AssessmentQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([sessionId, questionId])
+  @@index([sessionId])
+  @@index([questionId])
+}
+
+model AssessmentEvaluation {
+  id                 String                     @id @default(uuid())
+  sessionId          String
+  companyId          String
+  attempt            Int                        @default(1)
+  status             AssessmentEvaluationStatus @default(PENDING)
+  provider           String?
+  model              String?
+  promptVersion      String?
+  schemaVersion      String?
+  inputFingerprint   String?
+  latencyMs          Int?
+  responseId         String?
+  output             Json?
+  failureCode        String?
+  failureMessageSafe String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  company Company           @relation(fields: [companyId], references: [id])
+
+  @@unique([sessionId, attempt])
+  @@index([sessionId])
+  @@index([companyId])
+  @@index([status])
+}
+
+model AssessmentResult {
+  id                  String    @id @default(uuid())
+  sessionId           String    @unique
+  companyId           String
+  applicationId       String
+  versionId           String
+  deterministicScore  Float
+  deterministicMax    Float
+  aiScore             Float?
+  aiMax               Float?
+  totalScore          Float
+  maxScore            Float     @default(100)
+  questionBreakdown   Json?
+  competencyBreakdown Json?
+  strengths           Json?
+  gaps                Json?
+  uncertainties       Json?
+  evaluatedAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session     AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  company     Company           @relation(fields: [companyId], references: [id])
+  application Application       @relation(fields: [applicationId], references: [id])
+
+  @@index([companyId])
+  @@index([applicationId])
+  @@index([versionId])
+  @@index([totalScore])
 }

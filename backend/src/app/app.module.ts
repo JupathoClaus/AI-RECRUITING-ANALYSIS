@@ -34,6 +34,7 @@ import { EmailModule } from '../modules/email/email.module';
 import { AiScreeningModule } from '../modules/ai-screening/ai-screening.module';
 import { ResumeProcessingModule } from '../modules/resume-processing/resume-processing.module';
 import { AiInterviewsModule } from '../modules/ai-interviews/ai-interviews.module';
+import { AssessmentsModule } from '../modules/assessments/assessments.module';
 import { IdempotencyModule } from '../common/idempotency/idempotency.module';
 import { CommonModule } from '../common/common.module';
 
@@ -155,6 +156,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
     AiScreeningModule,
     ResumeProcessingModule,
     AiInterviewsModule,
+    AssessmentsModule,
     IdempotencyModule,
     CommonModule,
   ],
