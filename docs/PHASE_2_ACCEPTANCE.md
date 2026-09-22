@@ -72,9 +72,9 @@
 
 Append the exact commit at close-out:
 
-- Commit SHA: `—`
-- Branch: `—`
-- Working tree: `—`
+- Commit SHA: `f3d8b630d65b7da077bc3524e3744ca3cd1930a7` (`feat(phase2): implement recruiter assessment engine`)
+- Branch: `main` (pushed to `analysis` remote → `JupathoClaus/AI-RECRUITING-ANALYSIS`, `main` at `f3d8b63`)
+- Working tree: clean for committed Phase 2 files; `origin` URL (`AkademiaLimited/AI-Recruiter-Agent`) is no longer reachable by the authenticated account (`JupathoClaus`) — the 9 prior Phase 1 commits and this commit are hosted on the `analysis` remote, which matches local history exactly (ahead 10 of `origin/main`).
 
 Backend baseline drift in `ai-interviews/*`, `interviews/*`, `test/qwen-hf-verify.ts` (from the last
 Phase 1 qwen commits, untouched by Phase 2) is a pre-existing condition to update
