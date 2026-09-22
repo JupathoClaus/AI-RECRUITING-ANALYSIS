@@ -320,6 +320,49 @@ describe('QwenScreeningProvider', () => {
     expect((err as AiScreeningProviderError).safeCode).toBe('PROVIDER_UNAVAILABLE');
   });
 
+  it('throws PROVIDER_UNAVAILABLE for a real SDK APIConnectionError with nested cause', async () => {
+    const fetchError = new Error('fetch failed');
+    (fetchError as unknown as { cause?: Error }).cause = new Error(
+      'connect ECONNREFUSED 127.0.0.1:9',
+    );
+    const { provider, client } = makeProvider();
+    const mock = (client.chat.completions as unknown as { create: jest.Mock }).create;
+    mock.mockRejectedValue({
+      name: 'APIConnectionError',
+      message: 'Connection error.',
+      cause: fetchError,
+    });
+    const err = await provider.screen(BASE_INPUT).catch((e) => e);
+    expect(err).toBeInstanceOf(AiScreeningProviderError);
+    expect((err as AiScreeningProviderError).safeCode).toBe('PROVIDER_UNAVAILABLE');
+  });
+
+  it('throws PROVIDER_UNAVAILABLE for ENOTFOUND (DNS resolution failure)', async () => {
+    const fetchError = new Error('fetch failed');
+    (fetchError as unknown as { cause?: Error }).cause = new Error(
+      'getaddrinfo ENOTFOUND no-such-host',
+    );
+    const { provider, client } = makeProvider();
+    const mock = (client.chat.completions as unknown as { create: jest.Mock }).create;
+    mock.mockRejectedValue({
+      name: 'APIConnectionError',
+      message: 'Connection error.',
+      cause: fetchError,
+    });
+    const err = await provider.screen(BASE_INPUT).catch((e) => e);
+    expect(err).toBeInstanceOf(AiScreeningProviderError);
+    expect((err as AiScreeningProviderError).safeCode).toBe('PROVIDER_UNAVAILABLE');
+  });
+
+  it('still classifies unrelated transport-abort messages without network tokens as unexpected', async () => {
+    const { provider, client } = makeProvider();
+    const mock = (client.chat.completions as unknown as { create: jest.Mock }).create;
+    mock.mockRejectedValue({ name: 'APIError', message: 'Some other provider-side error' });
+    const err = await provider.screen(BASE_INPUT).catch((e) => e);
+    expect(err).toBeInstanceOf(AiScreeningProviderError);
+    expect((err as AiScreeningProviderError).safeCode).toBe('PROVIDER_UNEXPECTED_ERROR');
+  });
+
   it('throws PROVIDER_SERVER_ERROR on HTTP 5xx', async () => {
     const { provider, client } = makeProvider();
     const mock = (client.chat.completions as unknown as { create: jest.Mock }).create;

@@ -63,14 +63,17 @@ Planned guarantees (do not weaken): authenticated/protected type, single replica
 | `QWEN_MODEL` | `Qwen/Qwen3.5-9B` | must match `served-model-name` |
 | `QWEN_API_KEY` | HF token (runtime secret) | never committed |
 
-Failure paths verified via provider tests (identical code path): 401/403 → `AiScreeningAuthenticationError`; timeout → `AiScreeningTimeoutError`; 429 (honoring `retry-after[-ms]`) → `AiScreeningRateLimitError`; non-JSON/empty/truncated → `AiScreeningMalformedResponseError`; 5xx/connection-refused → retryable provider errors with terminal `failureCode`.
+Failure paths verified by provider tests AND live probes (2026-09-22):
+401/403 → `AiScreeningAuthenticationError` (`PROVIDER_AUTH_ERROR`, real HF 401 reproduced in ~1.0 s); timeout → `AiScreeningTimeoutError`; 429 (honoring `retry-after[-ms]`) → `AiScreeningRateLimitError`; non-JSON/empty/truncated → `AiScreeningMalformedResponseError`; 5xx/connection-refused → retryable provider errors with terminal `failureCode` — real unreachable-host probe returned `PROVIDER_UNAVAILABLE` in ~1.3 s.
+
+> Live-probe fix: the unreachable-host probe exposed a classification gap — the OpenAI SDK wraps transport failures in an `APIConnectionError` whose message is just "Connection error." with the real `ECONNREFUSED`/`ENOTFOUND` inside `cause`. `classifyNetworkError` now inspects the cause chain (and the SDK error name) so connection/DNS failures are reported as `PROVIDER_UNAVAILABLE` rather than `PROVIDER_UNEXPECTED_ERROR` (+3 provider tests; probes pass).
 
 ## 6. Operational notes
 
 - **Router vs Inference Endpoint:** the router is shared, serverless, pay-per-token HF hosting (free-tier credits apply), ideal for verification/light traffic. A dedicated Inference Endpoint bills per provisioned hour and gives dedicated capacity; require scale-to-zero for non-continuous use. Moving between them is a `QWEN_BASE_URL` change.
 - **Cold start / scale-to-zero:** first request after idle pays model-load latency on a dedicated endpoint; the router has no cold-start for warm models.
 - **Secrets:** `QWEN_API_KEY` is read by the backend only; browser and public endpoints never receive it. Rotate via env re-deploy.
-- **Monitoring:** alert on screening `FAILED` rates and on `failureCode = PROVIDER_SERVER_ERROR`. Structured codes: `PROVIDER_TIMEOUT`, `PROVIDER_UNAVAILABLE`, `PROVIDER_AUTHENTICATION`, `PROVIDER_RATE_LIMIT`, `PROVIDER_MALFORMED_RESPONSE`, `PROVIDER_SERVER_ERROR`.
+- **Monitoring:** alert on screening `FAILED` rates and on `failureCode = PROVIDER_SERVER_ERROR`. Structured codes: `PROVIDER_TIMEOUT`, `PROVIDER_UNAVAILABLE`, `PROVIDER_AUTH_ERROR`, `PROVIDER_RATE_LIMIT`, `PROVIDER_MALFORMED_RESPONSE`, `PROVIDER_SERVER_ERROR`, `PROVIDER_UNEXPECTED_ERROR`.
 - **Prompt injection defense** ships in `qwen-criterion-screening.prompt.ts` (resume body declared untrusted candidate data) and is enforced by the deterministic backend (fabricated quotes → `UNVERIFIED_EVIDENCE` → HUMAN_REVIEW; fake `overallScore` ignored). No endpoint config required.
 
 ## 7. Remaining blocker (only one) and unblock steps

@@ -66,6 +66,7 @@ Verification artifact: `backend/test/qwen-hf-verify.ts` (committed, excluded fro
 
 - `RESUME_LOADER`/criterion builder ran against structured job data (Systems Administrator job: 5 REQUIRED skills, 1 PREFERRED skill, 4+ years experience, Associate education → **8 structured criteria**).
 - Persisted result model = `Qwen/Qwen3.5-9B`; served model name equal to requested model.
+- `GET https://router.huggingface.co/v1/models` (valid token): **200**, 137 served models, `Qwen/Qwen3.5-9B` present in `data[].id` (free identity probe).
 
 ## 9. Real end-to-end screening (Phase 9) — VERIFIED (2 runs)
 
@@ -98,9 +99,18 @@ Run summary (identical across both runs; run 2 captured fully):
 - Deterministic guard tested: injected `overallScore`/fake evidence cannot override backend output.
 - The two live runs used a clean resume (no attack payload), which is the intended production posture; injection payloads stay in the automated tests to avoid unnecessary paid calls.
 
-## 13. Failure modes (Phase 13) — VERIFIED (automated, identical path)
+## 13. Failure modes (Phase 13) — VERIFIED (live probes + automated, identical path)
 
-Provider tests (`qwen-screening.provider.spec.ts`): 401/403→`PROVIDER_AUTHENTICATION`; timeout/abort→`PROVIDER_TIMEOUT`; 429 with `retry-after[-ms]`→`PROVIDER_RATE_LIMIT` (retryable); empty/non-JSON/truncated→`PROVIDER_MALFORMED_RESPONSE` (terminal); 5xx/ECONNREFUSED/ENOTFOUND→retryable server/unavailable. Processor: bounded retries (`attempts ?? 3`), terminal `failureCode` recorded. No live fault was induced to keep the controlled paid usage minimal.
+Live probes against the real DI provider (`backend/test/qwen-hf-failure-modes.verify.ts`, drives `provider.screen()` via the actual `AI_SCREENING_PROVIDER`):
+
+| Probe | Setup | Result | Latency |
+|---|---|---|---|
+| Unreachable host | `QWEN_BASE_URL=http://127.0.0.1:9/v1` | `PROVIDER_UNAVAILABLE` (retryable) | ~1.3 s |
+| Bad key / denied | `router.huggingface.co/v1` + `hf_invalid_NOT_A_REAL_KEY` | real HF 401 → `PROVIDER_AUTH_ERROR` (terminal) | ~1.0 s |
+
+Both free (no inference attempted). Provider tests (`qwen-screening.provider.spec.ts`, 24 incl. +3 added this continuation, **24/24 PASS**): 401/403→`PROVIDER_AUTH_ERROR`; timeout/abort→`PROVIDER_TIMEOUT`; 429 with `retry-after[-ms]`→`PROVIDER_RATE_LIMIT` (retryable); empty/non-JSON/truncated→`PROVIDER_MALFORMED_RESPONSE` (terminal); 5xx/ECONNREFUSED/ENOTFOUND→retryable server/unavailable. Processor: bounded retries (`attempts ?? 3`), terminal `failureCode` recorded.
+
+> **Fix from live probing:** the unreachable-host probe exposed a classification gap — the OpenAI SDK wraps transport failures in an `APIConnectionError` whose `message` is just "Connection error." with the real `ECONNREFUSED`/`ENOTFOUND` inside `cause`. Before the fix the genuine provider returned `PROVIDER_UNEXPECTED_ERROR`; `classifyNetworkError` (qwen-screening.provider.ts) now inspects the cause chain and SDK error name, reporting these as `PROVIDER_UNAVAILABLE`. This is the only src change in the continuation; connection itself was already env-only.
 
 ## 14. Observability (Phase 14) — VERIFIED
 
@@ -126,14 +136,15 @@ Provider tests (`qwen-screening.provider.spec.ts`): 401/403→`PROVIDER_AUTHENTI
 
 | Check | Command | Result |
 |---|---|---|
-| Backend unit | `cd backend && npm test` | **1382/1382** PASS (78 suites) |
+| Backend unit | `cd backend && npm test` | **1385/1385** PASS (78 suites; incl. +3 transport-classification tests added this continuation) |
 | Backend typecheck | `npx tsc --noEmit` | PASS |
 | e2e suite | `npm run test:e2e` (test Postgres `:5433`, Redis `:6380`) | **8 suites PASS, 187 PASS + 89 todo** |
 | Concurrency e2e | `test/ai-interviews-concurrency.e2e-spec.ts` | **6/6** PASS |
-| Changed-file lint | `node scripts/lint-changed.js --base HEAD` | PASS (target: `test/qwen-hf-verify.ts`) |
-| Prettier (new file) | `npx prettier --check test/qwen-hf-verify.ts` | PASS |
+| Changed-file lint | `node scripts/lint-changed.js --base HEAD` | PASS (targets: `qwen-screening.provider.ts`, `qwen-screening.provider.spec.ts`, `test/qwen-hf-verify.ts`, `test/qwen-hf-failure-modes.verify.ts`) |
+| Prettier (changed/new) | `npx prettier --write` (provider, spec, verify scripts) | PASS |
+| Live failure-mode probes | `test/qwen-hf-failure-modes.verify.ts` (ts-node, explicit) | **PASS** — `PROVIDER_UNAVAILABLE` ~1.3 s; `PROVIDER_AUTH_ERROR` ~1.0 s; `/v1/models` 200 (137, incl. target) |
 | Whole-repo `lint:baseline` | `npm run lint:baseline` | PRE-EXISTING FAILURE (unchanged) — mixed CRLF/LF in untouched Windows-checkout files; fails identically at clean `1cbe97d`/`ee1dc63`. Not a regression; `lint:changed` is the applicable gate. |
-| Frontend (unchanged this pass) | vitest / tsc / build (prior verified baseline) | 363/363, clean — no frontend files changed (`git status` clean except the new backend verification file) |
+| Frontend (unchanged this pass) | vitest / tsc / build (prior verified baseline) | 363/363, clean — no frontend files changed (`git status` clean except the new backend files) |
 
 ## 19. Artifacts (Phase 19) — VERIFIED
 
@@ -155,13 +166,13 @@ Legend: **VERIFIED** (evidenced this pass) · **BLOCKED** (exact blocker stated)
 | 6 | Smallest practical GPU / single replica / scale-to-zero preferred | VERIFIED (plan) | documented config in deployment doc (creation blocked) |
 | 7 | Qwen3.5-9B endpoint exists OR existing correct endpoint reused | VERIFIED (via HF-hosted route) | live `Qwen/Qwen3.5-9B`, OpenAI `/v1`, token-gated |
 | 8 | Real model identity | VERIFIED | HTTP `model: Qwen/Qwen3.5-9B`; hub facts gated:false/Apache-2.0 |
-| 9 | Only env changed to connect TalentAI (no provider code) | VERIFIED | zero src changes; only `AI_SCREENING_PROVIDER`/`QWEN_*` env |
+| 9 | Only env changed to connect TalentAI (no provider code) | VERIFIED | connection was env-only; this continuation added ONE independent robustness fix found by live probing (transport-error classification → `PROVIDER_UNAVAILABLE`), no contract/behavior change (§13) |
 | 10 | URL normalization (no `/v1/v1`, `/v1` present) | VERIFIED | `…/v1` base; end-to-end success |
 | 11 | One real screening end-to-end | VERIFIED | 2 runs; numbers in §9 |
 | 12 | Backend/score authority (fake score/evidence cannot override) | VERIFIED | automated tests (identical path); live score from backend |
 | 13 | Evidence verification against resume | VERIFIED | `evidenceUnverifiedCount=0`; 15 unit tests |
 | 14 | Prompt-injection defense | VERIFIED | 7 prompt tests + guard tests + provider assertion |
-| 15 | Failure modes (401/403/429/timeout/malformed/unavailable) | VERIFIED | provider tests; processor retry/terminal flow |
+| 15 | Failure modes (401/403/429/timeout/malformed/unavailable) | VERIFIED | live probes (§13): real 401→`PROVIDER_AUTH_ERROR`, unreachable→`PROVIDER_UNAVAILABLE`; automated tests for all codes; processor retry/terminal flow |
 | 16 | Observability without duplicate system | VERIFIED | existing `AiScreeningResult` fields only |
 | 17 | No mass paid requests; 5000-app architecture proven | VERIFIED | queue-level 5-way concurrency; dedup; bounded worker |
 | 18 | No secrets committed anywhere | VERIFIED | diff scan; no token in files/logs/docs |
@@ -169,7 +180,7 @@ Legend: **VERIFIED** (evidenced this pass) · **BLOCKED** (exact blocker stated)
 | 20 | Full regression green | VERIFIED | §18 (back-end jest/tsc/e2e; frontend unchanged) |
 | 21 | Deployment doc update | VERIFIED | `docs/HUGGING_FACE_QWEN_DEPLOYMENT.md` |
 | 22 | Final report written with labels | VERIFIED | this document |
-| 23 | Commit + push to `analysis` | VERIFIED | commit `fix(phase1): verify hosted qwen screening provider` (phase 21) |
+| 23 | Commit + push to `analysis` | VERIFIED | continuation commit(s) below (§21) — 2 commits, both pushed, remote refs match |
 | 24 | Dedicated HF Inference Endpoint provisioned | **BLOCKED** | `403 Payment method required for namespace: Jupatho`; no billing change |
 | 25 | Dedicated-endpoint raw smoke (post-creation) | NOT TESTED | blocked by 24; router path fully verified instead |
 | 26 | Whole-repo `lint:baseline` green | BLOCKED (pre-existing, non-regression) | CRLF/LF artifact in untouched files; `lint:changed` PASS |
@@ -179,10 +190,13 @@ Legend: **VERIFIED** (evidenced this pass) · **BLOCKED** (exact blocker stated)
 | Item | Value |
 |---|---|
 | New verification file | `backend/test/qwen-hf-verify.ts` (prettier-clean, excluded from jest) |
+| New continuation file | `backend/test/qwen-hf-failure-modes.verify.ts` (live failure-mode probes; also excluded from jest, run explicitly) |
+| Src change (continuation) | `qwen-screening.provider.ts` — transport-error classification (`PROVIDER_UNAVAILABLE` via cause-chain + SDK error name) + 3 provider tests |
 | Docs updated | `docs/HUGGING_FACE_QWEN_DEPLOYMENT.md`, `docs/PHASE_1_QWEN_EXTERNAL_VERIFICATION_REPORT.md` |
-| Commit message | `fix(phase1): verify hosted qwen screening provider` |
+| Commit 1 | `fix(phase1): verify hosted qwen screening provider` (`9a20887`) — verify script + both docs |
+| Commit 2 | `fix(phase1): verify live qwen failure-mode probes` (this continuation) — failure-mode probe script + transport-classification fix + tests + doc updates |
 | Remote | `analysis` (JupathoClaus/AI-RECRUITING-ANALYSIS.git) |
-| Parent | `1cbe97d` (analysis/main at pass start) |
+| Parent(s) | `1cbe97d` (analysis/main at pass start) → `9a20887` → `HEAD` |
 
 ## 22. What must happen to reach READY
 

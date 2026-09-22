@@ -410,15 +410,24 @@ export class QwenScreeningProvider implements AiScreeningProvider {
       });
     }
 
-    // Connection refused — Ollama not running
-    const msg = typeof sdkErr['message'] === 'string' ? (sdkErr['message'] as string) : '';
-    const isConnectionRefused =
-      msg.includes('ECONNREFUSED') ||
-      msg.includes('ENOTFOUND') ||
-      msg.includes('connect ECONNREFUSED');
-    if (isConnectionRefused) {
+    // Connection refused / DNS failure / transport abort — Ollama or an
+    // OpenAI-compatible host not reachable. Real SDK errors wrap the transport
+    // failure in an APIConnectionError whose message may only say
+    // "Connection error." with the actual ECONNREFUSED/ENOTFOUND inside `cause`,
+    // so we inspect the whole cause chain.
+    const collectedMessages = collectErrorMessages(sdkErr);
+    const name = sdkErr['name'];
+    const isConnectionFailure =
+      name === 'APIConnectionError' ||
+      name === 'AbortError' ||
+      collectedMessages.some((m) =>
+        /ECONNREFUSED|ECONNRESET|ENOTFOUND|ENETUNREACH|EAI_AGAIN|fetch failed|connection error|connect ECONNREFUSED/i.test(
+          m,
+        ),
+      );
+    if (isConnectionFailure) {
       throw new AiScreeningProviderError({
-        message: `Qwen/Ollama unreachable: ${msg}`,
+        message: `Qwen/Ollama unreachable: ${collectedMessages[0] || ''}`,
         safeMessage:
           'The local AI model service (Ollama) is not reachable. Ensure it is running on the configured URL.',
         safeCode: 'PROVIDER_UNAVAILABLE',
@@ -428,11 +437,25 @@ export class QwenScreeningProvider implements AiScreeningProvider {
     }
 
     throw new AiScreeningProviderError({
-      message: `Qwen provider error: ${msg || 'unknown'}`,
+      message: `Qwen provider error: ${collectedMessages[0] || 'unknown'}`,
       safeMessage: 'The AI screening provider encountered an unexpected error. Please try again.',
       safeCode: 'PROVIDER_UNEXPECTED_ERROR',
       retryable: true,
       providerName: 'qwen',
     });
   }
+}
+
+/** Flatten err.message + nested cause messages (bounded depth). */
+function collectErrorMessages(err: Record<string, unknown>): string[] {
+  const messages: string[] = [];
+  let current: unknown = err;
+  for (let depth = 0; depth < 5 && current !== null && current !== undefined; depth++) {
+    const record = current as Record<string, unknown>;
+    if (typeof record['message'] === 'string' && (record['message'] as string).length > 0) {
+      messages.push(record['message'] as string);
+    }
+    current = record['cause'];
+  }
+  return messages;
 }
