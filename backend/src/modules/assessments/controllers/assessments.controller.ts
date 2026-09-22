@@ -267,7 +267,7 @@ export class AssessmentsController {
   @RequirePermissions('assessments.review')
   @ApiOperation({ summary: 'Recruiter result review (responses + AI evaluation + score)' })
   async result(@Param('sessionId') sessionId: string, @CurrentUser() user: AuthenticatedPrincipal) {
-    return this.results.getResult(sessionId, user.activeCompanyId!);
+    return this.results.getResult(sessionId, user.activeCompanyId!, actorOf(user));
   }
 
   @Get('applications/:applicationId/state')

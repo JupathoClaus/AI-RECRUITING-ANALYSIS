@@ -332,6 +332,17 @@ export class AssessmentEvaluationService {
       data: { status: AssessmentSessionStatus.EVALUATING },
     });
     await this.enqueueEvaluation(created.id, session.id, companyId);
+    await this.audit.record({
+      companyId,
+      eventType: ApplicationAuditEventType.ASSESSMENT_REVIEWED,
+      actorType: ApplicationActorType.RECRUITER,
+      entityType: 'AssessmentSession',
+      entityId: session.id,
+      description: `Assessment re-evaluation requested (attempt ${attempt})`,
+      applicationId: session.applicationId,
+      actorUserId: actor.userId,
+      actorMembershipId: actor.membershipId,
+    });
     this.logger.log(
       `Re-evaluation queued for session ${session.id} (attempt ${attempt}) by ${actor.membershipId}`,
     );

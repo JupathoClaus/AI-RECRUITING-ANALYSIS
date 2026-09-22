@@ -309,6 +309,37 @@ export class IdempotencyService {
             message: 'Could not acquire idempotency lock due to concurrent access.',
           });
         }
+        // Concurrent request inserted the same key first (unique violation on
+        // the claim row). Re-read: the owner has either completed or is still
+        // processing, so we can converge instead of surfacing an error.
+        if (prismaErr.code === 'P2002') {
+          const existing = await this.prisma.idempotencyKey.findUnique({
+            where: uniqueWhere,
+            select: {
+              status: true,
+              requestHash: true,
+              resourceType: true,
+              resourceId: true,
+              responseJson: true,
+            },
+          });
+          if (existing && existing.status === 'COMPLETED') {
+            await this.checkHashOrThrow(existing, requestHash);
+            return {
+              status: 'COMPLETED' as const,
+              resourceType: existing.resourceType,
+              resourceId: existing.resourceId,
+              responseJson: existing.responseJson as T,
+            };
+          }
+          if (existing) {
+            return {
+              status: 'PROCESSING' as const,
+              resourceType: existing.resourceType,
+              resourceId: existing.resourceId,
+            };
+          }
+        }
         throw err;
       }
     }

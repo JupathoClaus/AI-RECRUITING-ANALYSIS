@@ -396,6 +396,50 @@ describe('IdempotencyService', () => {
         expect(records[0].resourceId).toBe(resourceIds[0]);
       }
     }, 120000);
+
+    it('fresh-key concurrent insert: P2002 competitors converge, executor runs once', async () => {
+      // Six callers racing to claim a brand-new key. Only one may insert the
+      // claim row; the rest hit the unique constraint (P2002) and must
+      // converge on the committed result instead of erroring.
+      const concurrentKey = `test-key-fresh-insert-${Date.now()}`;
+      let executionCount = 0;
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 6 }, (_, i) =>
+          service.executeTransactional({
+            companyId,
+            userId,
+            operation,
+            key: concurrentKey,
+            requestHash,
+            execute: async () => {
+              executionCount++;
+              await new Promise((r) => setTimeout(r, 150));
+              return {
+                resourceType: 'fresh',
+                resourceId: `fresh-${i}`,
+                responseJson: { count: executionCount },
+              };
+            },
+          }),
+        ),
+      );
+
+      const rejected = results.filter((r) => r.status === 'rejected');
+      expect(rejected).toHaveLength(0);
+      expect(executionCount).toBe(1);
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled');
+      expect(fulfilled.length).toBe(6);
+      const resourceIds = [...new Set(fulfilled.map((r) => r.value.resourceId))];
+      expect(resourceIds.length).toBe(1);
+
+      const records = await prisma.idempotencyKey.findMany({
+        where: { key: concurrentKey, companyId, userId, operation },
+      });
+      expect(records).toHaveLength(1);
+      expect(records[0].status).toBe('COMPLETED');
+    }, 30000);
   });
 
   describe('getRecord', () => {

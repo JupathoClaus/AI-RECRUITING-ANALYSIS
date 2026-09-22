@@ -51,4 +51,13 @@ describe('AssessmentEvidenceService', () => {
     expect(checks[1].verification).toBe('UNVERIFIED');
     expect(svc.hasFabricatedEvidence(checks)).toBe(true);
   });
+
+  it('flags counter-evidence as UNVERIFIED (candidate explicitly denies the claimed skill)', () => {
+    const response =
+      'I have never administered Linux at scale; my experience is limited to Windows server environments.';
+    const claim = 'extensive Linux administration experience across production fleets';
+    const check = svc.verify(claim, response);
+    expect(check).toBe('UNVERIFIED');
+    expect(svc.hasFabricatedEvidence([{ quote: claim, verification: check }])).toBe(true);
+  });
 });

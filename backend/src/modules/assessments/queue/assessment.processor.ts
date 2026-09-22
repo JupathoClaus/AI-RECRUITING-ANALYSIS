@@ -19,12 +19,30 @@ import {
 const BULK_CHUNK_SIZE = 100;
 
 /**
- * Assessment background worker. Bounded concurrency (configurable, default
- * 3) keeps 5,000-submission jobs from overwhelming Postgres or the AI
- * provider: submissions persist synchronously, evaluation fans out here with
- * deterministic jobIds so duplicate deliveries collapse.
+ * Worker fan-out for the assessment queue. Matches the ai-screening worker
+ * pattern (a module-scope constant read from the environment at load time,
+ * because the @Processor decorator is evaluated before DI is available).
+ * Default 3, clamped to [1, 20]; also mirrored by the `assessment.
+ * workerConcurrency` config used elsewhere.
  */
-@Processor(ASSESSMENT_QUEUE)
+export function parseAssessmentWorkerConcurrency(value?: string | number | null): number {
+  const raw = value ?? process.env.ASSESSMENT_WORKER_CONCURRENCY;
+  if (raw === undefined || raw === null || raw === '') return 3;
+  const parsed = typeof raw === 'number' ? raw : parseInt(raw, 10);
+  const base = Number.isNaN(parsed) ? 3 : parsed;
+  return Math.max(1, Math.min(20, base));
+}
+
+export const ASSESSMENT_WORKER_CONCURRENCY = parseAssessmentWorkerConcurrency();
+
+/**
+ * Assessment background worker. Bounded concurrency (default 3, clamped to
+ * [1, 20], configured via ASSESSMENT_WORKER_CONCURRENCY) keeps 5,000-submission
+ * jobs from overwhelming Postgres or the AI provider: submissions persist
+ * synchronously, evaluation fans out here with deterministic jobIds so
+ * duplicate deliveries collapse.
+ */
+@Processor(ASSESSMENT_QUEUE, { concurrency: ASSESSMENT_WORKER_CONCURRENCY })
 export class AssessmentProcessor extends WorkerHost {
   private readonly logger = new Logger(AssessmentProcessor.name);
 
@@ -182,7 +200,8 @@ export class AssessmentProcessor extends WorkerHost {
     failed: number;
     failures: { applicationId: string; reason: string }[];
   }> {
-    const { versionId, companyId, applicationIds, dueAt, requestedByMembershipId } = job.data;
+    const { versionId, companyId, applicationIds, dueAt, requestedByMembershipId, requestedByUserId } =
+      job.data;
     if (!versionId || !companyId || !Array.isArray(applicationIds)) {
       throw new UnrecoverableError('Bulk assign job is missing identifiers.');
     }
@@ -202,6 +221,7 @@ export class AssessmentProcessor extends WorkerHost {
             applicationId,
             due,
             requestedByMembershipId,
+            requestedByUserId,
           );
           if (outcome.outcome === 'assigned') assigned++;
           else if (outcome.outcome === 'skipped') skipped++;

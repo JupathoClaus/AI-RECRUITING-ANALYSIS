@@ -320,6 +320,7 @@ export class AssessmentAssignmentsService {
     applicationId: string,
     dueAt: Date | null,
     requestedByMembershipId: string,
+    requestedByUserId: string,
     txClient?: Prisma.TransactionClient,
   ): Promise<{
     outcome: 'assigned' | 'skipped' | 'failed';
@@ -331,8 +332,8 @@ export class AssessmentAssignmentsService {
     const application = await tx.application.findFirst({
       where: { id: applicationId, companyId },
       include: {
-        candidate: { select: { firstName: true, lastName: true, email: true } },
-        job: { select: { title: true } },
+        candidate: { select: { id: true, firstName: true, lastName: true, email: true } },
+        job: { select: { title: true, company: { select: { name: true } } } },
       },
     });
     if (!application) return { outcome: 'failed', reason: 'APPLICATION_NOT_FOUND' };
@@ -369,6 +370,38 @@ export class AssessmentAssignmentsService {
           },
         },
       });
+      // Per-row audit + candidate email match the single-assign contract:
+      // non-fatal so a bulk row still succeeds if notification fails.
+      await this.audit
+        .record({
+          companyId,
+          eventType: ApplicationAuditEventType.ASSESSMENT_ASSIGNED,
+          actorType: ApplicationActorType.RECRUITER,
+          entityType: 'AssessmentAssignment',
+          entityId: created.id,
+          description: `Assessment assigned (bulk): ${version.assessment.name} v${version.versionNumber}`,
+          applicationId,
+          candidateId: application.candidate?.id ?? null,
+          actorUserId: requestedByUserId,
+          actorMembershipId: requestedByMembershipId,
+        })
+        .catch(() => undefined);
+      const notifiable =
+        application.candidate && application.job?.company
+          ? {
+              candidate: {
+                email: application.candidate.email ?? null,
+                firstName: application.candidate.firstName,
+              },
+              job: {
+                title: application.job.title,
+                company: { name: application.job.company.name },
+              },
+            }
+          : null;
+      if (notifiable) {
+        this.queueCandidateEmail(notifiable, version.assessment.name, code).catch(() => undefined);
+      }
       return { outcome: 'assigned', code, assignmentId: created.id };
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {

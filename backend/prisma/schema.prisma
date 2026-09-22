@@ -1771,6 +1771,7 @@ enum ApplicationAuditEventType {
   ASSESSMENT_SUBMITTED
   ASSESSMENT_EXPIRED
   ASSESSMENT_EVALUATED
+  ASSESSMENT_REVIEWED
 }
 
 // ─── CompanyCandidate ────────────────────────────────────────────────────────

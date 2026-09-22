@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@database/prisma/prisma.service';
-import { AssessmentEvaluationStatus } from '@prisma/client';
+import { AssessmentEvaluationStatus, ApplicationAuditEventType, ApplicationActorType } from '@prisma/client';
+import { ApplicationAuditService } from '@modules/applications/services/application-audit.service';
 
 /**
  * Recruiter-facing read models. Results are decision support: scores,
@@ -9,10 +10,17 @@ import { AssessmentEvaluationStatus } from '@prisma/client';
  */
 @Injectable()
 export class AssessmentResultsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: ApplicationAuditService,
+  ) {}
 
   /** Full recruiter review for one session. */
-  async getResult(sessionId: string, companyId: string) {
+  async getResult(
+    sessionId: string,
+    companyId: string,
+    actor?: { userId: string; membershipId: string },
+  ) {
     const session = await this.prisma.assessmentSession.findFirst({
       where: { id: sessionId, companyId },
       include: {
@@ -109,6 +117,20 @@ export class AssessmentResultsService {
 
     const result = session.result;
     const passingScore = session.assignment.version.assessment.passingScore;
+    if (actor) {
+      await this.audit.record({
+        companyId,
+        eventType: ApplicationAuditEventType.ASSESSMENT_REVIEWED,
+        actorType: ApplicationActorType.RECRUITER,
+        entityType: 'AssessmentResult',
+        entityId: sessionId,
+        description: `Assessment result reviewed: ${session.assignment.version.assessment.name} v${session.assignment.version.versionNumber}`,
+        applicationId: session.application.id,
+        candidateId: session.application.candidate.id,
+        actorUserId: actor.userId,
+        actorMembershipId: actor.membershipId,
+      });
+    }
     return {
       session: {
         id: session.id,
