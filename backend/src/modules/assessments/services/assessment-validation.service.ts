@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { AssessmentQuestionType } from '@prisma/client';
 
 export interface ValidationOptionInput {
@@ -160,13 +160,14 @@ export class AssessmentValidationService {
   assertPublishable(input: AssessmentPublishInput): void {
     const issues = this.validateForPublish(input);
     if (issues.length > 0) {
-      const err = new Error(`Assessment is not publishable: ${issues[0].message}`) as Error & {
-        code: string;
-        issues: ValidationIssue[];
-      };
-      err.code = 'ASSESSMENT_NOT_PUBLISHABLE';
-      err.issues = issues;
-      throw err;
+      // Structured 400 (not a plain Error): the exception filter passes the
+      // sanitized issue list through so the recruiter UI can render exactly
+      // what must be fixed instead of a generic 500.
+      throw new BadRequestException({
+        code: 'ASSESSMENT_NOT_PUBLISHABLE',
+        message: `Assessment is not publishable: ${issues[0].message}`,
+        issues,
+      });
     }
   }
 

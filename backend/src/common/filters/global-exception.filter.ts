@@ -27,6 +27,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     let errorCode = 'INTERNAL_SERVER_ERROR';
     const details: unknown = undefined;
     let structuredConflicts: unknown[] | undefined;
+    let structuredIssues: unknown[] | undefined;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -62,6 +63,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             };
           });
         }
+        // Publish-validation issues pass through sanitized (code/message/index
+        // only) so the recruiter UI can list exactly what must be fixed.
+        if (errorCode === 'ASSESSMENT_NOT_PUBLISHABLE' && Array.isArray(resp.issues)) {
+          structuredIssues = resp.issues.map((issue) => {
+            const item = issue as Record<string, unknown>;
+            return {
+              code: typeof item.code === 'string' ? item.code : 'UNKNOWN',
+              message: typeof item.message === 'string' ? item.message : '',
+              questionSortOrder:
+                typeof item.questionSortOrder === 'number' ? item.questionSortOrder : undefined,
+            };
+          });
+        }
       }
     } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       const prismaResult = this.handlePrismaError(exception);
@@ -89,6 +103,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (structuredConflicts) {
       errorResponse.conflicts = structuredConflicts;
+    }
+
+    if (structuredIssues) {
+      errorResponse.issues = structuredIssues;
     }
 
     this.logger.warn(

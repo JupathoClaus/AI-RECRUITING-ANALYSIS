@@ -58,16 +58,24 @@ interface RequestOptions {
   timeoutMs?: number
 }
 
+export interface ApiValidationIssue {
+  code: string
+  message: string
+  questionSortOrder?: number
+}
+
 export class ApiErrorResponse extends Error {
   statusCode: number
   errorCode: string
   errors: string[]
-  constructor(statusCode: number, errorCode: string, message: string, errors: string[] = []) {
+  issues?: ApiValidationIssue[]
+  constructor(statusCode: number, errorCode: string, message: string, errors: string[] = [], issues?: ApiValidationIssue[]) {
     super(message)
     this.name = "ApiErrorResponse"
     this.statusCode = statusCode
     this.errorCode = errorCode
     this.errors = errors
+    this.issues = issues
   }
 }
 
@@ -213,22 +221,26 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!res.ok) {
-    let errorBody: { errorCode?: string; message?: string } | null = null
+    let errorBody: { errorCode?: string; message?: string; issues?: ApiValidationIssue[] } | null = null
     try {
       if (responseType === 'blob') {
         const text = await res.text()
-        try { errorBody = JSON.parse(text) as { errorCode?: string; message?: string } } catch { /* ignore */ }
+        try { errorBody = JSON.parse(text) as { errorCode?: string; message?: string; issues?: ApiValidationIssue[] } } catch { /* ignore */ }
       } else {
-        errorBody = (await res.json()) as { errorCode?: string; message?: string }
+        errorBody = (await res.json()) as { errorCode?: string; message?: string; issues?: ApiValidationIssue[] }
       }
     } catch {
       // ignore parse errors
     }
+    const issues = Array.isArray(errorBody?.issues)
+      ? errorBody.issues.filter((i) => i && typeof i.code === 'string' && typeof i.message === 'string')
+      : undefined
     throw new ApiErrorResponse(
       res.status,
       errorBody?.errorCode || 'REQUEST_FAILED',
       errorBody?.message || `Request failed with status ${res.status}`,
       (errorBody as { errors?: string[] })?.errors || [],
+      issues,
     )
   }
 

@@ -213,6 +213,35 @@ describe('IdempotencyService', () => {
       expect(record).toBeNull();
     });
 
+    it('does not mask the original executor error when the transaction is already aborted', async () => {
+      const deadTxKey = 'test-key-dead-tx';
+      // A failed statement aborts the whole Postgres transaction. The
+      // FAILED-mark compensation must not replace the original error with its
+      // own updateMany failure (previously surfaced as a confusing 500).
+      await expect(
+        service.executeTransactional({
+          companyId,
+          userId,
+          operation,
+          key: deadTxKey,
+          requestHash,
+          execute: async (tx) => {
+            await tx.$executeRawUnsafe('SELECT * FROM missing_table_xyz_dead_tx');
+            return { resourceType: 'x', resourceId: 'y', responseJson: null };
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'P2010' });
+
+      // The aborted claim rolled back and the outside FAILED-mark matched
+      // nothing: no claim row leaks as PROCESSING.
+      const record = await prisma.idempotencyKey.findUnique({
+        where: {
+          key_companyId_userId_operation: { key: deadTxKey, companyId, userId, operation },
+        },
+      });
+      expect(record).toBeNull();
+    });
+
     it('single-owner FAILED recovery: exactly one execution, both callers converge on one result', async () => {
       const concurrentKey = 'test-key-concurrent-fail';
 

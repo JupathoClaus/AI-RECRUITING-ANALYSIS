@@ -77,6 +77,13 @@ export const validationSchema = Joi.object({
   RESUME_EXTRACTION_MIN_TEXT_CHARS: Joi.number().min(1).max(1000).default(20),
   RESUME_EXTRACTION_TIMEOUT_MS: Joi.number().min(1000).max(120000).default(30000),
 
+  // Assessments (candidate short-lived access tokens). The secret is required
+  // at boot so a missing value fails fast here instead of surfacing as a 500
+  // on the first candidate verify-code call.
+  ASSESSMENT_ACCESS_TOKEN_SECRET: Joi.string().min(32).required(),
+  ASSESSMENT_ACCESS_TOKEN_TTL_MINUTES: Joi.number().min(5).max(1440).default(120),
+  ASSESSMENT_AI_PROVIDER: Joi.string().valid('mock', 'qwen').default('mock'),
+
   // Tavus AI Interviews
   TAVUS_ENABLED: Joi.boolean().default(false),
   TAVUS_API_KEY: Joi.string().when('TAVUS_ENABLED', {

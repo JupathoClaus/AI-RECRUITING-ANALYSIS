@@ -395,20 +395,33 @@ export class IdempotencyService {
         responseJson: result.responseJson as T,
       };
     } catch (err) {
-      await tx.idempotencyKey.updateMany({
-        where: {
-          key,
-          companyId,
-          userId,
-          operation,
-          status: 'PROCESSING',
-          leaseToken,
-        },
-        data: {
-          status: 'FAILED',
-          leaseToken: null,
-        },
-      });
+      // Compensation must run OUTSIDE the transaction: once the callback
+      // throws, Prisma rolls the whole tx back, so an in-tx FAILED-mark is
+      // either rolled back (useless) or throws on the dead tx and MASKS the
+      // original error as a confusing updateMany 500. Mark FAILED in an
+      // independent write (best-effort: a rolled-back claim simply means the
+      // row is absent and the key stays reusable), then rethrow the ORIGINAL
+      // error unchanged so callers see the real cause.
+      try {
+        await this.prisma.idempotencyKey.updateMany({
+          where: {
+            key,
+            companyId,
+            userId,
+            operation,
+            status: 'PROCESSING',
+            leaseToken,
+          },
+          data: {
+            status: 'FAILED',
+            leaseToken: null,
+          },
+        });
+      } catch (compensationError) {
+        this.logger.warn(
+          `Idempotency FAILED-mark failed for ${operation}: ${(compensationError as Error).message}`,
+        );
+      }
       throw err;
     }
   }

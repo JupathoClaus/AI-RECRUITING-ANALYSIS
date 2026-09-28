@@ -56,7 +56,7 @@ export function AssessmentResultView({ sessionId, onNavigate }: { sessionId: str
               <p className="mt-1 text-xs text-muted">Assessment results are decision support. Final hiring decisions remain with the recruiter.</p>
             </div>
             <div className="flex flex-col gap-2">
-              {result.result && <Progress value={result.result.totalScore} className="w-48" indicatorClassName={getScoreBgColor(result.result.totalScore)} />}
+              {result.result && <Progress value={result.result.totalScore} className="w-48" indicatorClassName={getScoreBgColor(result.result.totalScore)} aria-label={`Overall score: ${result.result.totalScore} out of 100`} />}
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={load}>Refresh</Button>
                 {evaluationFailed && (
@@ -91,7 +91,7 @@ export function AssessmentResultView({ sessionId, onNavigate }: { sessionId: str
               return (
                 <div key={entry.competency}>
                   <div className="flex items-center justify-between text-sm"><span className="font-medium">{entry.competency}</span><span className="text-muted">{entry.score} / {entry.max}</span></div>
-                  <Progress value={pct} className="mt-1" indicatorClassName={getScoreBgColor(pct)} />
+                  <Progress value={pct} className="mt-1" indicatorClassName={getScoreBgColor(pct)} aria-label={`${entry.competency}: ${entry.score} out of ${entry.max}`} />
                 </div>
               )
             })}

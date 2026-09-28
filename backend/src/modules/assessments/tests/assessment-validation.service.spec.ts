@@ -165,14 +165,23 @@ describe('AssessmentValidationService', () => {
     expect(issues).toEqual([]);
   });
 
-  it('assertPublishable throws with issue list', () => {
-    expect(() => svc.assertPublishable({ questions: [] })).toThrow(/not publishable/);
+  it('assertPublishable throws a structured 400 with the issue list', () => {
     try {
       svc.assertPublishable({ questions: [] });
       fail('expected throw');
     } catch (error) {
-      expect((error as { code: string }).code).toBe('ASSESSMENT_NOT_PUBLISHABLE');
-      expect((error as { issues: unknown[] }).issues.length).toBeGreaterThan(0);
+      // Must be an HttpException (400) so the filter renders it instead of a 500.
+      const status = (error as { getStatus?: () => number }).getStatus?.();
+      expect(status).toBe(400);
+      const response = (error as { getResponse?: () => unknown }).getResponse?.() as {
+        code?: string;
+        message?: string;
+        issues?: { code?: string; message?: string }[];
+      };
+      expect(response.code).toBe('ASSESSMENT_NOT_PUBLISHABLE');
+      expect(response.message).toMatch(/not publishable/);
+      expect(response.issues?.length).toBeGreaterThan(0);
+      expect(response.issues?.[0].code).toBe('EMPTY_ASSESSMENT');
     }
   });
 });

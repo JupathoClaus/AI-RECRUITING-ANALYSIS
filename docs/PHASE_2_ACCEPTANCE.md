@@ -53,7 +53,7 @@
 | 24 | Notifications + email for assign/submit/evaluate | **PARTIAL** | Email path wired; SMTP down → silent fail (repo-wide Phase 1 behavior); in-app notifications reuse existing infra (not e2e-asserted) |
 | 25 | Recruiter result review UI with threshold context | **PASS** | `assessment-result-view` (score, floor, threshold, retry); vitest |
 | 26 | Job Workspace assessments tab + Application panel | **PASS** | `job-workspace` tab, `application-workspace` panel; build green |
-| 27 | Bulk-assign UI | **PARTIAL** | API + queue + e2e proven; manager UI offers single assign dialog; bulk UI not added |
+| 27 | Bulk-assign UI | **PASS** | `Assign assessment (N)` in applications bulk bar → job-scoped picker (PUBLISHED versions only) → queue → per-row counts; browser proof 12/12 + backend jest 1436/1436 |
 | 28 | Application-list assessment status column | **DEFERRED** | Not added; status lives on the application panel / manager |
 | 29 | Candidate-profile assessment history | **DEFERRED** | Not added (no top-level candidate assessment surface) |
 | 30 | Analytics aggregates (summary cards) | **PARTIAL** | Manager summary cards (assigned/completed/avg score/completion) implemented; deep charts deferred |

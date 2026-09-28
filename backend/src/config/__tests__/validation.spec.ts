@@ -14,6 +14,7 @@ describe('validationSchema', () => {
     REDIS_PORT: 6379,
     JWT_SECRET: 'my-secret-key-that-is-long-enough-32+',
     JWT_REFRESH_SECRET: 'my-refresh-key-that-is-also-long-enough-32!',
+    ASSESSMENT_ACCESS_TOKEN_SECRET: 'test-assessment-secret-min-32-chars!!',
   };
 
   it('should validate a correct environment', () => {
@@ -95,6 +96,7 @@ describe('validationSchema', () => {
       DATABASE_URL: 'postgresql://localhost:5432/db',
       JWT_SECRET: 'secret-that-is-long-enough-32-characters!!',
       JWT_REFRESH_SECRET: 'refresh-secret-that-is-also-32-characters!!',
+      ASSESSMENT_ACCESS_TOKEN_SECRET: 'assessment-secret-that-is-32-characters!!',
     };
     const { error, value } = validationSchema.validate(minimalEnv, { allowUnknown: true });
     expect(error).toBeUndefined();
@@ -138,6 +140,7 @@ describe('validationSchema', () => {
       DATABASE_URL: 'postgresql://localhost:5432/db',
       JWT_SECRET: 'secret-that-is-long-enough-32-characters!!',
       JWT_REFRESH_SECRET: 'refresh-secret-that-is-also-32-characters!!',
+      ASSESSMENT_ACCESS_TOKEN_SECRET: 'assessment-secret-that-is-32-characters!!',
     };
     const { error, value } = validationSchema.validate(minimalEnv, { allowUnknown: true });
     expect(error).toBeUndefined();
@@ -216,5 +219,33 @@ describe('validationSchema', () => {
       { allowUnknown: true },
     );
     expect(error).toBeUndefined();
+  });
+
+  it('should require ASSESSMENT_ACCESS_TOKEN_SECRET (fail fast instead of a runtime 500)', () => {
+    const { error } = validationSchema.validate(
+      { ...validEnv, ASSESSMENT_ACCESS_TOKEN_SECRET: undefined },
+      { allowUnknown: true },
+    );
+    expect(error).toBeDefined();
+    expect(error?.details[0].message).toContain('ASSESSMENT_ACCESS_TOKEN_SECRET');
+  });
+
+  it('should reject a short ASSESSMENT_ACCESS_TOKEN_SECRET', () => {
+    const { error } = validationSchema.validate(
+      { ...validEnv, ASSESSMENT_ACCESS_TOKEN_SECRET: 'too-short' },
+      { allowUnknown: true },
+    );
+    expect(error).toBeDefined();
+  });
+
+  it('should default ASSESSMENT_AI_PROVIDER to mock and reject unknown providers', () => {
+    const { error: errDefault, value } = validationSchema.validate(validEnv, { allowUnknown: true });
+    expect(errDefault).toBeUndefined();
+    expect(value.ASSESSMENT_AI_PROVIDER).toBe('mock');
+    const { error: errBad } = validationSchema.validate(
+      { ...validEnv, ASSESSMENT_AI_PROVIDER: 'anthropic' },
+      { allowUnknown: true },
+    );
+    expect(errBad).toBeDefined();
   });
 });

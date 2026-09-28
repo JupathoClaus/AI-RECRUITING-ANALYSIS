@@ -279,4 +279,38 @@ describe('GlobalExceptionFilter', () => {
     const response = (mockResponse.json as jest.Mock).mock.calls[0][0];
     expect(response).not.toHaveProperty('conflicts');
   });
+
+  it('passes sanitized publish-validation issues through for ASSESSMENT_NOT_PUBLISHABLE', () => {
+    const exception = new HttpException(
+      {
+        code: 'ASSESSMENT_NOT_PUBLISHABLE',
+        message: 'Assessment is not publishable: An assessment must contain at least one question.',
+        issues: [
+          {
+            code: 'EMPTY_ASSESSMENT',
+            message: 'An assessment must contain at least one question.',
+            leakedInternal: 'must-not-reflect',
+          },
+        ],
+      },
+      HttpStatus.BAD_REQUEST,
+    );
+    filter.catch(exception, mockHost);
+    const response = (mockResponse.json as jest.Mock).mock.calls[0][0];
+    expect(response.statusCode).toBe(400);
+    expect(response.errorCode).toBe('ASSESSMENT_NOT_PUBLISHABLE');
+    expect(response.issues).toEqual([
+      { code: 'EMPTY_ASSESSMENT', message: 'An assessment must contain at least one question.', questionSortOrder: undefined },
+    ]);
+  });
+
+  it('does not reflect arbitrary issues arrays from unrelated errors', () => {
+    const exception = new HttpException(
+      { code: 'OTHER_ERROR', message: 'Bad request', issues: [{ secret: 'do-not-reflect' }] },
+      HttpStatus.BAD_REQUEST,
+    );
+    filter.catch(exception, mockHost);
+    const response = (mockResponse.json as jest.Mock).mock.calls[0][0];
+    expect(response).not.toHaveProperty('issues');
+  });
 });
