@@ -8,6 +8,7 @@ import { AiInterviewTokenService } from '../services/ai-interview-token.service'
 import { TavusClientService } from '../services/tavus-client.service';
 import { RecordingPlaybackService } from '../services/recording-playback.service';
 import { EmailService } from '@modules/email/email.service';
+import { AiInterviewEvaluationService } from '../evaluation/ai-interview-evaluation.service';
 import {
   AiInterviewStatus,
   AiInterviewProvider,
@@ -64,6 +65,10 @@ describe('AiInterviewsService', () => {
     }),
   };
 
+  const mockEvaluationService = {
+    scheduleEvaluation: jest.fn().mockResolvedValue({}),
+  };
+
   const mockPrismaService = {
     application: {
       findFirst: jest.fn(),
@@ -92,6 +97,7 @@ describe('AiInterviewsService', () => {
         { provide: RecordingPlaybackService, useValue: mockPlaybackService },
         { provide: EmailService, useValue: mockEmailService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: AiInterviewEvaluationService, useValue: mockEvaluationService },
       ],
     }).compile();
 

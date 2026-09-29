@@ -207,6 +207,109 @@ export async function syncAiInterviewArtifacts(id: string): Promise<ArtifactSync
   })
 }
 
+export type AiInterviewEvaluationRecommendation = "PASS" | "HOLD" | "FAIL"
+export type AiInterviewEvaluationStatusResponse =
+  | "NOT_REQUESTED"
+  | "PENDING"
+  | "RUNNING"
+  | "COMPLETED"
+  | "FAILED"
+export type AiInterviewEvidenceVerification = "VERBATIM" | "SUPPORTED" | "INFERRED" | "UNVERIFIED"
+export type AiInterviewCompetencyStatus = "MET" | "PARTIALLY_MET" | "NOT_MET" | "UNCERTAIN"
+
+export interface AiInterviewEvaluationReport {
+  id: string
+  status: AiInterviewEvaluationStatusResponse
+  attempt: number
+  totalScore: number | null
+  maximumScore: number | null
+  recommendation: AiInterviewEvaluationRecommendation | null
+  confidence: "HIGH" | "MEDIUM" | "LOW" | null
+  summary: string | null
+  strengths: string[]
+  gaps: string[]
+  uncertainties: string[]
+  provider: string | null
+  model: string | null
+  promptVersion: string | null
+  schemaVersion: string | null
+  inputFingerprint: string | null
+  latencyMs: number | null
+  responseId: string | null
+  evidenceTotals: {
+    VERBATIM: number
+    SUPPORTED: number
+    INFERRED: number
+    UNVERIFIED: number
+  } | null
+  failureCode: string | null
+  failureMessageSafe: string | null
+  startedAt: string | null
+  completedAt: string | null
+  recruiterDecision: AiInterviewEvaluationRecommendation | null
+  decidedByMembershipId: string | null
+  decidedAt: string | null
+  decisionNote: string | null
+  competencies: {
+    competency: string
+    status: AiInterviewCompetencyStatus
+    score: number
+    maxScore: number
+    weight: number
+    confidence: "HIGH" | "MEDIUM" | "LOW"
+    rationale: string
+    sortOrder: number
+    evidence: {
+      quote: string
+      verification: AiInterviewEvidenceVerification
+      sourceSegmentIndex: number | null
+      sourceSeconds: number | null
+    }[]
+  }[]
+}
+
+export interface AiInterviewEvaluationResponse {
+  interviewStatus: AiInterviewStatus
+  transcriptStatus: AiInterviewTranscriptStatus
+  evaluationStatus: AiInterviewEvaluationStatusResponse
+  evaluationCount: number
+  report: AiInterviewEvaluationReport | null
+  attempts: {
+    id: string
+    attempt: number
+    status: AiInterviewEvaluationStatusResponse
+    provider: string | null
+    model: string | null
+    promptVersion: string | null
+    latencyMs: number | null
+    responseId: string | null
+    failureCode: string | null
+    failureMessageSafe: string | null
+    startedAt: string | null
+    completedAt: string | null
+  }[]
+}
+
+export async function getAiInterviewEvaluation(id: string): Promise<AiInterviewEvaluationResponse> {
+  return apiRequest<AiInterviewEvaluationResponse>(`/ai-interviews/${id}/evaluation`)
+}
+
+export async function reEvaluateAiInterview(id: string): Promise<{ evaluationId: string; status: AiInterviewEvaluationStatusResponse }> {
+  return apiRequest(`/ai-interviews/${id}/evaluation/reevaluate`, {
+    method: "POST",
+  })
+}
+
+export async function recordAiInterviewDecision(
+  id: string,
+  dto: { decision: AiInterviewEvaluationRecommendation; note?: string },
+): Promise<unknown> {
+  return apiRequest(`/ai-interviews/${id}/evaluation/decision`, {
+    method: "POST",
+    body: dto,
+  })
+}
+
 // Public candidate API
 export async function verifyInterviewCode(code: string): Promise<{
   accessToken: string

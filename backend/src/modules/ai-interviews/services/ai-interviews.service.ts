@@ -33,6 +33,7 @@ import {
 } from './tavus-client.service';
 import { RecordingPlaybackService } from './recording-playback.service';
 import { EmailService } from '@modules/email/email.service';
+import { AiInterviewEvaluationService } from '../evaluation/ai-interview-evaluation.service';
 
 interface TavusCallbackPayload {
   event: string;
@@ -65,6 +66,7 @@ export class AiInterviewsService {
     private readonly emailService: EmailService,
     private readonly playbackService: RecordingPlaybackService,
     private readonly configService: ConfigService,
+    private readonly evaluationService: AiInterviewEvaluationService,
   ) {
     this.frontendUrl = this.configService.get<string>('app.frontendUrl') || 'http://localhost:3001';
     this.backendUrl = this.configService.get<string>('app.backendUrl') || 'http://localhost:3000';
@@ -1004,8 +1006,10 @@ export class AiInterviewsService {
     }
 
     // Mock deliberate completion
-    if (interview.status === AiInterviewStatus.COMPLETED) {
-      return { completed: true };
+    if (interview.provider === AiInterviewProvider.MOCK) {
+      await this.seedMockTranscript(interview.id).catch((error) => {
+        this.logger.warn(`Mock transcript seeding failed for ${interview.id}: ${error}`);
+      });
     }
 
     await this.prisma.aiInterview.update({
@@ -1015,6 +1019,7 @@ export class AiInterviewsService {
         completedAt: new Date(),
       },
     });
+    await this.maybeTriggerEvaluation(interviewId);
 
     return { completed: true, message: 'Your interview has been submitted.' };
   }
@@ -1097,6 +1102,7 @@ export class AiInterviewsService {
         await this.syncTavusArtifacts(interview.id).catch((error) => {
           this.logger.warn(`Tavus artifact sync failed for ${interview.id}: ${error}`);
         });
+        await this.maybeTriggerEvaluation(interview.id);
         break;
       }
 
@@ -1114,6 +1120,7 @@ export class AiInterviewsService {
             tavusStatus: eventType,
           },
         });
+        await this.maybeTriggerEvaluation(interview.id);
         break;
       }
 
@@ -1264,6 +1271,7 @@ export class AiInterviewsService {
       interview.transcriptStatus === AiInterviewTranscriptStatus.READY &&
       interview.recordingStatus === 'READY'
     ) {
+      await this.maybeTriggerEvaluation(interviewId);
       return;
     }
 
@@ -1362,6 +1370,151 @@ export class AiInterviewsService {
     await this.prisma.aiInterview.update({
       where: { id: interviewId },
       data: { artifactSyncAttemptedAt: new Date() },
+    });
+    await this.maybeTriggerEvaluation(interviewId);
+  }
+
+  /**
+   * Post-interview evaluation trigger. Safe to call after any mutation that
+   * could move an interview into (COMPLETED + transcript READY). Idempotent:
+   * the evaluation service dedups by BullMQ jobId and skips already-completed
+   * runs. A race where the interview is not yet complete is simply skipped.
+   */
+  private async maybeTriggerEvaluation(interviewId: string): Promise<void> {
+    try {
+      const interview = await this.prisma.aiInterview.findUnique({
+        where: { id: interviewId },
+        select: { status: true, transcriptStatus: true, companyId: true },
+      });
+      if (!interview) return;
+      if (interview.status !== AiInterviewStatus.COMPLETED) return;
+      if (interview.transcriptStatus !== AiInterviewTranscriptStatus.READY) return;
+      await this.evaluationService.scheduleEvaluation(interviewId, interview.companyId);
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? String(error);
+      if (/NOT_READY|CLAIMED|COMPLETED/.test(message)) {
+        this.logger.debug(`Evaluation trigger skipped for ${interviewId}: ${message}`);
+        return;
+      }
+      this.logger.warn(`Evaluation trigger failed for ${interviewId}: ${message}`);
+    }
+  }
+
+  /**
+   * Deterministic MOCK transcript fixture. The MOCK provider never talks to a
+   * real conversational endpoint, so on deliberate completion we seed a
+   * scripted candidate interview that references the real job context. This
+   * is purely a test/demo double: real Tavus transcripts always come from the
+   * provider callbacks or artifact sync. The seeded content is stable so the
+   * mock evaluation provider can quote it verbatim.
+   */
+  private async seedMockTranscript(interviewId: string): Promise<void> {
+    const interview = await this.prisma.aiInterview.findUnique({
+      where: { id: interviewId },
+      include: {
+        application: {
+          include: {
+            candidate: { select: { id: true, firstName: true, lastName: true } },
+            job: {
+              select: {
+                title: true,
+                description: true,
+                skills: { include: { skill: { select: { displayName: true } } } },
+              },
+            },
+            company: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!interview) return;
+
+    const firstName = interview.application.candidate.firstName || 'Candidate';
+    const lastName = interview.application.candidate.lastName || '';
+    const jobTitle = interview.application.job.title;
+    const companyName = interview.application.company?.name || 'the company';
+    const skills = (interview.application.job.skills ?? [])
+      .map((s) => s.skill?.displayName)
+      .filter((name): name is string => Boolean(name));
+    const skillOne = skills[0] || 'the role';
+    const skillTwo = skills[1] || 'collaboration';
+    const skillThree = skills[2] || 'problem solving';
+
+    const turns = [
+      {
+        role: 'system',
+        content: 'The candidate joined the interview session.',
+        seconds_from_start: 0,
+        duration: 2,
+      },
+      {
+        role: 'assistant',
+        content: `Hello ${firstName}. Welcome to your AI interview for the ${jobTitle} position at ${companyName}. Could you confirm your full name and tell me briefly why you are interested in this role?`,
+        seconds_from_start: 2,
+        duration: 8,
+      },
+      {
+        role: 'user',
+        content: `Hi, I'm ${firstName} ${lastName}. I'm excited about the ${jobTitle} role because it matches my background and career goals.`,
+        seconds_from_start: 10,
+        duration: 6,
+      },
+      {
+        role: 'assistant',
+        content: `Thank you, ${firstName}. Tell me about a time you applied ${skillOne} at work and what the outcome was.`,
+        seconds_from_start: 16,
+        duration: 6,
+      },
+      {
+        role: 'user',
+        content: `In my previous role I worked with ${skillOne} every day. For example, I led a ${skillOne} initiative that improved our process and delivered measurable results.`,
+        seconds_from_start: 22,
+        duration: 10,
+      },
+      {
+        role: 'assistant',
+        content: `That's helpful. How have you used ${skillTwo} with your team or stakeholders?`,
+        seconds_from_start: 32,
+        duration: 5,
+      },
+      {
+        role: 'user',
+        content: `I regularly use ${skillTwo} when coordinating with teammates and stakeholders. I also rely on ${skillThree} when things are ambiguous, breaking the problem into smaller pieces.`,
+        seconds_from_start: 37,
+        duration: 10,
+      },
+      {
+        role: 'assistant',
+        content: `Thank you, ${firstName}. Your responses will be reviewed by the recruitment team. Do you have anything to add?`,
+        seconds_from_start: 47,
+        duration: 5,
+      },
+      {
+        role: 'user',
+        content: `No, I think I covered it. Thank you for the opportunity.`,
+        seconds_from_start: 52,
+        duration: 4,
+      },
+      {
+        role: 'assistant',
+        content: `You're welcome. Take care and we will be in touch.`,
+        seconds_from_start: 56,
+        duration: 4,
+      },
+      {
+        role: 'system',
+        content: 'The interview session ended.',
+        seconds_from_start: 60,
+        duration: 2,
+      },
+    ];
+
+    await this.prisma.aiInterview.update({
+      where: { id: interviewId },
+      data: {
+        transcriptStatus: AiInterviewTranscriptStatus.READY,
+        transcript: turns as unknown as Prisma.InputJsonValue,
+      },
     });
   }
 

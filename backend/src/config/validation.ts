@@ -129,6 +129,12 @@ export const validationSchema = Joi.object({
   TAVUS_AUTO_END_STALE_AFTER_MINUTES: Joi.number().min(5).max(1440).default(60),
   AI_INTERVIEW_DEFAULT_DURATION_MINUTES: Joi.number().min(5).max(120).default(5),
   AI_INTERVIEW_MAX_CONCURRENT: Joi.number().min(1).max(100).default(3),
+  // AI interview post-interview evaluation
+  AI_INTERVIEW_EVALUATION_PROVIDER: Joi.string().valid('mock', 'qwen').default('mock'),
+  AI_INTERVIEW_EVALUATION_TIMEOUT_MS: Joi.number().min(5000).max(180000).default(60000),
+  AI_INTERVIEW_EVALUATION_PROMPT_VERSION: Joi.string().min(1).default('v1'),
+  AI_INTERVIEW_EVALUATION_SCHEMA_VERSION: Joi.string().min(1).default('v1'),
+  AI_INTERVIEW_EVALUATION_WORKER_CONCURRENCY: Joi.number().min(1).max(20).default(3),
 
   // AWS (secure recording playback). No secrets required when the backend runs
   // with an IAM role; static keys or a shared profile are optional.

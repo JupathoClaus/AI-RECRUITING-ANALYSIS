@@ -3,16 +3,22 @@ import * as React from "react"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import type { AiInterviewDetail } from "@/lib/api/ai-interviews.api"
 
-const { syncAiInterviewArtifacts, getAiInterview, getRecordingPlayback } = vi.hoisted(() => ({
+const { syncAiInterviewArtifacts, getAiInterview, getRecordingPlayback, getAiInterviewEvaluation, reEvaluateAiInterview, recordAiInterviewDecision } = vi.hoisted(() => ({
   syncAiInterviewArtifacts: vi.fn(),
   getAiInterview: vi.fn(),
   getRecordingPlayback: vi.fn(),
+  getAiInterviewEvaluation: vi.fn(),
+  reEvaluateAiInterview: vi.fn(),
+  recordAiInterviewDecision: vi.fn(),
 }))
 
 vi.mock("@/lib/api/ai-interviews.api", () => ({
   syncAiInterviewArtifacts,
   getAiInterview,
   getRecordingPlayback,
+  getAiInterviewEvaluation,
+  reEvaluateAiInterview,
+  recordAiInterviewDecision,
 }))
 
 function makeInterview(overrides: Partial<AiInterviewDetail> = {}): AiInterviewDetail {
@@ -58,6 +64,11 @@ function makeInterview(overrides: Partial<AiInterviewDetail> = {}): AiInterviewD
 
 beforeEach(() => {
   vi.clearAllMocks()
+  getAiInterviewEvaluation.mockResolvedValue({
+    status: "NOT_REQUESTED",
+    report: null,
+    evaluation: null,
+  } as never)
 })
 
 describe("AiInterviewDetailDialog", () => {

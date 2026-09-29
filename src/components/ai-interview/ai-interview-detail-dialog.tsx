@@ -15,8 +15,14 @@ import {
   getAiInterview,
   syncAiInterviewArtifacts,
   getRecordingPlayback,
+  getAiInterviewEvaluation,
+  reEvaluateAiInterview,
+  recordAiInterviewDecision,
   type AiInterviewDetail,
   type AiInterviewStatus,
+  type AiInterviewEvaluationResponse,
+  type AiInterviewEvaluationRecommendation,
+  type AiInterviewEvidenceVerification,
   type TranscriptTurn,
 } from "@/lib/api/ai-interviews.api"
 import {
@@ -30,6 +36,9 @@ import {
   User,
   Briefcase,
   Refresh,
+  Star1,
+  InfoCircle,
+  Warning2,
 } from "iconsax-react"
 
 const STATUS_LABEL: Record<AiInterviewStatus, string> = {
@@ -91,6 +100,32 @@ function recordingProcessing(interview: AiInterviewDetail): boolean {
   return interview.recordingStatus === "PROCESSING"
 }
 
+const RECOMMENDATION_LABEL: Record<AiInterviewEvaluationRecommendation, string> = {
+  PASS: "Pass",
+  HOLD: "Hold",
+  FAIL: "Fail",
+}
+
+const RECOMMENDATION_VARIANT: Record<AiInterviewEvaluationRecommendation, "success" | "warning" | "error"> = {
+  PASS: "success",
+  HOLD: "warning",
+  FAIL: "error",
+}
+
+const VERIFICATION_LABEL: Record<AiInterviewEvidenceVerification, string> = {
+  VERBATIM: "Verbatim",
+  SUPPORTED: "Supported",
+  INFERRED: "Inferred",
+  UNVERIFIED: "Unverified",
+}
+
+const VERIFICATION_VARIANT: Record<AiInterviewEvidenceVerification, "success" | "info" | "warning" | "error"> = {
+  VERBATIM: "success",
+  SUPPORTED: "info",
+  INFERRED: "warning",
+  UNVERIFIED: "error",
+}
+
 export function AiInterviewDetailDialog({
   interview,
   open,
@@ -106,6 +141,29 @@ const [syncing, setSyncing] = React.useState(false)
   const [playbackLoading, setPlaybackLoading] = React.useState(false)
   const [playbackError, setPlaybackError] = React.useState("")
   const [playerOpen, setPlayerOpen] = React.useState(false)
+  const [evaluation, setEvaluation] = React.useState<AiInterviewEvaluationResponse | null>(null)
+  const [evaluationLoading, setEvaluationLoading] = React.useState(false)
+  const [evaluationError, setEvaluationError] = React.useState("")
+  const [reevaluating, setReevaluating] = React.useState(false)
+  const [decision, setDecision] = React.useState<AiInterviewEvaluationRecommendation | "">("")
+  const [decisionNote, setDecisionNote] = React.useState("")
+  const [decisionSaving, setDecisionSaving] = React.useState(false)
+  const [decisionError, setDecisionError] = React.useState("")
+
+  const loadEvaluation = React.useCallback(async (silent = false) => {
+    if (!silent) setEvaluationLoading(true)
+    setEvaluationError("")
+    try {
+      const result = await getAiInterviewEvaluation(interview.id)
+      setEvaluation(result)
+      setDecision(result.report?.recruiterDecision ?? "")
+      setDecisionNote(result.report?.decisionNote ?? "")
+    } catch (err) {
+      setEvaluationError(err instanceof Error ? err.message : "Could not load the evaluation report.")
+    } finally {
+      if (!silent) setEvaluationLoading(false)
+    }
+  }, [interview.id])
 
   const handlePlay = React.useCallback(async () => {
     setPlaybackLoading(true)
@@ -152,10 +210,62 @@ const [syncing, setSyncing] = React.useState(false)
     }
   }, [interview.id, refresh])
 
-  // Bounded polling while artifacts are still processing and the dialog is open.
+// Bounded polling while artifacts are still processing and the dialog is open.
   const interviewId = interview.id
   const transcriptPendingNow = transcriptProcessing(interview)
   const recordingPendingNow = recordingProcessing(interview)
+
+  React.useEffect(() => {
+    if (!open) return
+    void loadEvaluation()
+  }, [open, interviewId, loadEvaluation])
+
+  const evaluationPending = evaluation?.evaluationStatus === "PENDING" || evaluation?.evaluationStatus === "RUNNING"
+  React.useEffect(() => {
+    if (!open || !evaluationPending) return
+    let attempts = 0
+    const maxAttempts = 5
+    const timer = setInterval(async () => {
+      attempts += 1
+      const result = await getAiInterviewEvaluation(interviewId).catch(() => null)
+      if (result) {
+        setEvaluation(result)
+        if (result.evaluationStatus !== "PENDING" && result.evaluationStatus !== "RUNNING") {
+          clearInterval(timer)
+        }
+      }
+      if (attempts >= maxAttempts) clearInterval(timer)
+    }, 15000)
+    return () => clearInterval(timer)
+  }, [open, interviewId, evaluationPending])
+
+  const handleReevaluate = React.useCallback(async () => {
+    setReevaluating(true)
+    setEvaluationError("")
+    try {
+      await reEvaluateAiInterview(interview.id)
+      await loadEvaluation(true)
+    } catch (err) {
+      setEvaluationError(err instanceof Error ? err.message : "Could not start a re-evaluation.")
+    } finally {
+      setReevaluating(false)
+    }
+  }, [interview.id, loadEvaluation])
+
+  const handleSaveDecision = React.useCallback(async () => {
+    if (!decision) return
+    setDecisionSaving(true)
+    setDecisionError("")
+    try {
+      await recordAiInterviewDecision(interview.id, { decision, note: decisionNote.trim() || undefined })
+      await loadEvaluation(true)
+    } catch (err) {
+      setDecisionError(err instanceof Error ? err.message : "Could not record the decision.")
+    } finally {
+      setDecisionSaving(false)
+    }
+  }, [decision, decisionNote, interview.id, loadEvaluation])
+
   React.useEffect(() => {
     if (!open) return
     if (!transcriptPendingNow && !recordingPendingNow) return
@@ -194,7 +304,7 @@ const [syncing, setSyncing] = React.useState(false)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto" tabIndex={0}>
         <ModalHeader>
           <DialogTitle className="flex items-center gap-2">
             <MagicStar className="h-5 w-5 text-primary" />
@@ -420,7 +530,10 @@ const [syncing, setSyncing] = React.useState(false)
             </div>
 
             {transcriptTurns.length > 0 ? (
-              <div className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-border-subtle bg-surface-elevated/60 p-3">
+              <div
+                tabIndex={0}
+                className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-border-subtle bg-surface-elevated/60 p-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              >
                 {transcriptTurns.map((turn, i) => (
                   <div key={i} className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
@@ -462,6 +575,278 @@ const [syncing, setSyncing] = React.useState(false)
                 <DocumentText className="h-3.5 w-3.5" />
                 Open transcript file
               </a>
+            )}
+          </section>
+
+          <Separator />
+
+          <section className="space-y-3" aria-label="AI evaluation report">
+            <div className="flex items-center gap-2">
+              <Star1 className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground">AI Evaluation</h3>
+              <Badge
+                variant={
+                  evaluation?.evaluationStatus === "COMPLETED"
+                    ? "success"
+                    : evaluation?.evaluationStatus === "FAILED"
+                      ? "error"
+                      : evaluation?.evaluationStatus === "PENDING" || evaluation?.evaluationStatus === "RUNNING"
+                        ? "warning"
+                        : "outline"
+                }
+              >
+                {evaluation?.evaluationStatus === "COMPLETED"
+                  ? "Evaluated"
+                  : evaluation?.evaluationStatus === "FAILED"
+                    ? "Failed"
+                    : evaluation?.evaluationStatus === "PENDING" || evaluation?.evaluationStatus === "RUNNING"
+                      ? "Evaluating\u2026"
+                      : "Not evaluated"}
+              </Badge>
+            </div>
+
+            {evaluationLoading && !evaluation && (
+              <p className="text-xs text-muted">Loading evaluation report\u2026</p>
+            )}
+            {evaluationError && (
+              <div className="rounded-lg border border-error/30 bg-error/5 px-3 py-2 text-sm text-error" role="alert">
+                {evaluationError}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-2 h-6 px-2 text-xs"
+                  onClick={() => void loadEvaluation()}
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+
+            {evaluation?.evaluationStatus === "COMPLETED" && evaluation.report ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border-subtle bg-surface-elevated p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl font-bold tabular-nums text-foreground">
+                      {typeof evaluation.report.totalScore === "number"
+                        ? Math.round(evaluation.report.totalScore)
+                        : "\u2014"}
+                      <span className="text-sm font-medium text-muted">
+                        /{evaluation.report.maximumScore ?? 100}
+                      </span>
+                    </span>
+                    <Badge variant={RECOMMENDATION_VARIANT[evaluation.report.recommendation ?? "HOLD"]}>
+                      {RECOMMENDATION_LABEL[evaluation.report.recommendation ?? "HOLD"]}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-[11px] text-muted">
+                    <Badge variant="secondary">Confidence {evaluation.report.confidence ?? "n/a"}</Badge>
+                    <Badge variant="secondary">Attempt {evaluation.report.attempt}</Badge>
+                    {evaluation.report.latencyMs != null && (
+                      <Badge variant="secondary">{evaluation.report.latencyMs}ms</Badge>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border-subtle bg-surface-elevated/60 px-3 py-2 text-xs text-muted">
+                  <span className="flex items-center gap-1.5">
+                    <InfoCircle className="h-3.5 w-3.5 shrink-0" />
+                    AI-assisted draft produced by {evaluation.report.provider ?? "the AI provider"}
+                    {evaluation.report.model ? ` (${evaluation.report.model})` : ""} · prompt v
+                    {evaluation.report.promptVersion ?? "?"} · schema v{evaluation.report.schemaVersion ?? "?"}. The
+                    AI never decides: review this against the transcript and record the final decision.
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border-subtle bg-surface-elevated/60 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Strengths</p>
+                    <ul className="mt-1.5 space-y-1 text-sm text-foreground">
+                      {evaluation.report.strengths.length > 0 ? (
+                        evaluation.report.strengths.map((s, i) => <li key={i}>- {s}</li>)
+                      ) : (
+                        <li className="text-xs text-muted">None highlighted.</li>
+                      )}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-border-subtle bg-surface-elevated/60 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Gaps</p>
+                    <ul className="mt-1.5 space-y-1 text-sm text-foreground">
+                      {evaluation.report.gaps.length > 0 ? (
+                        evaluation.report.gaps.map((g, i) => <li key={i}>- {g}</li>)
+                      ) : (
+                        <li className="text-xs text-muted">None highlighted.</li>
+                      )}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-border-subtle bg-surface-elevated/60 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Uncertainties</p>
+                    <ul className="mt-1.5 space-y-1 text-sm text-foreground">
+                      {evaluation.report.uncertainties.length > 0 ? (
+                        evaluation.report.uncertainties.map((u, i) => <li key={i}>- {u}</li>)
+                      ) : (
+                        <li className="text-xs text-muted">None reported.</li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Competency breakdown</p>
+                  {evaluation.report.competencies.map((c) => {
+                    const pct = c.maxScore > 0 ? Math.round((c.score / c.maxScore) * 100) : 0
+                    return (
+                      <div
+                        key={c.competency}
+                        className="rounded-lg border border-border-subtle bg-surface-elevated/60 p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-foreground">{c.competency}</p>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <Badge variant="secondary">
+                              {c.score}/{c.maxScore} · {c.confidence}
+                            </Badge>
+                            <Badge
+                              variant={
+                                c.status === "MET"
+                                  ? "success"
+                                  : c.status === "PARTIALLY_MET"
+                                    ? "warning"
+                                    : c.status === "NOT_MET"
+                                      ? "error"
+                                      : "outline"
+                              }
+                            >
+                              {c.status.replace("_", " ")}
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-foreground/10">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        {c.rationale && <p className="mt-2 text-xs text-muted">{c.rationale}</p>}
+                        {c.evidence.length > 0 && (
+                          <ul className="mt-2 space-y-1">
+                            {c.evidence.map((e, i) => (
+                              <li key={i} className="flex flex-wrap items-center gap-1.5 text-xs">
+                                <Badge variant={VERIFICATION_VARIANT[e.verification]}>
+                                  {VERIFICATION_LABEL[e.verification]}
+                                </Badge>
+                                <span className="text-foreground">"{e.quote}"</span>
+                                {typeof e.sourceSeconds === "number" && (
+                                  <span className="tabular-nums text-muted">
+                                    @{Math.round(e.sourceSeconds)}s
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-border-subtle bg-surface-elevated/60 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted">
+                    Recruiter decision
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(["PASS", "HOLD", "FAIL"] as const).map((d) => (
+                      <Button
+                        key={d}
+                        size="sm"
+                        variant={decision === d ? "default" : "outline"}
+                        onClick={() => setDecision(d)}
+                        disabled={decisionSaving}
+                      >
+                        {RECOMMENDATION_LABEL[d]}
+                      </Button>
+                    ))}
+                    <Button
+                      size="sm"
+                      variant="default"
+                      disabled={!decision || decisionSaving}
+                      onClick={() => void handleSaveDecision()}
+                    >
+                      {decisionSaving ? "Saving\u2026" : "Save decision"}
+                    </Button>
+                  </div>
+                  <input
+                    type="text"
+                    value={decisionNote}
+                    onChange={(e) => setDecisionNote(e.target.value)}
+                    placeholder="Optional note about this decision\u2026"
+                    disabled={decisionSaving}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-xs text-foreground outline-none placeholder:text-muted focus:border-primary"
+                  />
+                  {decisionError && (
+                    <p className="text-xs text-error" role="alert">{decisionError}</p>
+                  )}
+                  {evaluation.report.recruiterDecision && (
+                    <p className="text-xs text-muted">
+                      Last decision: {RECOMMENDATION_LABEL[evaluation.report.recruiterDecision]}
+                      {evaluation.report.decidedAt
+                        ? ` · ${new Date(evaluation.report.decidedAt).toLocaleString()}`
+                        : ""}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : evaluation?.evaluationStatus === "FAILED" ? (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-error/30 bg-error/5 px-3 py-2 text-sm text-error" role="alert">
+                  <span className="flex items-center gap-1.5">
+                    <Warning2 className="h-4 w-4 shrink-0" />
+                    The evaluation failed and no score was produced.
+                  </span>
+                  {evaluation.report?.failureMessageSafe && (
+                    <p className="mt-1 text-xs opacity-80">{evaluation.report.failureMessageSafe}</p>
+                  )}
+                  {evaluation.report?.failureCode && (
+                    <p className="text-[11px] opacity-70">{evaluation.report.failureCode}</p>
+                  )}
+                </div>
+                {evaluation.report?.uncertainties && evaluation.report.uncertainties.length > 0 && (
+                  <ul className="space-y-1 text-xs text-muted">
+                    {evaluation.report.uncertainties.map((u, i) => (
+                      <li key={i}>- {u}</li>
+                    ))}
+                  </ul>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleReevaluate()}
+                  disabled={reevaluating || interview.status !== "COMPLETED"}
+                >
+                  {reevaluating ? <Refresh className="h-3.5 w-3.5 animate-spin" /> : <Refresh className="h-3.5 w-3.5" />}
+                  {reevaluating ? "Starting\u2026" : "Re-evaluate"}
+                </Button>
+              </div>
+            ) : evaluation?.evaluationStatus === "PENDING" || evaluation?.evaluationStatus === "RUNNING" ? (
+              <p className="flex items-center gap-2 text-xs text-muted">
+                <Refresh className="h-3.5 w-3.5 animate-spin" />
+                Evaluation in progress\u2026 this report will refresh automatically.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-muted">
+                  No evaluation has been produced for this interview yet. Completed interviews with a transcript are
+                  evaluated automatically.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleReevaluate()}
+                  disabled={reevaluating || interview.status !== "COMPLETED"}
+                >
+                  {reevaluating ? <Refresh className="h-3.5 w-3.5 animate-spin" /> : <Star1 className="h-3.5 w-3.5" />}
+                  {reevaluating ? "Starting\u2026" : "Evaluate now"}
+                </Button>
+              </div>
             )}
           </section>
         </div>

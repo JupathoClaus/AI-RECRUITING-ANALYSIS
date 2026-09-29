@@ -16,16 +16,21 @@ import { RequirePermissions } from '@modules/auth/decorators/permissions.decorat
 import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 import { AuthenticatedPrincipal } from '@modules/auth/interfaces/auth.interface';
 import { AiInterviewsService } from '../services/ai-interviews.service';
+import { AiInterviewEvaluationService } from '../evaluation/ai-interview-evaluation.service';
 import { CreateAiInterviewDto } from '../dto/create-ai-interview.dto';
 import { SendInvitationDto } from '../dto/send-invitation.dto';
 import { AiInterviewQueryDto } from '../dto/ai-interview-query.dto';
+import { RecordInterviewDecisionDto } from '../dto/record-interview-decision.dto';
 
 @ApiTags('AI Interviews')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('ai-interviews')
 export class AiInterviewsController {
-  constructor(private readonly aiInterviewsService: AiInterviewsService) {}
+  constructor(
+    private readonly aiInterviewsService: AiInterviewsService,
+    private readonly evaluationService: AiInterviewEvaluationService,
+  ) {}
 
   @Post()
   @RequirePermissions('interviews.create')
@@ -108,5 +113,45 @@ export class AiInterviewsController {
   @ApiOperation({ summary: 'Cancel AI interview' })
   async cancel(@Param('id') id: string, @CurrentUser() user: AuthenticatedPrincipal) {
     return this.aiInterviewsService.cancel(id, user.activeCompanyId!);
+  }
+
+  @Get(':id/evaluation')
+  @RequirePermissions('interviews.read')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get the structured post-interview evaluation report' })
+  async evaluation(@Param('id') id: string, @CurrentUser() user: AuthenticatedPrincipal) {
+    return this.evaluationService.getForInterview(id, user.activeCompanyId!);
+  }
+
+  @Post(':id/evaluation/reevaluate')
+  @RequirePermissions('interviews.update')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request a new evaluation attempt for an interview' })
+  async reevaluate(@Param('id') id: string, @CurrentUser() user: AuthenticatedPrincipal) {
+    return this.evaluationService.reEvaluate(id, user.activeCompanyId!, {
+      userId: user.userId,
+      membershipId: user.membershipId!,
+    });
+  }
+
+  @Post(':id/evaluation/decision')
+  @RequirePermissions('interviews.update')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Record the recruiter decision for an evaluated interview' })
+  async decide(
+    @Param('id') id: string,
+    @Body() dto: RecordInterviewDecisionDto,
+    @CurrentUser() user: AuthenticatedPrincipal,
+  ) {
+    return this.evaluationService.recordDecision(
+      id,
+      user.activeCompanyId!,
+      dto.decision,
+      dto.note ?? null,
+      {
+        userId: user.userId,
+        membershipId: user.membershipId!,
+      },
+    );
   }
 }

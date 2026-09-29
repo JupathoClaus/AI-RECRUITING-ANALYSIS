@@ -1,4 +1,13 @@
-import { IsString, IsOptional, IsInt, Min, Max, IsUUID, IsEnum, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsInt,
+  Min,
+  Max,
+  IsUUID,
+  IsEnum,
+  IsDateString,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AiInterviewProvider } from '@prisma/client';
 
