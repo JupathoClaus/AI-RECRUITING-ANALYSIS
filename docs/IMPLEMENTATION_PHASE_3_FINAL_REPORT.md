@@ -1,6 +1,7 @@
 # Phase 3 — Final Implementation Report (Closure & Hardening Pass)
 
-> 2026-09-30, on top of `3ece452`. Companion to `docs/PHASE_3_FINAL_ACCEPTANCE.md`.
+> 2026-09-30, on top of `3ece452`. Code + tests + proof: **`d090b487cbc21fd901ada5db21d101ee47d696b2`** on `analysis/main`.
+> Companion to `docs/PHASE_3_FINAL_ACCEPTANCE.md`.
 > Original Phase 3 work: `docs/PHASE_3_IMPLEMENTATION_REPORT.md`; pre-state audit: `docs/PHASE_3_CURRENT_STATE_AUDIT.md`.
 
 ## 1. Scope of this pass
