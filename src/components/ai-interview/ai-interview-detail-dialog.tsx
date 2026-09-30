@@ -149,6 +149,17 @@ const [syncing, setSyncing] = React.useState(false)
   const [decisionNote, setDecisionNote] = React.useState("")
   const [decisionSaving, setDecisionSaving] = React.useState(false)
   const [decisionError, setDecisionError] = React.useState("")
+  const [highlightedSegments, setHighlightedSegments] = React.useState<number[]>([])
+  const transcriptRef = React.useRef<HTMLDivElement | null>(null)
+
+  const handleViewEvidence = React.useCallback((segmentIndexes: number[]) => {
+    setHighlightedSegments((prev) =>
+      JSON.stringify(prev) === JSON.stringify(segmentIndexes) ? [] : segmentIndexes,
+    )
+    requestAnimationFrame(() => {
+      transcriptRef.current?.scrollIntoView?.({ behavior: "auto", block: "center" })
+    })
+  }, [])
 
   const loadEvaluation = React.useCallback(async (silent = false) => {
     if (!silent) setEvaluationLoading(true)
@@ -214,6 +225,11 @@ const [syncing, setSyncing] = React.useState(false)
   const interviewId = interview.id
   const transcriptPendingNow = transcriptProcessing(interview)
   const recordingPendingNow = recordingProcessing(interview)
+
+  React.useEffect(() => {
+    if (open) return
+    setHighlightedSegments([])
+  }, [open])
 
   React.useEffect(() => {
     if (!open) return
@@ -531,27 +547,41 @@ const [syncing, setSyncing] = React.useState(false)
 
             {transcriptTurns.length > 0 ? (
               <div
+                ref={transcriptRef}
                 tabIndex={0}
                 className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-border-subtle bg-surface-elevated/60 p-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
-                {transcriptTurns.map((turn, i) => (
-                  <div key={i} className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant={turn.role === "assistant" ? "info" : "secondary"}
-                        className="shrink-0"
-                      >
-                        {speakerLabel(turn.role)}
-                      </Badge>
-                      {typeof turn.seconds_from_start === "number" && (
-                        <span className="text-[10px] tabular-nums text-muted">
-                          {Math.round(turn.seconds_from_start)}s
-                        </span>
-                      )}
+                {interview.transcript?.map((turn, rawIndex) => {
+                  if (turn.role !== "assistant" && turn.role !== "user") return null
+                  const isHighlighted = highlightedSegments.includes(rawIndex)
+                  return (
+                    <div
+                      key={rawIndex}
+                      className={`flex flex-col gap-1 ${
+                        isHighlighted ? "rounded-lg border border-primary/50 bg-primary/10 px-2 py-1" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={turn.role === "assistant" ? "info" : "secondary"}
+                          className="shrink-0"
+                        >
+                          {speakerLabel(turn.role)}
+                        </Badge>
+                        {typeof turn.seconds_from_start === "number" && (
+                          <span
+                            className={`text-[10px] tabular-nums ${
+                              isHighlighted ? "text-foreground" : "text-muted"
+                            }`}
+                          >
+                            {Math.round(turn.seconds_from_start)}s
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm leading-relaxed text-foreground">{turn.content}</p>
                     </div>
-                    <p className="text-sm leading-relaxed text-foreground">{turn.content}</p>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <p className="text-xs text-muted">
@@ -739,6 +769,20 @@ const [syncing, setSyncing] = React.useState(false)
                                   <span className="tabular-nums text-muted">
                                     @{Math.round(e.sourceSeconds)}s
                                   </span>
+                                )}
+                                {e.excerpt && e.excerpt !== e.quote && (
+                                  <span className="w-full text-muted">
+                                    Transcript: "{e.excerpt}"
+                                  </span>
+                                )}
+                                {e.segmentIndexes.length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleViewEvidence(e.segmentIndexes)}
+                                    className="text-primary underline underline-offset-2 hover:text-primary-hover"
+                                  >
+                                    View in transcript
+                                  </button>
                                 )}
                               </li>
                             ))}

@@ -54,7 +54,6 @@ export interface AiInterviewAiEvaluationInput {
   jobResponsibilities?: string | null;
   jobQualifications?: string | null;
   experienceLevel?: string | null;
-  candidateContext?: string | null;
   competencies: AiInterviewCompetencyInput[];
   transcript: AiInterviewTranscriptInput[];
   /** Concatenated candidate responses only — the evidence verification source. */

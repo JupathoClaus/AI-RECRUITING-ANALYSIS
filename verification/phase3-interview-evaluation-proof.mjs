@@ -242,6 +242,29 @@ async function apiJourney() {
   if (report.recruiterDecision !== null) fail('evaluation-no-decision-yet', `decision=${report.recruiterDecision}`);
   ok('evaluation-completed', `totalScore=${total}/${report.maximumScore} rec=${report.recommendation} comps=${report.competencies.length} provider=${report.provider}`);
 
+  const attempts1 = evalRes.json?.attempts ?? evalRes.json?.data?.attempts ?? [];
+  if (
+    !Array.isArray(attempts1) ||
+    attempts1.length < 1 ||
+    attempts1[0]?.attempt !== 1 ||
+    attempts1[0]?.status !== 'COMPLETED'
+  ) {
+    fail('evaluation-attempt-recorded', `attempts=${JSON.stringify(attempts1).slice(0, 200)}`);
+  }
+  ok('evaluation-attempt-recorded', `attempt 1 persisted as COMPLETED (attempts=${attempts1.length})`);
+
+  const ev0 = comp.evidence?.[0];
+  if (!ev0 || typeof ev0.excerpt !== 'string' || ev0.excerpt.length === 0) {
+    fail('evaluation-evidence-excerpt', `excerpt=${JSON.stringify(ev0?.excerpt)}`);
+  }
+  if (!Array.isArray(ev0.segmentIndexes)) {
+    fail('evaluation-evidence-segments', `segmentIndexes=${JSON.stringify(ev0?.segmentIndexes)}`);
+  }
+  ok(
+    'evaluation-evidence-grounded',
+    `excerpt="${ev0.excerpt.slice(0, 60)}…" segments=${JSON.stringify(ev0.segmentIndexes)}`,
+  );
+
   console.log('== recruiter records PASS decision ==');
   const dec = await api(`/ai-interviews/${ids.interviewId}/evaluation/decision`, {
     method: 'POST',
@@ -256,13 +279,38 @@ async function apiJourney() {
   if (report2.decisionNote !== 'Strong on Kubernetes, recommended to advance.') fail('decision-note', `note=${report2.decisionNote}`);
   ok('decision-persist', 'recruiter PASS + note read back from the report');
 
-  console.log('== re-evaluate is refused while status is not retryable ==');
-  const reEval = await api(`/ai-interviews/${ids.interviewId}/evaluation/reevaluate`, { method: 'POST', token: ids.token });
-  // Reevaluate only makes sense when an evaluation failed/not-requested. A
-  // completed evaluation is also safe to re-run, but must not return 4xx
-  // unexpectedly; any 2xx response must keep the report readable.
-  const reStatus = reEval.json?.status ?? reEval.json?.evaluationStatus ?? reEval.json?.data?.status ?? null;
-  ok('reevaluate-acceptable', `status=${reEval.status} next=${reStatus}`);
+  console.log('== re-evaluate reuses the SAME evaluation row and creates attempt 2 ==');
+  const evaluationIdBefore = report.id;
+  const reEval = await api(`/ai-interviews/${ids.interviewId}/evaluation/reevaluate`, {
+    method: 'POST',
+    token: ids.token,
+  });
+  if (reEval.status >= 400) fail('reevaluate-status', `HTTP ${reEval.status} ${reEval.text}`);
+  let reRes = null;
+  let reAttempt = null;
+  const reDeadline = Date.now() + 30000;
+  for (;;) {
+    reRes = await api(`/ai-interviews/${ids.interviewId}/evaluation`, { token: ids.token });
+    const rst = reRes.json?.evaluationStatus ?? reRes.json?.data?.evaluationStatus;
+    const rr = reRes.json?.report ?? reRes.json?.data?.report;
+    if (rst === 'COMPLETED' && rr && rr.attempt >= 2) {
+      reAttempt = rr;
+      break;
+    }
+    if (rst === 'FAILED') fail('reevaluate-completed', 're-evaluation ended FAILED');
+    if (Date.now() > reDeadline) fail('reevaluate-completed', `attempt not bumped after 30s (status=${rst})`);
+    await sleep(500);
+  }
+  if (reAttempt.id !== evaluationIdBefore) {
+    fail('reevaluate-same-evaluation', `id changed ${evaluationIdBefore} -> ${reAttempt.id}`);
+  }
+  ok('reevaluate-same-evaluation', `same evaluation id, attempt=${reAttempt.attempt}`);
+  const attempts2 = reRes.json?.attempts ?? reRes.json?.data?.attempts ?? [];
+  const attemptNums = attempts2.map((a) => a.attempt).sort((a, b) => a - b);
+  if (!attemptNums.includes(1) || !attemptNums.includes(2)) {
+    fail('reevaluate-attempt-history', `attempts=${attemptNums.join(',')}`);
+  }
+  ok('reevaluate-attempt-history', `attempts=${attemptNums.join(',')} preserved`);
 }
 
 async function browserJourney(browser) {
@@ -298,6 +346,19 @@ async function browserJourney(browser) {
   const pageText = await page.evaluate(() => document.body.innerText);
   if (!/\/100/.test(pageText)) fail('dialog-score-format', 'score/maximum row missing from dialog');
   ok('dialog-score-format', 'score/maximum row rendered');
+
+  if (!/Transcript: "/.test(pageText)) fail('dialog-evidence-excerpt', 'transcript excerpt not shown in evidence');
+  ok('dialog-evidence-excerpt', 'evidence excerpt rendered from the transcript');
+
+  const viewLink = page.getByRole('button', { name: 'View in transcript' }).first();
+  await viewLink.waitFor({ timeout: 10000 });
+  await viewLink.click();
+  await sleep(300);
+  const highlighted = await page.evaluate(() =>
+    Boolean(document.querySelector('[class~="bg-primary/10"]')),
+  );
+  if (!highlighted) fail('dialog-view-in-transcript', 'no transcript turn highlighted after clicking');
+  ok('dialog-view-in-transcript', 'source transcript turn highlighted on deep-link');
 
   await axeScan(page, 'dialog-report');
   await assertNoOverflow(page, 'dialog-report-1440');

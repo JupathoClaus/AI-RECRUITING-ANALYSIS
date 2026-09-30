@@ -39,10 +39,6 @@ function buildUserPrompt(input: AiInterviewAiEvaluationInput, maxChars: number):
     lines.push(`RESPONSIBILITIES (relevance only): ${input.jobResponsibilities.slice(0, 1500)}`);
   if (input.jobQualifications)
     lines.push(`QUALIFICATIONS (relevance only): ${input.jobQualifications.slice(0, 1500)}`);
-  if (input.candidateContext)
-    lines.push(
-      `CANDIDATE CONTEXT (for relevance only, not scoring): ${input.candidateContext.slice(0, 1500)}`,
-    );
 
   lines.push('');
   lines.push('COMPETENCIES (authoritative — evaluate ONLY these):');

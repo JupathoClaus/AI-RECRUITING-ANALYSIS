@@ -139,6 +139,11 @@ const COMPLETED_EVALUATION = {
           {
             quote: "I led a Kubernetes migration",
             verification: "VERBATIM",
+            excerpt: "I led a Kubernetes migration.",
+            transcriptId: "transcript-1",
+            segmentIndexes: [1],
+            startSeconds: 10,
+            endSeconds: 15,
             sourceSegmentIndex: 1,
             sourceSeconds: 10,
           },
@@ -197,6 +202,22 @@ describe("AiInterviewDetailDialog evaluation section", () => {
     )
     await waitFor(() => expect(screen.getByText("@10s")).toBeDefined())
     await waitFor(() => expect(screen.getByText(/Consistent with the transcript/)).toBeDefined())
+  })
+
+  it("renders the transcript excerpt and deep-links evidence to the source turn", async () => {
+    renderDialog()
+
+    await waitFor(() =>
+      expect(screen.getByText('Transcript: "I led a Kubernetes migration."')).toBeDefined(),
+    )
+    const link = await screen.findByRole("button", { name: "View in transcript" })
+    fireEvent.click(link)
+
+    await waitFor(() => {
+      const sourceTurn = screen.getByText("I led a Kubernetes migration.")
+      const turnWrapper = sourceTurn.closest("div")
+      expect(turnWrapper?.className).toContain("bg-primary/10")
+    })
   })
 
   it("renders strengths and gaps", async () => {

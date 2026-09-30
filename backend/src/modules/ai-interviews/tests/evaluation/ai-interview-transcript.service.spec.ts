@@ -141,7 +141,6 @@ describe('AiInterviewTranscriptService', () => {
           weight: 1,
         },
       ]);
-      expect(input.candidateContext).toBe('Daniel Kato');
       expect(input.candidateResponseText).toContain('Kubernetes migration');
       expect(input.transcript[0].role).toBe('system');
       expect(input.transcript[1]).toMatchObject({
@@ -149,6 +148,20 @@ describe('AiInterviewTranscriptService', () => {
         content: mockThreads.transcript.content,
         secondsFromStart: 12,
       });
+    });
+
+    it('never sends candidate identity or PII to the AI provider', async () => {
+      prisma.aiInterview.findUnique.mockResolvedValue(mockInterview());
+      prisma.aiInterviewTranscript.findUnique.mockResolvedValue({ id: 'transcript-1' });
+      prisma.aiInterviewTranscript.upsert.mockResolvedValue({ id: 'transcript-1' });
+      prisma.aiInterviewTranscriptSegment.createMany.mockResolvedValue({ count: 3 });
+
+      const { input } = await service.buildEvaluationInput('interview-1');
+      const serialized = JSON.stringify(input);
+      expect(input).not.toHaveProperty('candidateContext');
+      expect(serialized).not.toContain('Daniel');
+      expect(serialized).not.toContain('Kato');
+      expect(serialized).not.toContain('@');
     });
 
     it('falls back to a single "Role fit" competency when the job has no skills', async () => {

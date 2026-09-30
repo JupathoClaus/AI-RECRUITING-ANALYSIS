@@ -262,6 +262,11 @@ export interface AiInterviewEvaluationReport {
     evidence: {
       quote: string
       verification: AiInterviewEvidenceVerification
+      excerpt: string | null
+      transcriptId: string | null
+      segmentIndexes: number[]
+      startSeconds: number | null
+      endSeconds: number | null
       sourceSegmentIndex: number | null
       sourceSeconds: number | null
     }[]

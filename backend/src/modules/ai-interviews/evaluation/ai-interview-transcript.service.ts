@@ -68,7 +68,7 @@ export class AiInterviewTranscriptService {
         application: {
           include: {
             candidate: {
-              select: { id: true, firstName: true, lastName: true },
+              select: { id: true },
             },
             job: {
               select: {
@@ -163,9 +163,12 @@ export class AiInterviewTranscriptService {
       include: {
         application: {
           include: {
-            candidate: { select: { id: true, firstName: true, lastName: true } },
+            candidate: {
+              select: { id: true },
+            },
             job: {
               select: {
+                id: true,
                 title: true,
                 description: true,
                 responsibilities: true,
@@ -197,10 +200,6 @@ export class AiInterviewTranscriptService {
         jobResponsibilities: job.responsibilities,
         jobQualifications: job.qualifications,
         experienceLevel: job.experienceLevel ?? null,
-        candidateContext:
-          interview.application.candidate.firstName || interview.application.candidate.lastName
-            ? `${interview.application.candidate.firstName} ${interview.application.candidate.lastName}`.trim()
-            : null,
         competencies: competencies.map((c) => ({ ...c })),
         transcript: transcript.transcriptInput,
         candidateResponseText: transcript.candidateResponseText,

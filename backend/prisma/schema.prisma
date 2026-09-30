@@ -2730,14 +2730,14 @@ model AiInterview {
 
   // Phase 3 — Post-interview evaluation state (mirrors the evaluation row;
   // kept on the interview so list/filter queries never need a join).
-  evaluationStatus        AiInterviewEvaluationStatus @default(NOT_REQUESTED)
-  evaluationAttemptCount  Int                         @default(0)
+  evaluationStatus       AiInterviewEvaluationStatus @default(NOT_REQUESTED)
+  evaluationAttemptCount Int                         @default(0)
 
   // Relations
-  application           Application        @relation(fields: [applicationId], references: [id])
-  company               Company            @relation(fields: [companyId], references: [id])
+  application           Application            @relation(fields: [applicationId], references: [id])
+  company               Company                @relation(fields: [companyId], references: [id])
   createdByMembershipId String?
-createdBy             CompanyMembership? @relation("AiInterviewCreatedBy", fields: [createdByMembershipId], references: [id])
+  createdBy             CompanyMembership?     @relation("AiInterviewCreatedBy", fields: [createdByMembershipId], references: [id])
   transcriptRecord      AiInterviewTranscript?
   evaluation            AiInterviewEvaluation?
 
@@ -3137,7 +3137,7 @@ enum AiInterviewTranscriptSegmentType {
 }
 
 model AiInterviewTranscript {
-  id            String                     @id @default(uuid())
+  id            String                      @id @default(uuid())
   aiInterviewId String
   companyId     String
   applicationId String
@@ -3148,7 +3148,7 @@ model AiInterviewTranscript {
   sourceUrl     String?
   contentHash   String?
   formatVersion String?
-  language      String                     @default("en")
+  language      String                      @default("en")
   /// Raw provider turns kept for reference (the sanitized turn array).
   rawTurns      Json?
 
@@ -3171,7 +3171,7 @@ model AiInterviewTranscriptSegment {
   id              String                           @id @default(uuid())
   transcriptId    String
   segmentIndex    Int
-  segmentType     AiInterviewTranscriptSegmentType  @default(USER)
+  segmentType     AiInterviewTranscriptSegmentType @default(USER)
   speakerRole     String?
   startSeconds    Float?
   endSeconds      Float?
@@ -3191,23 +3191,23 @@ model AiInterviewTranscriptSegment {
 }
 
 model AiInterviewEvaluation {
-  id                 String                            @id @default(uuid())
+  id                 String                               @id @default(uuid())
   aiInterviewId      String
   companyId          String
   applicationId      String
   candidateId        String
   jobId              String
-  status             AiInterviewEvaluationStatus       @default(NOT_REQUESTED)
-  attempt            Int                               @default(0)
+  status             AiInterviewEvaluationStatus          @default(NOT_REQUESTED)
+  attempt            Int                                  @default(0)
   totalScore         Float?
-  maximumScore       Float                             @default(100)
+  maximumScore       Float                                @default(100)
   recommendation     AiInterviewEvaluationRecommendation?
   confidence         AiInterviewEvaluationConfidence?
   summary            String?
   strengths          Json?
   gaps               Json?
   uncertainties      Json?
-provider           String?
+  provider           String?
   model              String?
   promptVersion      String?
   schemaVersion      String?
@@ -3220,17 +3220,17 @@ provider           String?
   failureMessageSafe String?
 
   // Recruiter decision � the AI never decides; the recruiter always does.
-  recruiterDecision        AiInterviewEvaluationRecommendation?
-  decidedByMembershipId    String?
-  decidedAt                DateTime?
-  decisionNote             String?
+  recruiterDecision     AiInterviewEvaluationRecommendation?
+  decidedByMembershipId String?
+  decidedAt             DateTime?
+  decisionNote          String?
 
   startedAt   DateTime?
   completedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-aiInterview           AiInterview                         @relation(fields: [aiInterviewId], references: [id], onDelete: Cascade)
+  aiInterview           AiInterview                       @relation(fields: [aiInterviewId], references: [id], onDelete: Cascade)
   attempts              AiInterviewEvaluationAttempt[]
   competencyEvaluations AiInterviewCompetencyEvaluation[]
 
@@ -3246,11 +3246,11 @@ aiInterview           AiInterview                         @relation(fields: [aiI
 }
 
 model AiInterviewEvaluationAttempt {
-  id                 String                     @id @default(uuid())
+  id                 String                      @id @default(uuid())
   evaluationId       String
   aiInterviewId      String
   companyId          String
-  attempt            Int                        @default(1)
+  attempt            Int                         @default(1)
   status             AiInterviewEvaluationStatus @default(PENDING)
   provider           String?
   model              String?
@@ -3278,20 +3278,20 @@ model AiInterviewEvaluationAttempt {
 }
 
 model AiInterviewCompetencyEvaluation {
-  id           String                          @id @default(uuid())
+  id           String                           @id @default(uuid())
   evaluationId String
   competency   String
-  status       AiInterviewCompetencyStatus     @default(UNCERTAIN)
+  status       AiInterviewCompetencyStatus      @default(UNCERTAIN)
   score        Float?
   maxScore     Float?
-  weight       Float                           @default(1)
+  weight       Float                            @default(1)
   confidence   AiInterviewEvaluationConfidence?
   rationale    String?
-  sortOrder    Int                             @default(0)
+  sortOrder    Int                              @default(0)
 
   createdAt DateTime @default(now())
 
-  evaluation AiInterviewEvaluation   @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  evaluation AiInterviewEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
   evidence   AiInterviewEvidence[]
 
   @@index([evaluationId])
@@ -3299,12 +3299,17 @@ model AiInterviewCompetencyEvaluation {
 }
 
 model AiInterviewEvidence {
-  id                        String                            @id @default(uuid())
-  competencyEvaluationId    String
-  quote                     String
-  verification              AiInterviewEvidenceVerification?
-  sourceSegmentIndex        Int?
-  sourceSeconds             Float?
+  id                     String                           @id @default(uuid())
+  competencyEvaluationId String
+  quote                  String
+  verification           AiInterviewEvidenceVerification?
+  excerpt                String?
+  transcriptId           String?
+  segmentIndexes         Int[]                            @default([])
+  startSeconds           Float?
+  endSeconds             Float?
+  sourceSegmentIndex     Int?
+  sourceSeconds          Float?
 
   createdAt DateTime @default(now())
 
@@ -3312,4 +3317,5 @@ model AiInterviewEvidence {
 
   @@index([competencyEvaluationId])
   @@index([verification])
+  @@index([transcriptId])
 }

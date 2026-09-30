@@ -85,11 +85,6 @@ export class AiInterviewEvaluationProcessor extends WorkerHost {
         job.attemptsMade + 1 >= maxAttempts
       ) {
         await this.evaluationService.failTerminal(data.evaluationId, code, message.slice(0, 1000));
-        await this.evaluationService.recordAttemptFailure(
-          data.evaluationId,
-          code,
-          message.slice(0, 1000),
-        );
         throw new UnrecoverableError(`${code}: ${message}`);
       }
       throw error;

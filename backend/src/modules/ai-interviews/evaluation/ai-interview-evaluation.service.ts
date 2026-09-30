@@ -35,8 +35,12 @@ const round2 = (n: number): number => Math.round(n * 100) / 100;
  *   overall score is dropped at the schema boundary and never reaches here;
  * - competency scores are clamped to the server-derived job rubric and the
  *   backend computes the 0–100 total and the PASS/HOLD/FAIL recommendation;
- * - evidence quotes are verified against the candidate's own transcript turns,
- *   and fabricated evidence fails the evaluation;
+ * - attempts are immutable history: one attempt row exists per provider run,
+ *   created BEFORE the provider is called, and every provider failure records
+ *   its own failed attempt with an error code;
+ * - evidence is verified against the candidate's own transcript turns and
+ *   stores the actual excerpt + segment references for recruiter deep-linking;
+ *   fabricated evidence fails the evaluation;
  * - the recruiter always makes the final decision (never the AI).
  * AI failure NEVER produces a synthetic score: the evaluation is recorded as
  * FAILED and a controlled re-evaluation is available.
@@ -60,9 +64,12 @@ export class AiInterviewEvaluationService {
   ) {}
 
   /**
-   * Creates/upserts the evaluation + attempt and enqueues the worker job.
-   * Idempotent: re-invocation while PENDING/RUNNING re-queues (BullMQ jobId
-   * dedup) and never starts a second worker.
+   * Creates/resets the single evaluation for an interview, creates a fresh
+   * PENDING attempt (the provider is only ever called after this), and
+   * enqueues the worker job. Idempotent: re-invocation while PENDING/RUNNING
+   * re-queues (BullMQ jobId dedup) and never starts a second worker or bumps
+   * the attempt. A forced re-evaluation of a COMPLETED/FAILED result reuses
+   * the same evaluation row (one per interview) and advances the attempt.
    */
   async scheduleEvaluation(
     aiInterviewId: string,
@@ -87,8 +94,6 @@ export class AiInterviewEvaluationService {
         message: 'AI interview not found.',
       });
 
-    // An interview that never completed or has no transcript cannot produce a
-    // grounded evaluation. This is a hard pre-condition, not a failure.
     if (
       interview.transcriptStatus !== 'READY' ||
       !Array.isArray(interview.transcript) ||
@@ -120,37 +125,113 @@ export class AiInterviewEvaluationService {
         latest.status === AiInterviewEvaluationStatus.PENDING ||
         latest.status === AiInterviewEvaluationStatus.RUNNING
       ) {
-        await this.enqueue(latest.id, interview.id, companyId);
+        await this.enqueue(latest.id, interview.id, companyId, latest.attempt);
         return { evaluationId: latest.id, status: latest.status };
       }
       if (latest.status === AiInterviewEvaluationStatus.COMPLETED) {
         return { evaluationId: latest.id, status: latest.status };
       }
-      // FAILED or NOT_REQUESTED with no force → create a fresh attempt.
+    }
+    if (latest && force) {
+      if (
+        latest.status === AiInterviewEvaluationStatus.PENDING ||
+        latest.status === AiInterviewEvaluationStatus.RUNNING
+      ) {
+        await this.enqueue(latest.id, interview.id, companyId, latest.attempt);
+        return { evaluationId: latest.id, status: latest.status };
+      }
     }
 
     const attempt = (latest?.attempt ?? 0) + 1;
-    const evaluation = await this.prisma.aiInterviewEvaluation.create({
-      data: {
-        aiInterviewId: interview.id,
-        companyId,
-        applicationId: application.id,
-        candidateId: application.candidateId,
-        jobId: application.jobId,
-        attempt,
-        status: AiInterviewEvaluationStatus.PENDING,
-      },
-      select: { id: true },
-    });
-    await this.prisma.aiInterview.update({
-      where: { id: interview.id },
-      data: {
-        evaluationStatus: AiInterviewEvaluationStatus.PENDING,
-        evaluationAttemptCount: attempt,
-      },
-    });
-    await this.enqueue(evaluation.id, interview.id, companyId);
-    return { evaluationId: evaluation.id, status: AiInterviewEvaluationStatus.PENDING };
+
+    try {
+      const evaluation = await this.prisma.$transaction(async (tx) => {
+        let row: { id: string; attempt: number };
+        if (latest) {
+          row = await tx.aiInterviewEvaluation.update({
+            where: { id: latest.id },
+            data: {
+              attempt,
+              status: AiInterviewEvaluationStatus.PENDING,
+              startedAt: null,
+              completedAt: null,
+              inputFingerprint: null,
+              latencyMs: null,
+              responseId: null,
+              totalScore: null,
+              recommendation: null,
+              confidence: null,
+              summary: null,
+              strengths: Prisma.JsonNull,
+              gaps: Prisma.JsonNull,
+              uncertainties: Prisma.JsonNull,
+              provider: null,
+              model: null,
+              promptVersion: null,
+              schemaVersion: null,
+              evidenceTotals: Prisma.JsonNull,
+              failureCode: null,
+              failureMessageSafe: null,
+            },
+            select: { id: true, attempt: true },
+          });
+          await tx.aiInterviewEvidence.deleteMany({
+            where: { competencyEvaluation: { evaluationId: latest.id } },
+          });
+          await tx.aiInterviewCompetencyEvaluation.deleteMany({
+            where: { evaluationId: latest.id },
+          });
+        } else {
+          row = await tx.aiInterviewEvaluation.create({
+            data: {
+              aiInterviewId: interview.id,
+              companyId,
+              applicationId: application.id,
+              candidateId: application.candidateId,
+              jobId: application.jobId,
+              attempt,
+              status: AiInterviewEvaluationStatus.PENDING,
+            },
+            select: { id: true, attempt: true },
+          });
+        }
+        await tx.aiInterviewEvaluationAttempt.create({
+          data: {
+            evaluationId: row.id,
+            aiInterviewId: interview.id,
+            companyId,
+            attempt: row.attempt,
+            status: AiInterviewEvaluationStatus.PENDING,
+          },
+        });
+        return row;
+      });
+
+      await this.prisma.aiInterview.update({
+        where: { id: interview.id },
+        data: {
+          evaluationStatus: AiInterviewEvaluationStatus.PENDING,
+          evaluationAttemptCount: attempt,
+        },
+      });
+      await this.enqueue(evaluation.id, interview.id, companyId, evaluation.attempt);
+      return { evaluationId: evaluation.id, status: AiInterviewEvaluationStatus.PENDING };
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        latest
+      ) {
+        const existing = await this.prisma.aiInterviewEvaluation.findUnique({
+          where: { id: latest.id },
+        });
+        if (existing) {
+          await this.enqueue(existing.id, interview.id, companyId, existing.attempt);
+          return { evaluationId: existing.id, status: existing.status };
+        }
+      }
+      throw error;
+    }
   }
 
   /** Processor entry point: runs one evaluation attempt to completion or throws. */
@@ -175,6 +256,15 @@ export class AiInterviewEvaluationService {
       });
     }
 
+    await this.prisma.aiInterviewEvaluationAttempt.updateMany({
+      where: {
+        evaluationId,
+        attempt: evaluation.attempt,
+        status: AiInterviewEvaluationStatus.PENDING,
+      },
+      data: { status: AiInterviewEvaluationStatus.RUNNING, startedAt: new Date() },
+    });
+
     const { input, transcript } = await this.transcriptService.buildEvaluationInput(
       evaluation.aiInterviewId,
     );
@@ -193,8 +283,6 @@ export class AiInterviewEvaluationService {
     });
     const latencyMs = Date.now() - started;
 
-    // Backend score authority: clamp to the server-derived rubric, verify
-    // evidence against the candidate's own words, weight here.
     const rubricById = new Map(
       input.competencies.map((c) => [c.competency, { maxScore: c.maxScore, weight: c.weight }]),
     );
@@ -213,8 +301,11 @@ export class AiInterviewEvaluationService {
       checks: {
         quote: string;
         verification: string;
-        sourceSegmentIndex: number | null;
-        sourceSeconds: number | null;
+        excerpt: string | null;
+        transcriptId: string | null;
+        segmentIndexes: number[];
+        startSeconds: number | null;
+        endSeconds: number | null;
       }[];
     }[] = [];
 
@@ -222,7 +313,11 @@ export class AiInterviewEvaluationService {
       const rubric = rubricById.get(ce.competency);
       if (!rubric) continue; // unreachable post-validation; defense in depth
       const clamped = round2(Math.min(Math.max(0, ce.score), rubric.maxScore));
-      const checks = this.evidence.verifyAll(ce.evidence, input.candidateResponseText);
+      const checks = this.evidence.verifyAgainstSegments(
+        ce.evidence,
+        userSegments,
+        transcript.transcriptId,
+      );
       if (this.evidence.hasFabricatedEvidence(checks)) fabricated = true;
       scored.push({
         competency: ce.competency,
@@ -232,15 +327,15 @@ export class AiInterviewEvaluationService {
         weight: rubric.weight,
         confidence: ce.confidence,
         rationale: ce.rationale,
-        checks: checks.map((c) => {
-          const source = this.findSourceSegment(c.quote, userSegments);
-          return {
-            quote: c.quote,
-            verification: c.verification,
-            sourceSegmentIndex: source?.segmentIndex ?? null,
-            sourceSeconds: source?.startSeconds ?? null,
-          };
-        }),
+        checks: checks.map((c) => ({
+          quote: c.quote,
+          verification: c.verification,
+          excerpt: c.excerpt,
+          transcriptId: c.transcriptId,
+          segmentIndexes: c.segmentIndexes,
+          startSeconds: c.startSeconds,
+          endSeconds: c.endSeconds,
+        })),
       });
     }
 
@@ -258,9 +353,6 @@ export class AiInterviewEvaluationService {
       return;
     }
 
-    // No usable competency evaluations (e.g. the provider's schema wrapper
-    // sanitized the payload to an empty set). The backend must NOT turn that
-    // into a synthetic 0/100 — record an honest malformed failure instead.
     if (scored.length === 0) {
       await this.failTerminal(
         evaluationId,
@@ -311,43 +403,35 @@ export class AiInterviewEvaluationService {
     });
   }
 
-  /** Permanent failure path: records the failure but preserves the ability to re-evaluate. */
   async failTerminal(evaluationId: string, code: string, message: string): Promise<void> {
+    const evaluation = await this.prisma.aiInterviewEvaluation.findUnique({
+      where: { id: evaluationId },
+      select: { aiInterviewId: true, attempt: true },
+    });
+    if (!evaluation) return;
+
+    const data = {
+      status: AiInterviewEvaluationStatus.FAILED,
+      failureCode: code,
+      failureMessageSafe: message.slice(0, 1000),
+      completedAt: new Date(),
+    };
     await this.prisma.aiInterviewEvaluation.updateMany({
       where: {
         id: evaluationId,
         status: { in: [AiInterviewEvaluationStatus.PENDING, AiInterviewEvaluationStatus.RUNNING] },
       },
-      data: {
-        status: AiInterviewEvaluationStatus.FAILED,
-        failureCode: code,
-        failureMessageSafe: message.slice(0, 1000),
-        completedAt: new Date(),
-      },
+      data,
     });
-    const evaluation = await this.prisma.aiInterviewEvaluation.findUnique({
-      where: { id: evaluationId },
-      select: { aiInterviewId: true },
-    });
-    if (evaluation) {
-      await this.prisma.aiInterview.update({
-        where: { id: evaluation.aiInterviewId },
-        data: { evaluationStatus: AiInterviewEvaluationStatus.FAILED },
-      });
-    }
-    this.logger.warn(`AI interview evaluation ${evaluationId} failed terminally: ${code}`);
-  }
-
-  async recordAttemptFailure(evaluationId: string, code: string, message: string): Promise<void> {
     await this.prisma.aiInterviewEvaluationAttempt.updateMany({
-      where: { evaluationId, status: AiInterviewEvaluationStatus.RUNNING },
-      data: {
-        status: AiInterviewEvaluationStatus.FAILED,
-        failureCode: code,
-        failureMessageSafe: message.slice(0, 1000),
-        completedAt: new Date(),
-      },
+      where: { evaluationId, attempt: evaluation.attempt },
+      data,
     });
+    await this.prisma.aiInterview.update({
+      where: { id: evaluation.aiInterviewId },
+      data: { evaluationStatus: AiInterviewEvaluationStatus.FAILED },
+    });
+    this.logger.warn(`AI interview evaluation ${evaluationId} failed terminally: ${code}`);
   }
 
   /** Recruiter decision — the AI never decides; this is the only place the decision is set. */
@@ -471,6 +555,11 @@ export class AiInterviewEvaluationService {
               evidence: c.evidence.map((e) => ({
                 quote: e.quote,
                 verification: e.verification,
+                excerpt: e.excerpt,
+                transcriptId: e.transcriptId,
+                segmentIndexes: Array.isArray(e.segmentIndexes) ? e.segmentIndexes : [],
+                startSeconds: e.startSeconds,
+                endSeconds: e.endSeconds,
                 sourceSegmentIndex: e.sourceSegmentIndex,
                 sourceSeconds: e.sourceSeconds,
               })),
@@ -552,39 +641,23 @@ export class AiInterviewEvaluationService {
 
   // ── Internals ────────────────────────────────────────────────
 
-  private findSourceSegment(
-    quote: string,
-    segments: {
-      segmentIndex: number;
-      startSeconds: number | null;
-      textNormalized?: string | null;
-    }[],
-  ): { segmentIndex: number; startSeconds: number | null } | null {
-    const q = quote.toLowerCase().replace(/\s+/g, ' ').trim();
-    if (!q) return null;
-    for (const s of segments) {
-      if (!s.textNormalized) continue;
-      if (s.textNormalized.includes(q)) {
-        return { segmentIndex: s.segmentIndex, startSeconds: s.startSeconds };
-      }
-    }
-    return null;
-  }
-
   private async enqueue(
     evaluationId: string,
     aiInterviewId: string,
     companyId: string,
+    attempt: number,
   ): Promise<void> {
-    const existing = await this.evaluationQueue.getJob(evaluationId);
+    const jobId = `${evaluationId}-${attempt}`;
+    const existing = await this.evaluationQueue.getJob(jobId);
     if (existing) {
       const state = await existing.getState();
       if (state === 'waiting' || state === 'active' || state === 'delayed') return;
+      await existing.remove().catch(() => undefined);
     }
     await this.evaluationQueue.add(
       AI_INTERVIEW_EVALUATE_JOB,
       { evaluationId, aiInterviewId, companyId },
-      { jobId: evaluationId, removeOnComplete: 100, removeOnFail: 50 },
+      { jobId, removeOnComplete: 100, removeOnFail: 50 },
     );
   }
 
@@ -635,8 +708,11 @@ export class AiInterviewEvaluationService {
       checks: {
         quote: string;
         verification: string;
-        sourceSegmentIndex: number | null;
-        sourceSeconds: number | null;
+        excerpt: string | null;
+        transcriptId: string | null;
+        segmentIndexes: number[];
+        startSeconds: number | null;
+        endSeconds: number | null;
       }[];
     }[];
     recommendation?: AiInterviewEvaluationRecommendation;
@@ -686,18 +762,15 @@ export class AiInterviewEvaluationService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.aiInterviewEvaluation.update({ where: { id: evaluationId }, data: reportData });
-      await tx.aiInterviewEvaluationAttempt.create({
+      await tx.aiInterviewEvaluationAttempt.updateMany({
+        where: { evaluationId, attempt: evaluation.attempt },
         data: {
-          evaluationId,
-          aiInterviewId: evaluation.aiInterviewId,
-          companyId: evaluation.companyId,
-          attempt: evaluation.attempt,
           status: reportData.status as AiInterviewEvaluationStatus,
           provider: reportData.provider ?? null,
           model: reportData.model ?? null,
           promptVersion: reportData.promptVersion ?? null,
           schemaVersion: 'v1',
-          inputFingerprint: null,
+          inputFingerprint: evaluation.inputFingerprint ?? null,
           latencyMs: reportData.latencyMs ?? null,
           responseId: reportData.responseId ?? null,
           output: ai
@@ -707,10 +780,10 @@ export class AiInterviewEvaluationService {
                 gaps: args.ai?.gaps ?? [],
                 uncertainties: args.ai?.uncertainties ?? [],
               } as Prisma.InputJsonValue)
-            : undefined,
+            : Prisma.JsonNull,
           failureCode: reportData.failureCode ?? undefined,
           failureMessageSafe: reportData.failureMessageSafe ?? undefined,
-          startedAt: evaluation.startedAt ?? null,
+          startedAt: evaluation.startedAt ?? now,
           completedAt: now,
         },
       });
@@ -747,8 +820,14 @@ export class AiInterviewEvaluationService {
                 competencyEvaluationId: comp.id,
                 quote: check.quote,
                 verification: check.verification as never,
-                sourceSegmentIndex: check.sourceSegmentIndex,
-                sourceSeconds: check.sourceSeconds,
+                excerpt: check.excerpt,
+                transcriptId: check.transcriptId,
+                segmentIndexes: check.segmentIndexes,
+                startSeconds: check.startSeconds,
+                endSeconds: check.endSeconds,
+                sourceSegmentIndex:
+                  check.segmentIndexes.length > 0 ? check.segmentIndexes[0] : null,
+                sourceSeconds: check.startSeconds,
               },
             });
           }
