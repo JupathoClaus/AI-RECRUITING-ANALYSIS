@@ -204,4 +204,102 @@ describe('ApplicationsService', () => {
       expect(result!.applicationNumber).toBe('APP-2026-000042');
     });
   });
+
+  describe('findAll – latestScreening in list response', () => {
+    function makeListApp(screeningOverride?: { id: string; status: string } | null) {
+      return {
+        id: 'app-1',
+        applicationNumber: 'APP-001',
+        publicReference: 'ref-1',
+        status: 'SUBMITTED',
+        source: 'DIRECT',
+        submittedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        version: 1,
+        candidate: { id: 'c-1', firstName: 'Ada', lastName: 'Lovelace', headline: null, currentJobTitle: null },
+        job: { id: 'j-1', title: 'Engineer', jobCode: 'JOB-001', departmentId: null },
+        currentStage: { id: 's-1', name: 'Applied', type: 'APPLIED' },
+        assignments: [],
+        flags: [],
+        _count: { screeningAnswers: 0, notes: 0 },
+        aiScreeningResults:
+          screeningOverride === undefined
+            ? []
+            : screeningOverride === null
+              ? []
+              : [screeningOverride],
+      };
+    }
+
+    beforeEach(() => {
+      prisma.application = {
+        ...prisma.application,
+        findMany: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
+      };
+    });
+
+    it('returns latestScreening null when no screening record exists', async () => {
+      prisma.application.findMany.mockResolvedValue([makeListApp(undefined)]);
+      prisma.application.count.mockResolvedValue(1);
+      const result = await service.findAll({ page: 1, limit: 20 } as any, 'company-1');
+      expect(result.data[0].latestScreening).toBeNull();
+    });
+
+    it('returns latestScreening with COMPLETED status', async () => {
+      prisma.application.findMany.mockResolvedValue([
+        makeListApp({ id: 'sr-1', status: 'COMPLETED' }),
+      ]);
+      prisma.application.count.mockResolvedValue(1);
+      const result = await service.findAll({ page: 1, limit: 20 } as any, 'company-1');
+      expect(result.data[0].latestScreening).toEqual({ id: 'sr-1', status: 'COMPLETED' });
+    });
+
+    it('returns latestScreening with PENDING status', async () => {
+      prisma.application.findMany.mockResolvedValue([
+        makeListApp({ id: 'sr-2', status: 'PENDING' }),
+      ]);
+      prisma.application.count.mockResolvedValue(1);
+      const result = await service.findAll({ page: 1, limit: 20 } as any, 'company-1');
+      expect(result.data[0].latestScreening).toEqual({ id: 'sr-2', status: 'PENDING' });
+    });
+
+    it('returns latestScreening with RUNNING status', async () => {
+      prisma.application.findMany.mockResolvedValue([
+        makeListApp({ id: 'sr-3', status: 'RUNNING' }),
+      ]);
+      prisma.application.count.mockResolvedValue(1);
+      const result = await service.findAll({ page: 1, limit: 20 } as any, 'company-1');
+      expect(result.data[0].latestScreening).toEqual({ id: 'sr-3', status: 'RUNNING' });
+    });
+
+    it('returns latestScreening with FAILED status', async () => {
+      prisma.application.findMany.mockResolvedValue([
+        makeListApp({ id: 'sr-4', status: 'FAILED' }),
+      ]);
+      prisma.application.count.mockResolvedValue(1);
+      const result = await service.findAll({ page: 1, limit: 20 } as any, 'company-1');
+      expect(result.data[0].latestScreening).toEqual({ id: 'sr-4', status: 'FAILED' });
+    });
+
+    it('filters applications to the requesting company scope', async () => {
+      prisma.application.findMany.mockResolvedValue([]);
+      prisma.application.count.mockResolvedValue(0);
+      await service.findAll({ page: 1, limit: 20 } as any, 'company-1');
+      const whereArg = prisma.application.findMany.mock.calls[0][0].where;
+      expect(whereArg.companyId).toBe('company-1');
+    });
+
+    it('includes aiScreeningResults in the findMany query with take:1 and desc order', async () => {
+      prisma.application.findMany.mockResolvedValue([]);
+      prisma.application.count.mockResolvedValue(0);
+      await service.findAll({ page: 1, limit: 20 } as any, 'company-1');
+      const includeArg = prisma.application.findMany.mock.calls[0][0].include;
+      expect(includeArg.aiScreeningResults).toMatchObject({
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      });
+    });
+  });
 });

@@ -260,4 +260,64 @@ describe("PipelinePage", () => {
     expect(card).toBeTruthy()
     expect(within(card as HTMLElement).getByText("0")).toBeTruthy()
   })
+
+  it("calls fetchCandidates after moving a candidate via arrow buttons", async () => {
+    setup({
+      candidates: [
+        makeCandidate("c1", "Move Me", "stage-a1", "Applied", JOB_A, "Backend Engineer", 70, "DRAFT"),
+      ],
+    })
+    render(<PipelinePage />)
+    await waitFor(() => expect(screen.getByText("Move Me")).toBeTruthy(), { timeout: 3000 })
+
+    // Find all buttons in the candidate card; stageIndex=0 means left arrow is disabled,
+    // right arrow (move to next stage) is enabled
+    const card = screen.getByText("Move Me").closest(".group") as HTMLElement
+    const allArrows = within(card).getAllByRole("button")
+    const moveRight = allArrows.find((b) => !b.hasAttribute("disabled"))
+    if (!moveRight) throw new Error("Expected an enabled arrow button")
+
+    fireEvent.click(moveRight)
+    await waitFor(() => expect(mockMoveApplication).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    await waitFor(() => expect(mockFetchCandidates).toHaveBeenCalledTimes(1), { timeout: 2000 })
+  })
+
+  it("calls fetchCandidates after moving via the detail dialog Move button", async () => {
+    setup({
+      candidates: [
+        makeCandidate("c1", "Dialog Mover", "stage-a1", "Applied", JOB_A, "Backend Engineer", 80, "DRAFT"),
+      ],
+      jobPipelines: { [JOB_A]: STAGES },
+    })
+    render(<PipelinePage />)
+    await waitFor(() => expect(screen.getByText("Dialog Mover")).toBeTruthy(), { timeout: 3000 })
+
+    // Open detail dialog
+    fireEvent.click(screen.getByText("Dialog Mover"))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy(), { timeout: 2000 })
+
+    // Click the "Move to Screening" button in the dialog footer
+    const moveBtn = screen.getByRole("button", { name: /Move to Screening/i })
+    fireEvent.click(moveBtn)
+    await waitFor(() => expect(mockMoveApplication).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    await waitFor(() => expect(mockFetchCandidates).toHaveBeenCalledTimes(1), { timeout: 2000 })
+  })
+
+  it("calls fetchCandidates after rejecting via the detail dialog", async () => {
+    setup({
+      candidates: [
+        makeCandidate("c1", "Reject Me", "stage-a1", "Applied", JOB_A, "Backend Engineer", 40, "DRAFT"),
+      ],
+    })
+    render(<PipelinePage />)
+    await waitFor(() => expect(screen.getByText("Reject Me")).toBeTruthy(), { timeout: 3000 })
+
+    fireEvent.click(screen.getByText("Reject Me"))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy(), { timeout: 2000 })
+
+    const rejectBtn = screen.getByRole("button", { name: /reject/i })
+    fireEvent.click(rejectBtn)
+    await waitFor(() => expect(mockRejectApplication).toHaveBeenCalledTimes(1), { timeout: 2000 })
+    await waitFor(() => expect(mockFetchCandidates).toHaveBeenCalledTimes(1), { timeout: 2000 })
+  })
 })

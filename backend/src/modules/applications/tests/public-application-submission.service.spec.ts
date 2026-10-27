@@ -193,6 +193,7 @@ describe('PublicApplicationSubmissionService', () => {
     expect(result.publicReference).toBe('existing-ref');
     expect(prisma.application.create).not.toHaveBeenCalled();
     expect(prisma.storedFile.create).not.toHaveBeenCalled();
+    expect(storage.delete).toHaveBeenCalledWith(`${COMPANY_ID}/cv.pdf`);
   });
 
   it('only queries PUBLISHED jobs — closed/deleted jobs are not applicable', async () => {

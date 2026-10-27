@@ -19,6 +19,8 @@ describe('EmailWorker', () => {
     sendInterviewCompletedEmail: jest.fn().mockResolvedValue(undefined),
     sendInterviewReminderEmail: jest.fn().mockResolvedValue(undefined),
     sendOfferSentEmail: jest.fn().mockResolvedValue(undefined),
+    sendAiInterviewInvitationEmail: jest.fn().mockResolvedValue(undefined),
+    sendAssessmentAssignedEmail: jest.fn().mockResolvedValue(undefined),
   };
 
   const makeJob = (name: string, data: Record<string, unknown> = {}): Job =>
@@ -271,6 +273,123 @@ describe('EmailWorker', () => {
       await expect(
         worker.process(makeJob('auth.email-verification', { email: 'a@b.com', token: 't' })),
       ).rejects.toThrow('Send failed');
+    });
+  });
+
+  // ── AI interview and assessment jobs (ENG-015: previously untested) ──
+
+  describe('recruitment.ai-interview-invitation', () => {
+    it('should call sendAiInterviewInvitationEmail with all args', async () => {
+      await worker.process(
+        makeJob('recruitment.ai-interview-invitation', {
+          email: 'ada@test.com',
+          candidateName: 'Ada Lovelace',
+          jobTitle: 'Software Engineer',
+          companyName: 'TechCorp',
+          interviewLink: 'http://localhost:3001/interview/access',
+          interviewCode: 'ABCD-1234',
+          durationMinutes: 15,
+          expiresAt: null,
+          recruiterNote: 'Good luck!',
+        }),
+      );
+      expect(mockEmailService.sendAiInterviewInvitationEmail).toHaveBeenCalledWith(
+        'ada@test.com',
+        'Ada Lovelace',
+        'Software Engineer',
+        'TechCorp',
+        'http://localhost:3001/interview/access',
+        'ABCD-1234',
+        15,
+        null,
+        'Good luck!',
+      );
+    });
+
+    it('defaults durationMinutes to 5 when not provided', async () => {
+      await worker.process(
+        makeJob('recruitment.ai-interview-invitation', {
+          email: 'ada@test.com',
+          candidateName: 'Ada Lovelace',
+          jobTitle: 'Engineer',
+          companyName: 'TechCorp',
+          interviewLink: 'http://localhost:3001/interview/access',
+          interviewCode: 'ABCD-1234',
+        }),
+      );
+      expect(mockEmailService.sendAiInterviewInvitationEmail).toHaveBeenCalledWith(
+        'ada@test.com',
+        'Ada Lovelace',
+        'Engineer',
+        'TechCorp',
+        'http://localhost:3001/interview/access',
+        'ABCD-1234',
+        5,
+        null,
+        undefined,
+      );
+    });
+
+    it('converts expiresAt string to Date object', async () => {
+      const expiresAtIso = '2026-12-31T23:59:59.000Z';
+      await worker.process(
+        makeJob('recruitment.ai-interview-invitation', {
+          email: 'ada@test.com',
+          candidateName: 'Ada Lovelace',
+          jobTitle: 'Engineer',
+          companyName: 'TechCorp',
+          interviewLink: 'http://localhost:3001/interview/access',
+          interviewCode: 'ABCD-1234',
+          durationMinutes: 20,
+          expiresAt: expiresAtIso,
+        }),
+      );
+      const callArgs = mockEmailService.sendAiInterviewInvitationEmail.mock.calls[0];
+      expect(callArgs[7]).toBeInstanceOf(Date);
+      expect((callArgs[7] as Date).toISOString()).toBe(expiresAtIso);
+    });
+  });
+
+  describe('recruitment.assessment-assigned', () => {
+    it('should call sendAssessmentAssignedEmail with all args', async () => {
+      await worker.process(
+        makeJob('recruitment.assessment-assigned', {
+          email: 'ada@test.com',
+          candidateName: 'Ada Lovelace',
+          assessmentName: 'Technical Screen',
+          jobTitle: 'Software Engineer',
+          companyName: 'TechCorp',
+          code: 'ASSESS-001',
+        }),
+      );
+      expect(mockEmailService.sendAssessmentAssignedEmail).toHaveBeenCalledWith(
+        'ada@test.com',
+        'Ada Lovelace',
+        'Technical Screen',
+        'Software Engineer',
+        'TechCorp',
+        'ASSESS-001',
+      );
+    });
+
+    it('defaults candidateName to Candidate when not provided', async () => {
+      await worker.process(
+        makeJob('recruitment.assessment-assigned', {
+          email: 'ada@test.com',
+          assessmentName: 'Technical Screen',
+          jobTitle: 'Engineer',
+          companyName: 'TechCorp',
+          code: 'ASSESS-002',
+        }),
+      );
+      expect(mockEmailService.sendAssessmentAssignedEmail).toHaveBeenCalledWith(
+        'ada@test.com',
+        'Candidate',
+        'Technical Screen',
+        'Engineer',
+        'TechCorp',
+        'ASSESS-002',
+      );
     });
   });
 });

@@ -14,7 +14,7 @@ import {
   ValidateNested,
   Matches,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { plainToInstance, Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CandidateSource } from '@prisma/client';
 import { ScreeningAnswerInputDto } from './create-application.dto';
@@ -114,7 +114,9 @@ export class PublicApplicationMultipartDto {
   @Transform(({ value }) => {
     if (typeof value !== 'string') return value;
     try {
-      return JSON.parse(value);
+      const parsed = JSON.parse(value);
+      if (!Array.isArray(parsed)) return parsed;
+      return parsed.map((item) => plainToInstance(ScreeningAnswerInputDto, item));
     } catch {
       return value;
     }

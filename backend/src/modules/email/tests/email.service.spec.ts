@@ -166,4 +166,184 @@ describe('EmailService', () => {
       expect.objectContaining({ text: expect.stringContaining('Jane') }),
     );
   });
+
+  // ── AI Interview invitation (ENG-015: previously untested) ──────────
+
+  it('sends AI interview invitation email with correct subject', async () => {
+    await service.sendAiInterviewInvitationEmail(
+      'candidate@test.com',
+      'Ada Lovelace',
+      'Software Engineer',
+      'TechCorp',
+      'http://localhost:3001/interview/access',
+      'ABCD-1234',
+      15,
+      null,
+    );
+    expect(mockSendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'candidate@test.com',
+        subject: 'AI interview invitation — Software Engineer',
+      }),
+    );
+  });
+
+  it('AI interview invitation email body contains interview code', async () => {
+    await service.sendAiInterviewInvitationEmail(
+      'candidate@test.com',
+      'Ada Lovelace',
+      'Software Engineer',
+      'TechCorp',
+      'http://localhost:3001/interview/access',
+      'ABCD-1234',
+      15,
+      null,
+    );
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.html).toContain('ABCD-1234');
+    expect(call.text).toContain('ABCD-1234');
+  });
+
+  it('AI interview invitation email body contains candidate name and job title', async () => {
+    await service.sendAiInterviewInvitationEmail(
+      'candidate@test.com',
+      'Ada Lovelace',
+      'Software Engineer',
+      'TechCorp',
+      'http://localhost:3001/interview/access',
+      'ABCD-1234',
+      15,
+      null,
+    );
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.html).toContain('Ada Lovelace');
+    expect(call.html).toContain('Software Engineer');
+    expect(call.text).toContain('Ada Lovelace');
+    expect(call.text).toContain('Software Engineer');
+  });
+
+  it('AI interview invitation email contains interview link', async () => {
+    const link = 'http://localhost:3001/interview/access';
+    await service.sendAiInterviewInvitationEmail(
+      'candidate@test.com',
+      'Ada Lovelace',
+      'Software Engineer',
+      'TechCorp',
+      link,
+      'ABCD-1234',
+      15,
+      null,
+    );
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.html).toContain(link);
+    expect(call.text).toContain(link);
+  });
+
+  it('AI interview invitation email includes optional recruiter note when provided', async () => {
+    await service.sendAiInterviewInvitationEmail(
+      'candidate@test.com',
+      'Ada Lovelace',
+      'Software Engineer',
+      'TechCorp',
+      'http://localhost:3001/interview/access',
+      'ABCD-1234',
+      15,
+      null,
+      'Please focus on your recent projects.',
+    );
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.html).toContain('Please focus on your recent projects.');
+    expect(call.text).toContain('Please focus on your recent projects.');
+  });
+
+  it('AI interview invitation email omits recruiter note section when no note provided', async () => {
+    await service.sendAiInterviewInvitationEmail(
+      'candidate@test.com',
+      'Ada Lovelace',
+      'Software Engineer',
+      'TechCorp',
+      'http://localhost:3001/interview/access',
+      'ABCD-1234',
+      15,
+      null,
+    );
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.html).not.toContain('Note from the recruiter');
+    expect(call.text).not.toContain('Note from the recruiter');
+  });
+
+  it('AI interview invitation email includes expiry text when expiresAt is provided', async () => {
+    const expiresAt = new Date('2026-12-31T23:59:59Z');
+    await service.sendAiInterviewInvitationEmail(
+      'candidate@test.com',
+      'Ada Lovelace',
+      'Software Engineer',
+      'TechCorp',
+      'http://localhost:3001/interview/access',
+      'ABCD-1234',
+      15,
+      expiresAt,
+    );
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.text).toContain('expires');
+    expect(call.html).toContain('expires');
+  });
+
+  it('AI interview invitation email does not contain expiry text when expiresAt is null', async () => {
+    await service.sendAiInterviewInvitationEmail(
+      'candidate@test.com',
+      'Ada Lovelace',
+      'Software Engineer',
+      'TechCorp',
+      'http://localhost:3001/interview/access',
+      'ABCD-1234',
+      15,
+      null,
+    );
+    const call = mockSendMail.mock.calls[0][0];
+    // The plain-text body should not contain 'expires' when no expiry date is set
+    expect(call.text).not.toContain('expires');
+  });
+
+  it('throws when sending AI interview invitation fails (SMTP error propagates)', async () => {
+    mockSendMail.mockRejectedValueOnce(new Error('Connection refused'));
+    await expect(
+      service.sendAiInterviewInvitationEmail(
+        'candidate@test.com',
+        'Ada Lovelace',
+        'Software Engineer',
+        'TechCorp',
+        'http://localhost:3001/interview/access',
+        'ABCD-1234',
+        15,
+        null,
+      ),
+    ).rejects.toThrow('Connection refused');
+  });
+
+  it('sends assessment assigned email', async () => {
+    await service.sendAssessmentAssignedEmail(
+      'c@t.com',
+      'Jane',
+      'Technical Screen',
+      'Engineer',
+      'Acme',
+      'TEST-CODE-9999',
+    );
+    expect(mockSendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'c@t.com',
+        subject: 'Assessment invited: Technical Screen',
+      }),
+    );
+  });
+
+  it('assessment assigned email contains access code', async () => {
+    await service.sendAssessmentAssignedEmail(
+      'c@t.com', 'Jane', 'Technical Screen', 'Engineer', 'Acme', 'TEST-CODE-9999',
+    );
+    const call = mockSendMail.mock.calls[0][0];
+    expect(call.html).toContain('TEST-CODE-9999');
+    expect(call.text).toContain('TEST-CODE-9999');
+  });
 });

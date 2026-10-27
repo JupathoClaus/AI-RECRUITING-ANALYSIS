@@ -5,7 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, ExternalLink } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { ApplicationStatusBadge } from "@/components/recruitment/status-badge"
+import { ApplicationStatusBadge, ScreeningStatusBadge } from "@/components/recruitment/status-badge"
 import type { ApplicationListItem } from "@/lib/api/applications.api"
 
 export type ApplicationSortField = "createdAt" | "submittedAt" | "updatedAt" | "applicationNumber" | "status"
@@ -111,6 +111,7 @@ export function ApplicationTable({
           <TableHead>Candidate</TableHead>
           {showJob && <TableHead className="hidden xl:table-cell">Job</TableHead>}
           <TableHead><SortButton field="status" label="Status" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} /></TableHead>
+          <TableHead className="hidden xl:table-cell">AI screening</TableHead>
           <TableHead className="hidden lg:table-cell">Pipeline stage</TableHead>
           <TableHead className="hidden 2xl:table-cell">Source</TableHead>
           <TableHead className="hidden md:table-cell"><SortButton field="submittedAt" label="Submitted" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} /></TableHead>
@@ -158,6 +159,9 @@ export function ApplicationTable({
                 </TableCell>
               )}
               <TableCell><ApplicationStatusBadge status={application.status} /></TableCell>
+              <TableCell className="hidden xl:table-cell">
+                <ScreeningStatusBadge status={application.latestScreening?.status} />
+              </TableCell>
               <TableCell className="hidden lg:table-cell">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-foreground">{application.currentStage?.name || "Not assigned"}</span>

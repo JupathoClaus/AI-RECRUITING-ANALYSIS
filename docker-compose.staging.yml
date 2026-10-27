@@ -1,0 +1,175 @@
+# TalentAI — Staging Deployment
+#
+# Brings up the full stack: PostgreSQL, Redis, MailHog, backend API, and
+# the Next.js frontend. All inter-service communication uses Docker's
+# internal network — only the frontend and MailHog web UI are accessible
+# from the host.
+#
+# Usage:
+#   docker compose -f docker-compose.staging.yml up -d --build
+#   docker compose -f docker-compose.staging.yml logs -f
+#   docker compose -f docker-compose.staging.yml down
+#
+# See docs/engineering/STAGING_DEPLOYMENT.md for full instructions.
+#
+# IMPORTANT: This file does NOT contain secrets. All sensitive values
+# (JWT secrets, API keys) must be provided via a .env.staging file or
+# real environment variable injection. Never commit real secrets.
+
+services:
+  # ── PostgreSQL ────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: talentai-staging-postgres
+    # Do NOT expose to host — backend connects via internal network
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-talentai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.staging}
+      POSTGRES_DB: ${POSTGRES_DB:-talentai_staging}
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+    networks:
+      - talentai-staging
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-talentai}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: talentai-staging-redis
+    # Do NOT expose to host — backend connects via internal network
+    volumes:
+      - staging_redis_data:/data
+    networks:
+      - talentai-staging
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MailHog (test email capture) ─────────────────────────────────
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: talentai-staging-mailhog
+    ports:
+      # SMTP port — bind to localhost only (not 0.0.0.0)
+      - '127.0.0.1:1025:1025'
+      # Web UI — bind to localhost only
+      - '127.0.0.1:8025:8025'
+    networks:
+      - talentai-staging
+    restart: unless-stopped
+
+  # ── Backend API (NestJS + BullMQ workers) ────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: talentai-staging-backend
+    ports:
+      # Expose API on port 3010 (avoid conflict with dev backend on 3000).
+      # In a real staging env with a reverse proxy, this would be
+      # internal-only.
+      - '127.0.0.1:3010:3000'
+    environment:
+      - NODE_ENV=production
+      # Database — uses Docker service name, not localhost
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-talentai}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-talentai_staging}?schema=public
+      # Redis — uses Docker service name
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # JWT — MUST be set via .env.staging
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env.staging}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env.staging}
+      - JWT_EXPIRATION=15m
+      - JWT_REFRESH_EXPIRATION=7d
+      # CORS — allow the staging frontend's external URL
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3011}
+      # Frontend URL (used in email links)
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3011}
+      - APP_FRONTEND_URL=${FRONTEND_URL:-http://localhost:3011}
+      - APP_BACKEND_URL=http://localhost:3010
+      # Email — route to MailHog container
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_SECURE=false
+      - EMAIL_FROM=${EMAIL_FROM:-noreply@ai-recruiter.com}
+      # File uploads — persistent volume
+      - UPLOAD_DIR=/app/uploads
+      # AI Screening — MOCK by default for staging safety
+      - AI_SCREENING_PROVIDER=${AI_SCREENING_PROVIDER:-mock}
+      - AI_SCREENING_MOCK_SCENARIO=
+      # Assessment AI — MOCK
+      - ASSESSMENT_AI_PROVIDER=mock
+      # AI Interview Evaluation — MOCK
+      - AI_INTERVIEW_EVALUATION_PROVIDER=mock
+      # Tavus — disabled by default
+      - TAVUS_ENABLED=false
+      # Qwen (only used if provider switched to qwen; must be non-empty for validation)
+      - QWEN_BASE_URL=${QWEN_BASE_URL:-http://localhost:11434/v1}
+      - QWEN_MODEL=${QWEN_MODEL:-qwen3.5:9b}
+      - QWEN_API_KEY=${QWEN_API_KEY:-}
+      # Assessment access token secret (required at boot)
+      - ASSESSMENT_ACCESS_TOKEN_SECRET=${ASSESSMENT_ACCESS_TOKEN_SECRET:?Set ASSESSMENT_ACCESS_TOKEN_SECRET in .env.staging}
+    volumes:
+      - staging_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - talentai-staging
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://localhost:3000/api/v1/health/live']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Frontend (Next.js) ───────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_API_URL is NOT set — the browser uses the relative
+        # /api/v1 path which the Next.js server proxies to the backend.
+        # This keeps the API URL server-side only (no CORS needed).
+        - NEXT_PUBLIC_API_URL=
+        # BACKEND_URL must be a build arg because next.config.ts reads it
+        # at build time to configure the rewrite proxy.
+        - BACKEND_URL=http://backend:3000
+    container_name: talentai-staging-frontend
+    ports:
+      # Map container's port 3000 to host's 3011 (avoid conflict with dev frontend on 3001)
+      - '127.0.0.1:3011:3000'
+    environment:
+      - NODE_ENV=production
+      # Backend URL for the Next.js rewrite proxy — uses Docker service name
+      - BACKEND_URL=http://backend:3000
+      # Hostname and port for the Next.js server inside the container
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - talentai-staging
+    restart: unless-stopped
+
+volumes:
+  staging_postgres_data:
+  staging_redis_data:
+  staging_uploads:
+
+networks:
+  talentai-staging:
+    driver: bridge

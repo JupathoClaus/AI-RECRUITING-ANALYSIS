@@ -174,7 +174,7 @@ export class PublicApplicationSubmissionService {
     try {
       for (let attempt = 0; attempt < TX_MAX_RETRIES; attempt++) {
         try {
-          return await this.prisma.$transaction(
+          const result = await this.prisma.$transaction(
             (tx: Prisma.TransactionClient) =>
               this.executeSubmission(tx, company.id, job, input, file, stored),
             {
@@ -183,6 +183,12 @@ export class PublicApplicationSubmissionService {
               timeout: 15000,
             },
           );
+          // A duplicate submission returns the existing reference; the CV bytes
+          // uploaded before the transaction must not be left orphaned.
+          if (result.status === 'pending_review' && stored && storedName) {
+            await this.storage.delete(stored.storageKey).catch(() => {});
+          }
+          return result;
         } catch (err) {
           const prismaErr = err as { code?: string };
           if (prismaErr.code === 'P2034' && attempt < TX_MAX_RETRIES - 1) continue;

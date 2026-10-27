@@ -348,6 +348,11 @@ export class ApplicationsService {
           },
           flags: { where: { resolved: false }, select: { id: true, type: true, severity: true } },
           _count: { select: { screeningAnswers: true, notes: true } },
+          aiScreeningResults: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { id: true, status: true },
+          },
         },
       }),
       this.prisma.application.count({ where }),
@@ -642,6 +647,9 @@ export class ApplicationsService {
         severity: f.severity,
       })),
       screeningAnswerCount: app._count?.screeningAnswers ?? 0,
+      latestScreening: app.aiScreeningResults?.[0]
+        ? { id: app.aiScreeningResults[0].id, status: app.aiScreeningResults[0].status }
+        : null,
     };
   }
 

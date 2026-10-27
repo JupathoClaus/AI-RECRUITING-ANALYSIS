@@ -30,6 +30,11 @@ export interface ApplicationActiveFlag {
   severity: string
 }
 
+export interface ApplicationLatestScreening {
+  id: string
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED"
+}
+
 export interface ApplicationListItem {
   id: string
   applicationNumber: string
@@ -44,6 +49,8 @@ export interface ApplicationListItem {
   activeFlags: ApplicationActiveFlag[]
   screeningAnswerCount: number
   version: number
+  /** Latest AI screening result for this application, or null if none exists. */
+  latestScreening: ApplicationLatestScreening | null
 }
 
 export interface ApplicationListResponse {
@@ -219,6 +226,22 @@ export async function markApplicationHired(applicationId: string, dto: StatusVer
 
 export async function submitApplication(applicationId: string, dto: StatusVersionRequest & { consentConfirmed?: boolean }): Promise<void> {
   return apiRequest<void>(`/applications/${applicationId}/submit`, {
+    method: "POST",
+    body: dto,
+  })
+}
+
+export interface CreateNoteRequest {
+  content: string
+  /** Defaults to PRIVATE on the backend if omitted */
+  visibility?: "PRIVATE" | "COMPANY" | "HIRING_TEAM"
+}
+
+export async function createApplicationNote(
+  applicationId: string,
+  dto: CreateNoteRequest,
+): Promise<ApplicationNote> {
+  return apiRequest<ApplicationNote>(`/applications/${applicationId}/notes`, {
     method: "POST",
     body: dto,
   })

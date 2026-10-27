@@ -338,8 +338,9 @@ export default function PipelinePage() {
       if (targetIdx < 0 || targetIdx >= sequence.length) return
       await moveApplication(currentApp.id, { toStageId: sequence[targetIdx].id, expectedVersion: currentApp.version })
       setSelectedCandidate(null)
+      fetchCandidates()
     },
-    [stageSequenceForCandidate],
+    [stageSequenceForCandidate, fetchCandidates],
   )
 
   const handleSaveStage = React.useCallback(async (e: React.FormEvent) => {
@@ -723,6 +724,7 @@ export default function PipelinePage() {
                           onClick={async () => {
                             await rejectApplication(currentApp.id, { expectedVersion: currentApp.version })
                             setSelectedCandidate(null)
+                            fetchCandidates()
                           }}
                         >
                           <CloseSquare className="h-4 w-4" />
@@ -732,6 +734,7 @@ export default function PipelinePage() {
                           <Button size="sm" onClick={async () => {
                             await moveApplication(currentApp.id, { toStageId: sequence[idx + 1].id, expectedVersion: currentApp.version })
                             setSelectedCandidate(null)
+                            fetchCandidates()
                           }}>
                             <ArrowRight className="h-4 w-4" />
                             Move to {sequence[idx + 1].name}

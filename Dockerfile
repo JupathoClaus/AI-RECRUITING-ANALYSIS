@@ -8,7 +8,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL
+ARG BACKEND_URL=http://localhost:3000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV BACKEND_URL=$BACKEND_URL
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
