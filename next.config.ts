@@ -4,6 +4,10 @@ const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:3000";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // iconsax-react ships individual ESM files that must be transpiled
+  // for the Next.js standalone production build to bundle them correctly.
+  // Without this, icons render as blank grey squares in the built app.
+  transpilePackages: ["iconsax-react"],
   images: {
     remotePatterns: [
       {
