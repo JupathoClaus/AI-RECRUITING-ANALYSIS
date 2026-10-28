@@ -291,8 +291,8 @@ export class IdempotencyService {
           },
           {
             isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
-            maxWait: 5000,
-            timeout: 15000,
+            maxWait: 8000,
+            timeout: 25000,
           },
         );
       } catch (err: unknown) {

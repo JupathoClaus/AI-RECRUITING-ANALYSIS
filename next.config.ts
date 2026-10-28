@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
   // for the Next.js standalone production build to bundle them correctly.
   // Without this, icons render as blank grey squares in the built app.
   transpilePackages: ["iconsax-react"],
+  // Keep HTTP connections alive for backend requests (reduces connection
+  // setup overhead on the proxy path).
+  httpAgentOptions: {
+    keepAlive: true,
+  },
   images: {
     remotePatterns: [
       {
