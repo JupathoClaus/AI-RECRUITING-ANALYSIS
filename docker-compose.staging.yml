@@ -117,6 +117,8 @@ services:
       - QWEN_API_KEY=${QWEN_API_KEY:-}
       # Assessment access token secret (required at boot)
       - ASSESSMENT_ACCESS_TOKEN_SECRET=${ASSESSMENT_ACCESS_TOKEN_SECRET:?Set ASSESSMENT_ACCESS_TOKEN_SECRET in .env.staging}
+      # AI Interview access token secret (required for candidate code verification)
+      - AI_INTERVIEW_ACCESS_TOKEN_SECRET=${AI_INTERVIEW_ACCESS_TOKEN_SECRET:?Set AI_INTERVIEW_ACCESS_TOKEN_SECRET in .env.staging}
     volumes:
       - staging_uploads:/app/uploads
     depends_on:
