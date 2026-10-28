@@ -15,7 +15,7 @@ import { Pagination } from "@/components/recruitment/pagination"
 import { useStore } from "@/store/useStore"
 import { createAiInterview, sendAiInterviewInvitation, cancelAiInterview, regenerateAiInterviewCode, getAiInterview, listAiInterviews, getAiInterviewsByApplication, type AiInterviewDetail, type AiInterviewStatus } from "@/lib/api/ai-interviews.api"
 import { AiInterviewDetailDialog } from "@/components/ai-interview/ai-interview-detail-dialog"
-import { MagicStar, Clock, Link2, Warning2, Send2, Refresh, Eye, SearchNormal, CloseSquare } from "iconsax-react"
+import { Sparkles as MagicStar, Clock, Link as Link2, AlertTriangle as Warning2, Send as Send2, RefreshCw as Refresh, Eye, Search as SearchNormal, XSquare as CloseSquare } from "lucide-react"
 import type { PaginationMeta } from "@/lib/api/types"
 
 const STATUS_LABEL: Record<AiInterviewStatus, string> = {

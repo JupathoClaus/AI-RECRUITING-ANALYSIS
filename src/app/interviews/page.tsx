@@ -19,21 +19,21 @@ import { Pagination } from "@/components/recruitment/pagination"
 import { EmptyState } from "@/components/ui/empty-state"
 import { cn, getInitials, timeAgo } from "@/lib/utils"
 import {
-  SearchNormal,
-  Add,
+  Search as SearchNormal,
+  Plus as Add,
   Calendar,
   Clock,
   Video,
-  Call,
-  People,
-  MagicStar,
-  Chart2,
-  TickCircle,
+  Phone as Call,
+  Users as People,
+  Sparkles as MagicStar,
+  BarChart2 as Chart2,
+  CheckCircle2 as TickCircle,
   Timer,
-  CloseSquare,
-  TrendUp,
-  Buildings,
-} from "iconsax-react"
+  XSquare as CloseSquare,
+  TrendingUp as TrendUp,
+  Building2 as Buildings,
+} from "lucide-react"
 
 type InterviewType = Interview["type"]
 type InterviewStatus = Interview["status"]

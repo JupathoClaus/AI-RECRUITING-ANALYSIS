@@ -5,7 +5,7 @@ import Link from "next/link"
 import { AppLayout } from "@/components/layout/app-layout"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn, timeAgo, getErrorMessage } from "@/lib/utils"
-import { ArrowLeft, People, InfoCircle, Warning2 } from "iconsax-react"
+import { ChevronLeft as ArrowLeft, Users as People, Info as InfoCircle, AlertTriangle as Warning2 } from "lucide-react"
 import {
   fetchCandidateById,
   mapToDisplayStatus,

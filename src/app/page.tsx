@@ -6,16 +6,16 @@ import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import {
-  MagicStar,
-  People,
-  Chart2,
+  Sparkles as MagicStar,
+  Users as People,
+  BarChart2 as Chart2,
   Calendar,
   Shield,
   ArrowRight,
-  Flash,
+  Zap as Flash,
   Clock,
-  TrendUp,
-} from "iconsax-react"
+  TrendingUp as TrendUp,
+} from "lucide-react"
 import Image from "next/image"
 import { Swiper, SwiperSlide } from "swiper/react"
 import { Autoplay, EffectFade, Navigation, Pagination } from "swiper/modules"

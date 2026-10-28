@@ -6,25 +6,25 @@ import { usePathname, useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import {
-  Category,
+  LayoutDashboard as Category,
   Briefcase,
-  DocumentText,
-  People,
-  Routing2,
+  FileText as DocumentText,
+  Users as People,
+  GitBranch as Routing2,
   Calendar,
-  MagicStar,
+  Sparkles as MagicStar,
   Video,
-  Chart,
-  TrendUp,
-  Setting2,
-  MessageQuestion,
-  Logout,
+  BarChart2 as Chart,
+  TrendingUp as TrendUp,
+  Settings as Setting2,
+  HelpCircle as MessageQuestion,
+  LogOut as Logout,
   Menu,
-  ArrowDown2,
-  ArrowLeft2,
-  ArrowRight2,
-  type Icon as IcIcon,
-} from "iconsax-react"
+  ChevronDown as ArrowDown2,
+  ChevronLeft as ArrowLeft2,
+  ChevronRight as ArrowRight2,
+  type LucideIcon,
+} from "lucide-react"
 
 // ─── Width constants — single source of truth consumed by AppLayout ───────────
 export const SIDEBAR_W_EXPANDED = 260
@@ -39,7 +39,7 @@ interface NavLinkItem {
   kind: "link"
   label: string
   href: string
-  icon: IcIcon
+  icon: LucideIcon
   matchPrefixes?: string[]
 }
 
@@ -48,7 +48,7 @@ interface NavGroupItem {
   label: string
   /** Destination when the group label is clicked (or when collapsed). */
   href: string
-  icon: IcIcon
+  icon: LucideIcon
   children: NavLinkItem[]
 }
 
@@ -383,7 +383,6 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                       >
                         <entry.icon
                           size={17}
-                          variant={active ? "Bold" : "Linear"}
                           className="shrink-0"
                           style={{ color: active ? "var(--sidebar-active-text)" : "var(--sidebar-icon)" }}
                         />
@@ -438,7 +437,6 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                         >
                           <entry.icon
                             size={17}
-                            variant={highlighted ? "Bold" : "Linear"}
                             className="shrink-0"
                             style={{ color: highlighted ? "var(--sidebar-active-text)" : "var(--sidebar-icon)" }}
                           />
@@ -512,7 +510,6 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                               >
                                 <child.icon
                                   size={15}
-                                  variant={active ? "Bold" : "Linear"}
                                   className="shrink-0"
                                   style={{ color: active ? "var(--sidebar-active-text)" : "var(--sidebar-icon)" }}
                                 />
@@ -567,7 +564,6 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
               >
                 <MessageQuestion
                   size={17}
-                  variant={pathname === "/help" ? "Bold" : "Linear"}
                   className="shrink-0"
                   style={{
                     color: pathname === "/help" ? "var(--sidebar-active-text)" : "var(--sidebar-icon)",
@@ -599,7 +595,6 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
               >
                 <Logout
                   size={17}
-                  variant="Linear"
                   className="shrink-0"
                   style={{ color: "var(--sidebar-icon)" }}
                 />

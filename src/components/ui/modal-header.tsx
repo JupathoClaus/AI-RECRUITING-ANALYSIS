@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { CloseSquare } from "iconsax-react"
+import { XSquare as CloseSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
 

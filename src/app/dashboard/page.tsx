@@ -1,30 +1,30 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   Briefcase,
-  People,
+  Users as People,
   Calendar,
-  MagicStar,
-  TrendUp,
-  TrendDown,
+  Sparkles as MagicStar,
+  TrendingUp as TrendUp,
+  TrendingDown as TrendDown,
   ArrowRight,
-  Document,
+  FileText as Document,
   Video,
-  Call,
-  Location,
-  TickCircle,
-  CloseCircle,
-  Send2,
-  MedalStar,
+  Phone as Call,
+  MapPin as Location,
+  CheckCircle2 as TickCircle,
+  XCircle as CloseCircle,
+  Send as Send2,
+  Award as MedalStar,
   Eye,
-  Calendar2,
+  Calendar as Calendar2,
   Cpu,
-  Chart2,
-  Routing,
-  Notification,
-} from "iconsax-react";
+  BarChart2 as Chart2,
+  Route as Routing,
+  Bell as Notification,
+} from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -291,7 +291,7 @@ const stats = useMemo(() => {
   // Dashboard as an action center: real, store-driven counts of what is
   // waiting for a human today. The whole-company totals come from the
   // server aggregate (score-summary `attention`) so the counts cover every
-  // candidate/interview in the tenant â€” not just the first page the store
+  // candidate/interview in the tenant — not just the first page the store
   // holds. The paged arrays remain a fallback for older responses.
   const attentionItems = useMemo(() => {
     const serverAttention = candidatesScoreSummary?.attention;
@@ -338,7 +338,7 @@ const stats = useMemo(() => {
       icon: <Briefcase className="h-5 w-5" />,
       color: "text-primary",
       up: true,
-      trend: "â€”",
+      trend: "—",
       trendLabel: "server-derived",
     },
     {
@@ -347,7 +347,7 @@ const stats = useMemo(() => {
       icon: <People className="h-5 w-5" />,
       color: "text-info",
       up: true,
-      trend: "â€”",
+      trend: "—",
       trendLabel: "all candidates",
     },
     {
@@ -356,16 +356,16 @@ const stats = useMemo(() => {
       icon: <MagicStar className="h-5 w-5" />,
       color: "text-warning",
       up: true,
-      trend: "â€”",
+      trend: "—",
       trendLabel: "screened",
     },
     {
       label: "Avg AI Score",
-      value: stats.avgScore === null ? "â€”" : stats.avgScore.toString(),
+      value: stats.avgScore === null ? "—" : stats.avgScore.toString(),
       icon: <MagicStar className="h-5 w-5" />,
       color: "text-success",
       up: true,
-      trend: "â€”",
+      trend: "—",
       trendLabel: "no history yet",
     },
   ];
@@ -397,11 +397,11 @@ const stats = useMemo(() => {
           </div>
         )}
 
-        {/* Needs your attention â€” the dashboard's action center */}
+        {/* Needs your attention — the dashboard's action center */}
         <div className="rounded-xl border border-border bg-surface p-5 shadow-card animate-fade-in">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Notification className="h-5 w-5 text-foreground" size={20} variant="Bold" />
+              <Notification className="h-5 w-5 text-foreground" size={20} />
               <h2 className="text-sm font-semibold text-foreground">Needs your attention</h2>
             </div>
             <span className="hidden whitespace-nowrap text-xs text-muted sm:block">
@@ -413,16 +413,16 @@ const stats = useMemo(() => {
           attentionItems.awaitingScreening === 0 &&
           attentionItems.interviewsToday === 0 ? (
             <div className="mt-4 flex items-center gap-2 rounded-lg bg-primary-subtle px-4 py-3">
-              <TickCircle className="h-4 w-4 shrink-0 text-success" size={16} variant="Bold" />
+              <TickCircle className="h-4 w-4 shrink-0 text-success" size={16} />
               <p className="text-sm text-foreground">
-                You're all caught up â€” nothing is waiting for your input right now.
+                You're all caught up — nothing is waiting for your input right now.
               </p>
             </div>
           ) : (
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {attentionItems.newApplications > 0 && (
                 <AttentionItem
-                  icon={<Document className="h-4 w-4 text-foreground" size={16} variant="Bold" />}
+                  icon={<Document className="h-4 w-4 text-foreground" size={16} />}
                   count={attentionItems.newApplications}
                   label="new applications to review"
                   cta="Review applications"
@@ -431,12 +431,12 @@ const stats = useMemo(() => {
               )}
               {attentionItems.interviewsToday > 0 && (
                 <AttentionItem
-                  icon={<Calendar className="h-4 w-4 text-foreground" size={16} variant="Bold" />}
+                  icon={<Calendar className="h-4 w-4 text-foreground" size={16} />}
                   count={attentionItems.interviewsToday}
                   label="interviews scheduled today"
                   cta={
                     attentionItems.nextInterview
-                      ? `${attentionItems.nextInterview.candidateName} Â· ${attentionItems.nextInterview.jobTitle} â€” Open interviews`
+                      ? `${attentionItems.nextInterview.candidateName} · ${attentionItems.nextInterview.jobTitle} — Open interviews`
                       : "Open interviews"
                   }
                   href="/interviews"
@@ -444,7 +444,7 @@ const stats = useMemo(() => {
               )}
               {attentionItems.awaitingScreening > 0 && (
                 <AttentionItem
-                  icon={<MagicStar className="h-4 w-4 text-foreground" size={16} variant="Bold" />}
+                  icon={<MagicStar className="h-4 w-4 text-foreground" size={16} />}
                   count={attentionItems.awaitingScreening}
                   label="candidates awaiting AI screening"
                   cta="Run screening"
@@ -888,7 +888,7 @@ const stats = useMemo(() => {
                                 : getScoreColor(candidate.aiScore)
                             )}
                           >
-                            {candidate.aiScore === null || candidate.aiScore === undefined ? "â€”" : candidate.aiScore}
+                            {candidate.aiScore === null || candidate.aiScore === undefined ? "—" : candidate.aiScore}
                           </span>
                           <Progress
                             value={candidate.aiScore ?? 0}

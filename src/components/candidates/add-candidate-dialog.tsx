@@ -10,7 +10,7 @@ import { ModalHeader } from '@/components/ui/modal-header'
 import { ResumeUploadArea } from '@/components/ai-screening/resume-upload-area'
 import { ScreeningProgress } from '@/components/ai-screening/screening-progress'
 import { ScreeningResultView } from '@/components/ai-screening/screening-result-view'
-import { TickCircle, DocumentText, Warning2, Refresh } from 'iconsax-react'
+import { CheckCircle2 as TickCircle, FileText as DocumentText, AlertTriangle as Warning2, RefreshCw as Refresh } from 'lucide-react'
 import { useAiScreening } from '@/lib/ai-screening/use-ai-screening'
 import {
   createCandidateWorkflow,

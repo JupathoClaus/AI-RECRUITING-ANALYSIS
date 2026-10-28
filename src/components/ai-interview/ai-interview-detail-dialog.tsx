@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import * as React from "react"
 import {
@@ -26,20 +26,20 @@ import {
   type TranscriptTurn,
 } from "@/lib/api/ai-interviews.api"
 import {
-  MagicStar,
+  Sparkles as MagicStar,
   Clock,
-  Link2,
-  DocumentText,
+  Link as Link2,
+  FileText as DocumentText,
   Video,
   Calendar,
-  LanguageSquare,
+  Languages as LanguageSquare,
   User,
   Briefcase,
-  Refresh,
-  Star1,
-  InfoCircle,
-  Warning2,
-} from "iconsax-react"
+  RefreshCw as Refresh,
+  Star as Star1,
+  Info as InfoCircle,
+  AlertTriangle as Warning2,
+} from "lucide-react"
 
 const STATUS_LABEL: Record<AiInterviewStatus, string> = {
   CREATED: "Created",
@@ -73,12 +73,12 @@ interface AiInterviewDetailDialogProps {
 }
 
 function formatDateTime(value: string | null): string {
-  if (!value) return "â€”"
+  if (!value) return "—"
   return new Date(value).toLocaleString()
 }
 
 function durationBetween(start: string | null, end: string | null): string {
-  if (!start || !end) return "â€”"
+  if (!start || !end) return "—"
   const minutes = Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000))
   return `${minutes} min`
 }
@@ -369,7 +369,7 @@ const [syncing, setSyncing] = React.useState(false)
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Candidate</p>
                 <p className="text-sm font-semibold text-foreground">
-                  {candidate ? `${candidate.firstName} ${candidate.lastName}` : "â€”"}
+                  {candidate ? `${candidate.firstName} ${candidate.lastName}` : "—"}
                 </p>
                 {candidate?.email && <p className="text-xs text-muted">{candidate.email}</p>}
               </div>
@@ -378,7 +378,7 @@ const [syncing, setSyncing] = React.useState(false)
               <Briefcase className="h-4 w-4 mt-0.5 text-primary" />
               <div>
                 <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Job</p>
-                <p className="text-sm font-semibold text-foreground">{job?.title || "â€”"}</p>
+                <p className="text-sm font-semibold text-foreground">{job?.title || "—"}</p>
               </div>
             </div>
             <div className="flex items-start gap-2.5 rounded-lg border border-border-subtle p-3">
@@ -409,11 +409,11 @@ const [syncing, setSyncing] = React.useState(false)
                 <p className="text-xs text-muted">
                   Created {formatDateTime(interview.createdAt)}
                   {interview.invitationSentAt && (
-                    <> Â· Sent {formatDateTime(interview.invitationSentAt)}</>
+                    <> · Sent {formatDateTime(interview.invitationSentAt)}</>
                   )}
                 </p>
                 <p className="text-xs text-muted">
-                  Started {formatDateTime(interview.startedAt)} Â· Completed{" "}
+                  Started {formatDateTime(interview.startedAt)} · Completed{" "}
                   {formatDateTime(interview.completedAt)}
                 </p>
               </div>
@@ -426,7 +426,7 @@ const [syncing, setSyncing] = React.useState(false)
                   {interview.invitationEmail || "Not sent yet"}
                 </p>
                 <p className="text-xs text-muted">
-                  Code hint {interview.codeDisplayHint || "â€”"}
+                  Code hint {interview.codeDisplayHint || "—"}
                 </p>
               </div>
             </div>

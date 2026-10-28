@@ -18,24 +18,24 @@ import { getJobPipeline, createPipelineStage, updatePipelineStage, deletePipelin
 import { rejectApplication, moveApplication } from "@/lib/api/applications.api"
 import type { PipelineStageDto, JobPipelineDto } from "@/lib/api/jobs.api"
 import {
-  SearchNormal,
-  People,
+  Search as SearchNormal,
+  Users as People,
   Briefcase,
-  MagicStar,
-  Star1,
-  Message,
-  Call,
-  Document,
-  ArrowLeft,
+  Sparkles as MagicStar,
+  Star as Star1,
+  MessageCircle as Message,
+  Phone as Call,
+  FileText as Document,
+  ChevronLeft as ArrowLeft,
   ArrowRight,
-  CloseSquare,
+  XSquare as CloseSquare,
   Calendar,
   MessageSquare,
-  Add,
-  Trash,
-  Edit2,
-  TickCircle,
-} from "iconsax-react"
+  Plus as Add,
+  Trash2 as Trash,
+  Pencil as Edit2,
+  CheckCircle2 as TickCircle,
+} from "lucide-react"
 
 function getDisplayStatus(c: Candidate): DisplayApplicationStatus | undefined {
   return c.applicationSummary?.current?.displayStatus

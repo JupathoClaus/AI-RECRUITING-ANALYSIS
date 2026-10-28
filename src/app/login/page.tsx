@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Image from "next/image"
-import { Eye, EyeSlash, ArrowLeft } from "iconsax-react"
+import { Eye, EyeOff as EyeSlash, ChevronLeft as ArrowLeft } from "lucide-react"
 import { resendVerification } from "@/lib/api/auth.api"
 
 export default function LoginPage() {

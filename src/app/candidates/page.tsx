@@ -39,23 +39,23 @@ import type { StoredFileResponse } from "@/lib/api/files.api"
 import { getResumeExtractionStatus, retryAiScreeningExtraction } from "@/lib/api/ai-screening.api"
 import { deleteCandidate, displayStatusToApplicationStatuses } from "@/lib/api/candidates.api"
 import {
-  SearchNormal,
-  Add,
-  People,
-  Star1,
-  More,
+  Search as SearchNormal,
+  Plus as Add,
+  Users as People,
+  Star as Star1,
+  MoreHorizontal as More,
   Eye,
   Calendar,
-  CloseSquare,
-  Call,
-  Message,
+  XSquare as CloseSquare,
+  Phone as Call,
+  MessageCircle as Message,
   Briefcase,
-  MagicStar,
+  Sparkles as MagicStar,
   MessageSquare,
-  DocumentText,
-  Trash,
-  ArrowSwapHorizontal,
-} from "iconsax-react"
+  FileText as DocumentText,
+  Trash2 as Trash,
+  ArrowLeftRight as ArrowSwapHorizontal,
+} from "lucide-react"
 
 const statusConfig: Record<DisplayApplicationStatus, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" | "info" }> = {
   Applied: { label: "Applied", variant: "info" },

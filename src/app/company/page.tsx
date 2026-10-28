@@ -15,22 +15,22 @@ import { getCompanyProfile, getCompanyMembers, getDepartments, suspendCompanyMem
 import type { CompanyProfileResponse, CompanyMember, DepartmentDto } from "@/lib/api/types"
 import type { CompanyInvitationResponse, CompanyRoleResponse, CreateInvitationRequest, CreateDepartmentRequest } from "@/lib/api/company.api"
 import {
-  Buildings,
-  Edit2,
-  People,
+  Building2 as Buildings,
+  Pencil as Edit2,
+  Users as People,
   Briefcase,
-  Location,
-  Global,
+  MapPin as Location,
+  Globe as Global,
   Calendar,
-  Message,
-  Add,
-  Layer,
-  CloseCircle,
-  ArrowRotateLeft,
-  Trash,
-  Sms,
-  Send2,
-} from "iconsax-react"
+  MessageCircle as Message,
+  Plus as Add,
+  Layers as Layer,
+  XCircle as CloseCircle,
+  RotateCcw as ArrowRotateLeft,
+  Trash2 as Trash,
+  MessageSquare as Sms,
+  Send as Send2,
+} from "lucide-react"
 
 export default function CompanyPage() {
   const [profile, setProfile] = React.useState<CompanyProfileResponse | null>(null)

@@ -22,27 +22,27 @@ import { JOB_ACTIVE_STATUSES, JOB_HISTORY_STATUSES, resolveJobStatusFilter } fro
 import type { JobListDto } from "@/lib/api/types"
 import type { CreateJobRequest, UpdateJobRequest } from "@/lib/api/jobs.api"
 import {
-  SearchNormal,
-  Add,
-  Grid5,
+  Search as SearchNormal,
+  Plus as Add,
+  Grid2x2 as Grid5,
   Menu,
   Briefcase,
-  Location,
-  DollarSquare,
-  People,
+  MapPin as Location,
+  DollarSign as DollarSquare,
+  Users as People,
   Calendar,
-  Buildings,
-  DirectLeft,
-  DirectRight,
-  RotateLeft,
-  InfoCircle,
-  More,
-  TickCircle,
-  CloseCircle,
+  Building2 as Buildings,
+  ChevronLeft as DirectLeft,
+  ChevronRight as DirectRight,
+  RotateCcw as RotateLeft,
+  Info as InfoCircle,
+  MoreHorizontal as More,
+  CheckCircle2 as TickCircle,
+  XCircle as CloseCircle,
   Pause,
-  Edit2,
+  Pencil as Edit2,
   Archive,
-} from "iconsax-react"
+} from "lucide-react"
 
 const statusConfig: Record<string, { label: string; variant: "default" | "success" | "warning" | "error" | "secondary" }> = {
   DRAFT: { label: "Draft", variant: "secondary" },

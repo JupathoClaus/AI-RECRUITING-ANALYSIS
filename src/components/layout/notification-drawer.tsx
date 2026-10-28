@@ -5,18 +5,18 @@ import Link from "next/link"
 import { useRouter, usePathname } from "next/navigation"
 import { cn, timeAgo, getErrorMessage } from "@/lib/utils"
 import {
-  Notification,
-  TickCircle,
-  CloseCircle,
-  Document,
+  Bell as Notification,
+  CheckCircle2 as TickCircle,
+  XCircle as CloseCircle,
+  FileText as Document,
   Calendar,
   Gift,
-  UserAdd,
-  UserRemove,
+  UserPlus as UserAdd,
+  UserMinus as UserRemove,
   Cpu,
   MessageSquare,
   Eye,
-} from "iconsax-react"
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import * as notificationsApi from "@/lib/api/notifications.api"
@@ -181,7 +181,7 @@ export function NotificationDrawer() {
         aria-expanded={open}
         aria-controls="notification-drawer"
       >
-        <Notification className="h-4 w-4" size={18} variant="Bold" />
+        <Notification className="h-4 w-4" size={18} />
         {unreadCount > 0 && (
           <span
             className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none tabular-nums"
@@ -249,7 +249,7 @@ export function NotificationDrawer() {
               className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Close notifications"
             >
-              <CloseCircle size={16} variant="Bold" />
+              <CloseCircle size={16} />
             </button>
           </div>
         </header>
@@ -307,7 +307,7 @@ export function NotificationDrawer() {
                       <span
                         className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", typeColorMap[type])}
                       >
-                        <Icon className="h-4 w-4" size={16} variant="Bold" />
+                        <Icon className="h-4 w-4" size={16} />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-2">

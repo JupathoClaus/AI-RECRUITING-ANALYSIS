@@ -7,19 +7,19 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  Notification,
-  TickCircle,
-  Document,
+  Bell as Notification,
+  CheckCircle2 as TickCircle,
+  FileText as Document,
   Calendar,
   Gift,
-  UserAdd,
-  UserRemove,
+  UserPlus as UserAdd,
+  UserMinus as UserRemove,
   Cpu,
   MessageSquare,
-  Setting,
-  MoreCircle,
-  Trash,
-} from "iconsax-react"
+  Settings as Setting,
+  MoreHorizontal as MoreCircle,
+  Trash2 as Trash,
+} from "lucide-react"
 import { cn, timeAgo, getErrorMessage } from "@/lib/utils"
 import * as notificationsApi from "@/lib/api/notifications.api"
 import type { NotificationResponse } from "@/lib/api/notifications.api"

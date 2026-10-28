@@ -1,18 +1,18 @@
-﻿"use client"
+"use client"
 
 import { useMemo, useState, useEffect } from "react"
 import {
-  Chart2 as BarChartIcon,
-  Chart as PieChartIcon,
-  TrendUp,
-  TrendDown,
+  BarChart2 as BarChartIcon,
+  BarChart2 as PieChartIcon,
+  TrendingUp as TrendUp,
+  TrendingDown as TrendDown,
   Clock,
-  TickCircle,
+  CheckCircle2 as TickCircle,
   Flag,
-  MagicStar,
-  People,
-  Buildings,
-} from "iconsax-react"
+  Sparkles as MagicStar,
+  Users as People,
+  Building2 as Buildings,
+} from "lucide-react"
 import {
   PieChart,
   Pie,
@@ -96,7 +96,7 @@ function deriveInsights(
       insights.push({
         icon: MagicStar,
         title: `Selection rate is ${rate}% this period`,
-        description: `${rate}% of reviewed candidates received an offer or hire decision â€” a ${quality} conversion rate. ${rate < 15 ? "Running AI screenings earlier in the pipeline can help surface stronger candidates." : "AI screening is helping surface well-matched candidates efficiently."}`,
+        description: `${rate}% of reviewed candidates received an offer or hire decision — a ${quality} conversion rate. ${rate < 15 ? "Running AI screenings earlier in the pipeline can help surface stronger candidates." : "AI screening is helping surface well-matched candidates efficiently."}`,
         type: rate >= 15 ? "info" : "warning",
       })
     }
@@ -199,8 +199,8 @@ export default function AnalyticsPage() {
     () => [
       {
         label: "Total Applications",
-        value: overview ? formatNumber(overview.totalApplications) : "â€”",
-        trend: "â€”",
+        value: overview ? formatNumber(overview.totalApplications) : "—",
+        trend: "—",
         trendLabel: "vs last quarter",
         up: true,
         icon: People,
@@ -209,8 +209,8 @@ export default function AnalyticsPage() {
       },
       {
         label: "Avg Time to Hire",
-        value: overview?.avgTimeToHire != null ? `${overview.avgTimeToHire} days` : "â€”",
-        trend: "â€”",
+        value: overview?.avgTimeToHire != null ? `${overview.avgTimeToHire} days` : "—",
+        trend: "—",
         trendLabel: "vs last quarter",
         up: true,
         icon: Clock,
@@ -219,8 +219,8 @@ export default function AnalyticsPage() {
       },
       {
         label: "Selection Rate",
-        value: overview?.selectionRate != null ? `${overview.selectionRate}%` : "â€”",
-        trend: "â€”",
+        value: overview?.selectionRate != null ? `${overview.selectionRate}%` : "—",
+        trend: "—",
         trendLabel: "vs last quarter",
         up: true,
         icon: TickCircle,
@@ -229,8 +229,8 @@ export default function AnalyticsPage() {
       },
       {
         label: "AI Screening Accuracy",
-        value: overview?.aiScreeningAccuracy != null ? `${overview.aiScreeningAccuracy}%` : "â€”",
-        trend: "â€”",
+        value: overview?.aiScreeningAccuracy != null ? `${overview.aiScreeningAccuracy}%` : "—",
+        trend: "—",
         trendLabel: "this quarter",
         up: true,
         icon: MagicStar,
@@ -606,7 +606,7 @@ export default function AnalyticsPage() {
                                   : "text-muted"
                               )}
                             >
-                              {dept.avgScore != null ? dept.avgScore : "â€”"}
+                              {dept.avgScore != null ? dept.avgScore : "—"}
                             </span>
                             {dept.avgScore != null && (
                               <Progress value={scorePercent} className="h-1.5 w-12" />
@@ -614,7 +614,7 @@ export default function AnalyticsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
-                          <p className="text-sm text-foreground tabular-nums">{dept.timeToHire != null ? `${dept.timeToHire}d` : "â€”"}</p>
+                          <p className="text-sm text-foreground tabular-nums">{dept.timeToHire != null ? `${dept.timeToHire}d` : "—"}</p>
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge
@@ -634,7 +634,7 @@ export default function AnalyticsPage() {
                                 : dept.timeToHire <= 30
                                   ? "Average"
                                   : "Slow"
-                              : "â€”"}
+                              : "—"}
                           </Badge>
                         </TableCell>
                       </TableRow>

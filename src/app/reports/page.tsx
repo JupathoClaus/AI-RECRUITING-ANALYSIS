@@ -12,9 +12,19 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn, getErrorMessage } from "@/lib/utils"
 import {
-  Document, Chart2, People, Clock, DocumentDownload, MagicStar, Flag, TrendUp, Chart, Briefcase,
-  ArrowLeft, ArrowRight2,
-} from "iconsax-react"
+  FileText as Document,
+  BarChart2 as Chart2,
+  Users as People,
+  Clock,
+  FileDown as DocumentDownload,
+  Sparkles as MagicStar,
+  Flag,
+  TrendingUp as TrendUp,
+  BarChart2 as Chart,
+  Briefcase,
+  ChevronLeft as ArrowLeft,
+  ChevronRight as ArrowRight2,
+} from "lucide-react"
 import * as reportsApi from "@/lib/api/reports.api"
 import type { ReportParams, CandidateEvaluationRow, InterviewSummaryRow, TimeToHireRow, SourceEffectivenessRow, JobSummaryRow, ActivityRow, PipelineReport, ReportPaginationMeta } from "@/lib/api/reports.api"
 import { AsyncCombobox } from "./components/async-combobox"

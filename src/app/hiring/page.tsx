@@ -7,12 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import {
   Briefcase,
-  DocumentText,
-  People,
-  Routing2,
+  FileText as DocumentText,
+  Users as People,
+  GitBranch as Routing2,
   ArrowRight,
-  Danger,
-} from "iconsax-react"
+  AlertTriangle as Danger,
+} from "lucide-react"
 import { fetchApplications } from "@/lib/api/applications.api"
 import { fetchCandidates, fetchCandidatesScoreSummary } from "@/lib/api/candidates.api"
 import { displayStatusToApplicationStatuses } from "@/lib/api/candidates.api"
@@ -58,7 +58,7 @@ function HubCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-subtle">
-          <Icon className="h-5 w-5 text-foreground" size={20} variant="Linear" />
+          <Icon className="h-5 w-5 text-foreground" size={20} />
         </div>
         <ArrowRight
           size={16}
