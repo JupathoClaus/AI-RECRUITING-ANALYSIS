@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useMemo, useState, useEffect } from "react"
 import {
@@ -39,7 +39,14 @@ import { cn, formatNumber } from "@/lib/utils"
 import type { DeptPerformance, SourceItem, OverviewResponse } from "@/lib/api/analytics.api"
 import { Skeleton } from "@/components/ui/skeleton"
 
-const DEPT_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#3b82f6", "#ef4444", "#a855f7"]
+const DEPT_COLORS = [
+  "var(--color-chart-primary)",  // teal
+  "var(--color-chart-blue)",     // blue
+  "var(--color-chart-amber)",    // amber
+  "var(--color-chart-rose)",     // rose
+  "var(--color-chart-violet)",   // violet
+  "var(--color-chart-slate)",    // slate
+]
 
 // AI Insights are derived from real analytics data. This function computes
 // observations that are honest: every number shown comes from the same data
@@ -89,7 +96,7 @@ function deriveInsights(
       insights.push({
         icon: MagicStar,
         title: `Selection rate is ${rate}% this period`,
-        description: `${rate}% of reviewed candidates received an offer or hire decision — a ${quality} conversion rate. ${rate < 15 ? "Running AI screenings earlier in the pipeline can help surface stronger candidates." : "AI screening is helping surface well-matched candidates efficiently."}`,
+        description: `${rate}% of reviewed candidates received an offer or hire decision â€” a ${quality} conversion rate. ${rate < 15 ? "Running AI screenings earlier in the pipeline can help surface stronger candidates." : "AI screening is helping surface well-matched candidates efficiently."}`,
         type: rate >= 15 ? "info" : "warning",
       })
     }
@@ -192,8 +199,8 @@ export default function AnalyticsPage() {
     () => [
       {
         label: "Total Applications",
-        value: overview ? formatNumber(overview.totalApplications) : "—",
-        trend: "—",
+        value: overview ? formatNumber(overview.totalApplications) : "â€”",
+        trend: "â€”",
         trendLabel: "vs last quarter",
         up: true,
         icon: People,
@@ -202,8 +209,8 @@ export default function AnalyticsPage() {
       },
       {
         label: "Avg Time to Hire",
-        value: overview?.avgTimeToHire != null ? `${overview.avgTimeToHire} days` : "—",
-        trend: "—",
+        value: overview?.avgTimeToHire != null ? `${overview.avgTimeToHire} days` : "â€”",
+        trend: "â€”",
         trendLabel: "vs last quarter",
         up: true,
         icon: Clock,
@@ -212,8 +219,8 @@ export default function AnalyticsPage() {
       },
       {
         label: "Selection Rate",
-        value: overview?.selectionRate != null ? `${overview.selectionRate}%` : "—",
-        trend: "—",
+        value: overview?.selectionRate != null ? `${overview.selectionRate}%` : "â€”",
+        trend: "â€”",
         trendLabel: "vs last quarter",
         up: true,
         icon: TickCircle,
@@ -222,8 +229,8 @@ export default function AnalyticsPage() {
       },
       {
         label: "AI Screening Accuracy",
-        value: overview?.aiScreeningAccuracy != null ? `${overview.aiScreeningAccuracy}%` : "—",
-        trend: "—",
+        value: overview?.aiScreeningAccuracy != null ? `${overview.aiScreeningAccuracy}%` : "â€”",
+        trend: "â€”",
         trendLabel: "this quarter",
         up: true,
         icon: MagicStar,
@@ -388,14 +395,14 @@ export default function AnalyticsPage() {
                     layout="vertical"
                     margin={{ top: 5, right: 30, left: 50, bottom: 5 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" horizontal={false} />
-                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" horizontal={false} />
+                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }} />
                     <YAxis
                       type="category"
                       dataKey="stage"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 12 }}
+                      tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
                     />
                     <RechartsTooltip content={<FunnelTooltip />} />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={24}>
@@ -446,38 +453,38 @@ export default function AnalyticsPage() {
                 ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={timeToHireTrend} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" vertical={false} />
                     <XAxis
                       dataKey="month"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 12 }}
+                      tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
                       dy={8}
                     />
                     <YAxis
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 12 }}
+                      tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
                       dx={-4}
                       domain={[0, "auto"]}
                     />
                     <RechartsTooltip
                       contentStyle={{
-                        backgroundColor: "#ffffff",
-                        border: "1px solid #e2e8f0",
+                        backgroundColor: "var(--color-chart-tooltip-bg)",
+                        border: "1px solid var(--color-chart-tooltip-border)",
                         borderRadius: "8px",
                         fontSize: "12px",
                       }}
-                      labelStyle={{ color: "#64748b" }}
-                      itemStyle={{ color: "#0f172a" }}
+                      labelStyle={{ color: "var(--color-chart-axis)" }}
+                      itemStyle={{ color: "var(--color-foreground)" }}
                     />
                     <Line
                       type="monotone"
                       dataKey="days"
-                      stroke="#6366f1"
+                      stroke="var(--color-chart-primary)"
                       strokeWidth={2}
-                      dot={{ fill: "#6366f1", strokeWidth: 0, r: 4 }}
-                      activeDot={{ fill: "#6366f1", stroke: "#ffffff", strokeWidth: 2, r: 6 }}
+                      dot={{ fill: "var(--color-chart-primary)", strokeWidth: 0, r: 4 }}
+                      activeDot={{ fill: "var(--color-chart-primary)", stroke: "var(--color-chart-tooltip-bg)", strokeWidth: 2, r: 6 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -504,19 +511,19 @@ export default function AnalyticsPage() {
                 ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={sourceBreakdown} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" vertical={false} />
                     <XAxis
                       dataKey="name"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 12 }}
+                      tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
                       dy={8}
                     />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} dx={-4} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }} dx={-4} />
                     <RechartsTooltip content={<ChartTooltip />} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={48}>
                       {sourceBreakdown.map((entry) => (
-                        <Cell key={entry.name} fill={entry.name === "LinkedIn" ? "#6366f1" : "#cbd5e1"} />
+                        <Cell key={entry.name} fill={entry.name === "LinkedIn" ? "var(--color-chart-primary)" : "var(--color-chart-slate)"} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -599,7 +606,7 @@ export default function AnalyticsPage() {
                                   : "text-muted"
                               )}
                             >
-                              {dept.avgScore != null ? dept.avgScore : "—"}
+                              {dept.avgScore != null ? dept.avgScore : "â€”"}
                             </span>
                             {dept.avgScore != null && (
                               <Progress value={scorePercent} className="h-1.5 w-12" />
@@ -607,7 +614,7 @@ export default function AnalyticsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell">
-                          <p className="text-sm text-foreground tabular-nums">{dept.timeToHire != null ? `${dept.timeToHire}d` : "—"}</p>
+                          <p className="text-sm text-foreground tabular-nums">{dept.timeToHire != null ? `${dept.timeToHire}d` : "â€”"}</p>
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge
@@ -627,7 +634,7 @@ export default function AnalyticsPage() {
                                 : dept.timeToHire <= 30
                                   ? "Average"
                                   : "Slow"
-                              : "—"}
+                              : "â€”"}
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -696,3 +703,6 @@ export default function AnalyticsPage() {
     </AppLayout>
   )
 }
+
+
+

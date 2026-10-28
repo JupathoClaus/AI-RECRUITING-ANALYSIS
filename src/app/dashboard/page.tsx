@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useEffect } from "react";
 import Link from "next/link";
@@ -291,7 +291,7 @@ const stats = useMemo(() => {
   // Dashboard as an action center: real, store-driven counts of what is
   // waiting for a human today. The whole-company totals come from the
   // server aggregate (score-summary `attention`) so the counts cover every
-  // candidate/interview in the tenant — not just the first page the store
+  // candidate/interview in the tenant â€” not just the first page the store
   // holds. The paged arrays remain a fallback for older responses.
   const attentionItems = useMemo(() => {
     const serverAttention = candidatesScoreSummary?.attention;
@@ -338,7 +338,7 @@ const stats = useMemo(() => {
       icon: <Briefcase className="h-5 w-5" />,
       color: "text-primary",
       up: true,
-      trend: "—",
+      trend: "â€”",
       trendLabel: "server-derived",
     },
     {
@@ -347,7 +347,7 @@ const stats = useMemo(() => {
       icon: <People className="h-5 w-5" />,
       color: "text-info",
       up: true,
-      trend: "—",
+      trend: "â€”",
       trendLabel: "all candidates",
     },
     {
@@ -356,16 +356,16 @@ const stats = useMemo(() => {
       icon: <MagicStar className="h-5 w-5" />,
       color: "text-warning",
       up: true,
-      trend: "—",
+      trend: "â€”",
       trendLabel: "screened",
     },
     {
       label: "Avg AI Score",
-      value: stats.avgScore === null ? "—" : stats.avgScore.toString(),
+      value: stats.avgScore === null ? "â€”" : stats.avgScore.toString(),
       icon: <MagicStar className="h-5 w-5" />,
       color: "text-success",
       up: true,
-      trend: "—",
+      trend: "â€”",
       trendLabel: "no history yet",
     },
   ];
@@ -397,7 +397,7 @@ const stats = useMemo(() => {
           </div>
         )}
 
-        {/* Needs your attention — the dashboard's action center */}
+        {/* Needs your attention â€” the dashboard's action center */}
         <div className="rounded-xl border border-border bg-surface p-5 shadow-card animate-fade-in">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -415,7 +415,7 @@ const stats = useMemo(() => {
             <div className="mt-4 flex items-center gap-2 rounded-lg bg-primary-subtle px-4 py-3">
               <TickCircle className="h-4 w-4 shrink-0 text-success" size={16} variant="Bold" />
               <p className="text-sm text-foreground">
-                You're all caught up — nothing is waiting for your input right now.
+                You're all caught up â€” nothing is waiting for your input right now.
               </p>
             </div>
           ) : (
@@ -436,7 +436,7 @@ const stats = useMemo(() => {
                   label="interviews scheduled today"
                   cta={
                     attentionItems.nextInterview
-                      ? `${attentionItems.nextInterview.candidateName} · ${attentionItems.nextInterview.jobTitle} — Open interviews`
+                      ? `${attentionItems.nextInterview.candidateName} Â· ${attentionItems.nextInterview.jobTitle} â€” Open interviews`
                       : "Open interviews"
                   }
                   href="/interviews"
@@ -544,45 +544,45 @@ const stats = useMemo(() => {
                     >
                       <defs>
                         <linearGradient id="appGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
-                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                          <stop offset="5%" stopColor="var(--color-chart-primary)" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="var(--color-chart-primary)" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--color-chart-grid)" vertical={false} />
                       <XAxis
                         dataKey="date"
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fill: "#64748b", fontSize: 11 }}
+                        tick={{ fill: "var(--color-chart-axis)", fontSize: 11 }}
                         dy={8}
                         interval="preserveStartEnd"
                       />
                       <YAxis
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fill: "#64748b", fontSize: 12 }}
+                        tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
                         dx={-4}
                         allowDecimals={false}
                       />
                       <RechartsTooltip
                         contentStyle={{
-                          backgroundColor: "#ffffff",
-                          border: "1px solid #e2e8f0",
+                          backgroundColor: "var(--color-chart-tooltip-bg)",
+                          border: "1px solid var(--color-chart-grid)",
                           borderRadius: "8px",
                           fontSize: "12px",
                         }}
-                        labelStyle={{ color: "#64748b" }}
-                        itemStyle={{ color: "#6366f1" }}
+                        labelStyle={{ color: "var(--color-chart-axis)" }}
+                        itemStyle={{ color: "var(--color-chart-primary)" }}
                         formatter={(v) => [v as number, "Applications"]}
                       />
                       <Area
                         type="monotone"
                         dataKey="count"
-                        stroke="#6366f1"
+                        stroke="var(--color-chart-primary)"
                         strokeWidth={2}
                         fill="url(#appGrad)"
                         dot={false}
-                        activeDot={{ fill: "#6366f1", stroke: "#ffffff", strokeWidth: 2, r: 5 }}
+                        activeDot={{ fill: "var(--color-chart-primary)", stroke: "var(--color-chart-tooltip-bg)", strokeWidth: 2, r: 5 }}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -615,14 +615,14 @@ const stats = useMemo(() => {
                   >
                     <CartesianGrid
                       strokeDasharray="3 3"
-                      stroke="#e2e8f0"
+                      stroke="var(--color-chart-grid)"
                       vertical={false}
                     />
                     <XAxis
                       dataKey="stage"
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 11 }}
+                      tick={{ fill: "var(--color-chart-axis)", fontSize: 11 }}
                       dy={8}
                       interval={0}
                       angle={-30}
@@ -632,22 +632,22 @@ const stats = useMemo(() => {
                     <YAxis
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: "#64748b", fontSize: 12 }}
+                      tick={{ fill: "var(--color-chart-axis)", fontSize: 12 }}
                       dx={-4}
                     />
                     <RechartsTooltip
                       contentStyle={{
-                        backgroundColor: "#ffffff",
-                        border: "1px solid #e2e8f0",
+                        backgroundColor: "var(--color-chart-tooltip-bg)",
+                        border: "1px solid var(--color-chart-grid)",
                         borderRadius: "8px",
                         fontSize: "12px",
                       }}
-                      itemStyle={{ color: "#0f172a" }}
+                      itemStyle={{ color: "var(--color-foreground)" }}
                       cursor={{ fill: "rgba(99, 102, 241, 0.08)" }}
                     />
                     <Bar
                       dataKey="count"
-                      fill="#6366f1"
+                      fill="var(--color-chart-primary)"
                       radius={[4, 4, 0, 0]}
                       maxBarSize={40}
                     />
@@ -888,7 +888,7 @@ const stats = useMemo(() => {
                                 : getScoreColor(candidate.aiScore)
                             )}
                           >
-                            {candidate.aiScore === null || candidate.aiScore === undefined ? "—" : candidate.aiScore}
+                            {candidate.aiScore === null || candidate.aiScore === undefined ? "â€”" : candidate.aiScore}
                           </span>
                           <Progress
                             value={candidate.aiScore ?? 0}
@@ -926,3 +926,6 @@ const stats = useMemo(() => {
     </AppLayout>
   );
 }
+
+
+
