@@ -63,7 +63,7 @@ export function ApplicationFilters({ values, jobs, stages, onChange, onJobSearch
   return (
     <div className="space-y-3 border-b border-border p-4">
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(15rem,1fr)_11rem_11rem_auto]">
-        <label className="relative block">
+        <div className="relative">
           <span className="sr-only">Search applications</span>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
@@ -71,9 +71,10 @@ export function ApplicationFilters({ values, jobs, stages, onChange, onJobSearch
             onChange={(event) => update("search", event.target.value)}
             className="pl-9"
             placeholder="Search candidates or application numbers"
+            aria-label="Search applications"
           />
-        </label>
-        <label className="relative block">
+        </div>
+        <div className="relative">
           <span className="sr-only">Find a job to filter applications</span>
           <Input
             value={values.jobSearch}
@@ -82,6 +83,7 @@ export function ApplicationFilters({ values, jobs, stages, onChange, onJobSearch
               onJobSearch(event.target.value)
             }}
             placeholder="Find a job to filter"
+            aria-label="Find a job to filter applications"
           />
           {jobs.length > 0 && !values.jobId && (
             <select
@@ -104,7 +106,7 @@ export function ApplicationFilters({ values, jobs, stages, onChange, onJobSearch
               <X className="h-3.5 w-3.5" />
             </button>
           )}
-        </label>
+        </div>
         <label>
           <span className="sr-only">Filter by application status</span>
           <select value={values.status} onChange={(event) => update("status", event.target.value)} className="h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground">
